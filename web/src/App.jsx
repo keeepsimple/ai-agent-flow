@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { IconX } from '@tabler/icons-react'
 import { useFlow } from './api.js'
 import { useRoute } from './router.js'
@@ -10,6 +11,15 @@ export default function App() {
   const route = useRoute()
   const flow = useFlow(route.taskId)
   const task = route.taskId ? flow.detail : null
+
+  // An error that waits to be clicked outlives whatever it was about, and the
+  // next click lands on a stale one. The X still works for reading it sooner.
+  const { error, setError } = flow
+  useEffect(() => {
+    if (!error) return
+    const timer = setTimeout(() => setError(null), 5000)
+    return () => clearTimeout(timer)
+  }, [error, setError])
 
   let screen
   if (route.name === 'sessions') {
