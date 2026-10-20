@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 export const taskIdFromHash = () => {
-  const hash = location.hash.slice(1)
+  const hash = location.hash.slice(1).split('/')[0]
   return hash && hash !== 'new' ? hash : null
 }
 
@@ -75,7 +75,7 @@ export function useFlow() {
   useEffect(() => {
     loadDetail(selectedId)
     // Deep link, so a task survives a reload and can be shared as a URL.
-    if (selectedId) location.hash = selectedId
+    if (selectedId && taskIdFromHash() !== selectedId) location.hash = selectedId
   }, [selectedId, loadDetail])
 
   useEffect(() => {

@@ -14,7 +14,7 @@ const here = import.meta.dirname
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-flow-test-'))
 const repos = path.join(root, 'repos')
 const bin = path.join(root, 'bin')
-const PORT = 7893
+const PORT = 7100 + Math.floor(Math.random() * 800) // not a fixed port: another server may hold it
 const base = `http://127.0.0.1:${PORT}`
 
 fs.mkdirSync(bin)

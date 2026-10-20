@@ -61,7 +61,11 @@ export function Field({ label, hint, error, children }) {
 
 export const inputClass =
   'w-full rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[13px] text-ink ' +
-  'placeholder:text-ink-faint focus:border-line-strong focus:outline-none'
+  'placeholder:text-ink-faint transition-colors duration-150 ' +
+  'hover:border-line-strong focus:border-accent/60 focus:outline-none ' +
+  // Selects: drop the OS widget and draw the chevron ourselves.
+  "appearance-none bg-no-repeat bg-[right_0.6rem_center] bg-[length:9px] " +
+  "[&:is(select)]:pr-7 [&:is(select)]:bg-[image:var(--chevron)]"
 
 /**
  * Paste-to-attach for any textarea. The file goes to the server straight away

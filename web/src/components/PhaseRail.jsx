@@ -1,3 +1,4 @@
+import { IconCheck, IconHandStop, IconX } from '@tabler/icons-react'
 import { duration } from './bits.jsx'
 
 const PHASES = [
@@ -7,33 +8,49 @@ const PHASES = [
   ['review', 'Review'],
 ]
 
-const TONE = {
-  pending: 'border-line text-ink-faint',
-  running: 'border-accent text-accent',
-  done: 'border-accent/40 text-ink',
-  failed: 'border-danger text-danger',
-}
-
 export default function PhaseRail({ task }) {
   return (
-    <ol className="grid grid-cols-4 gap-2">
-      {PHASES.map(([key, label]) => {
+    <ol className="flex items-start">
+      {PHASES.map(([key, label], i) => {
         const phase = task.phases?.[key] || { status: 'pending' }
         const gated = task.status === 'awaiting_approval' && task.awaitingPhase === key
+        const done = phase.status === 'done' && !gated
+        const running = phase.status === 'running'
+        const failed = phase.status === 'failed'
+
+        const ring = gated
+          ? 'border-warn bg-warn/15 text-warn'
+          : failed
+            ? 'border-danger bg-danger/15 text-danger'
+            : running
+              ? 'border-accent bg-accent/15 text-accent'
+              : done
+                ? 'border-accent/50 bg-accent/10 text-accent'
+                : 'border-line bg-surface-2 text-ink-faint'
+
         return (
-          <li
-            key={key}
-            className={`rounded-md border-t-2 bg-surface-2 px-2.5 py-2 ${gated ? 'border-warn' : TONE[phase.status]}`}
-          >
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-[13px] font-medium">{label}</span>
+          <li key={key} className="flex flex-1 items-start">
+            <div className="flex min-w-0 flex-col items-center gap-1.5 px-1">
+              <span
+                className={`flex size-6 items-center justify-center rounded-full border text-[10px]
+                            font-semibold transition-colors duration-200 ${ring}
+                            ${running ? 'shadow-[0_0_0_4px_rgba(34,197,94,0.1)]' : ''}`}
+              >
+                {gated ? <IconHandStop size={12} /> : failed ? <IconX size={12} /> : done ? <IconCheck size={13} /> : i + 1}
+              </span>
+              <span className={`text-[12px] font-medium ${running || gated ? 'text-ink' : 'text-ink-dim'}`}>
+                {label}
+              </span>
               <span className="font-mono text-[10px] text-ink-faint">
-                {phase.startedAt ? duration(phase.startedAt, phase.endedAt) : ''}
+                {gated ? 'waiting on you' : phase.startedAt ? duration(phase.startedAt, phase.endedAt) : phase.status}
               </span>
             </div>
-            <div className={`mt-0.5 text-[11px] ${gated ? 'text-warn' : 'text-ink-faint'}`}>
-              {gated ? 'waiting on you' : phase.status}
-            </div>
+            {i < PHASES.length - 1 && (
+              <span
+                className={`mt-3 h-px flex-1 transition-colors duration-300
+                            ${done ? 'bg-accent/40' : 'bg-line'}`}
+              />
+            )}
           </li>
         )
       })}

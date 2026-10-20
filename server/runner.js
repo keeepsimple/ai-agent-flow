@@ -434,7 +434,7 @@ function toLogEntry(task, msg, seen) {
     task.cost = +(task.cost + (msg.total_cost_usd || 0)).toFixed(4)
     task.turns += msg.num_turns || 0
     emit(task)
-    const result = msg.result || msg.subtype || ''
+    const result = msg.result || (msg.subtype === 'success' ? '' : msg.subtype || '')
     return {
       kind: 'result',
       text: result === seen.lastText ? '' : result,

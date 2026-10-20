@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { IconCopy, IconFolderOff, IconPlayerStop, IconRefresh, IconSitemap } from '@tabler/icons-react'
 import { Button, ImageStrip, StatusDot, ago, statusOf } from './bits.jsx'
+import Markdown from './Markdown.jsx'
 import PhaseRail from './PhaseRail.jsx'
 import Decision from './Decision.jsx'
 import LogStream from './LogStream.jsx'
@@ -19,7 +20,12 @@ function Meta({ label, children, mono = true }) {
 }
 
 export default function TaskDetail({ task, onError }) {
-  const [tab, setTab] = useState('stream')
+  // Deep link the tab too, so a review can be linked to, not just a task.
+  const [tab, setTab] = useState(() => location.hash.split('/')[1] || 'stream')
+  const openTab = (key) => {
+    setTab(key)
+    location.hash = key === 'stream' ? task.id : `${task.id}/${key}`
+  }
   const status = statusOf(task.status)
   const act = (fn) => fn().catch((e) => onError(e.message))
 
@@ -30,7 +36,7 @@ export default function TaskDetail({ task, onError }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <StatusDot status={task.status} />
-              <h1 className="truncate text-[15px] font-semibold text-ink">{task.title}</h1>
+              <h1 className="truncate text-[17px] font-semibold tracking-tight text-ink">{task.title}</h1>
             </div>
             <p className={`mt-0.5 pl-4 text-[12px] ${status.color}`}>
               {status.label}
@@ -128,7 +134,7 @@ export default function TaskDetail({ task, onError }) {
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
+            onClick={() => openTab(key)}
             className={`-mb-px cursor-pointer border-b-2 px-2.5 py-2 font-mono text-[11px] transition-colors duration-150
               ${tab === key ? 'border-accent text-ink' : 'border-transparent text-ink-faint hover:text-ink-dim'}`}
           >
@@ -141,9 +147,9 @@ export default function TaskDetail({ task, onError }) {
         {tab === 'stream' ? (
           <LogStream entries={task.log || []} live={task.status === 'running'} />
         ) : (
-          <pre className="h-full overflow-auto px-4 py-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-ink-dim">
-            {task.docs[tab]}
-          </pre>
+          <div className="h-full overflow-auto px-4 py-4">
+            <Markdown source={task.docs[tab]} className="mx-auto max-w-3xl" />
+          </div>
         )}
       </div>
     </div>
