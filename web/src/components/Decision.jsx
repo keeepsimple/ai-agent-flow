@@ -1,110 +1,85 @@
 import { useState } from 'react'
-import { IconHandStop, IconMessageQuestion } from '@tabler/icons-react'
-import { Button, Field, ImageStrip, inputClass, usePastedImages } from './bits.jsx'
+import { IconAlertTriangle, IconMessageQuestion } from '@tabler/icons-react'
+import { Button, ImageStrip, inputClass, usePastedImages } from './bits.jsx'
+import { api } from '../api.js'
 
-const GATE_COPY = {
+const GATE = {
   spec: 'The spec is written. Read it before the plan gets built on top of it.',
   plan: 'The plan is written. Approving this starts the implementation.',
 }
 
-export default function Decision({ task, onApprove, onAnswer }) {
+/** The warn-bordered card the artboard uses for anything blocking on you. */
+export default function Decision({ task, onError }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
   const shots = usePastedImages()
 
-  // The agent reads these as text, so an attached image travels as its path.
   const withImages = () =>
     [text.trim(), ...shots.paths.map((p) => `Screenshot: ${p}`)].filter(Boolean).join('\n')
 
   const run = async (fn) => {
     setBusy(true)
-    setError(null)
     try {
       await fn()
       setText('')
       shots.clear()
-    } catch (e) {
-      setError(e.message)
+    } catch (err) {
+      onError(err.message)
     } finally {
       setBusy(false)
     }
   }
 
-  if (task.status === 'awaiting_approval') {
-    const phase = task.awaitingPhase
-    return (
-      <section className="rounded-md border border-warn/40 bg-warn/5 p-3">
-        <header className="flex items-center gap-2 text-warn">
-          <IconHandStop size={16} stroke={1.8} />
-          <h2 className="text-[13px] font-semibold">Your call: {phase}</h2>
-        </header>
-        <p className="mt-1 mb-3 text-[12px] text-ink-dim">{GATE_COPY[phase]}</p>
-        <Field
-          label="Feedback"
-          hint="Optional. Anything here overrides the document in the next phase. Screenshots can be pasted in."
-          error={shots.error}
-        >
-          <textarea
-            className={`${inputClass} min-h-[72px] resize-y font-mono`}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onPaste={shots.onPaste}
-            placeholder="Keep the scope to the admin side. Skip the migration for now."
-          />
-        </Field>
-        <div className="mt-2"><ImageStrip images={shots.images} onRemove={shots.remove} /></div>
-        {error && <p className="mt-2 text-[11px] text-danger">{error}</p>}
-        <div className="mt-3 flex gap-2">
-          <Button variant="primary" disabled={busy} onClick={() => run(() => onApprove(true, withImages()))}>
-            {text.trim() || shots.images.length ? 'Approve with feedback' : 'Approve'}
-          </Button>
-          <Button variant="danger" disabled={busy} onClick={() => run(() => onApprove(false, withImages()))}>
-            Reject and stop
-          </Button>
-        </div>
-      </section>
-    )
-  }
+  const gate = task.status === 'awaiting_approval'
+  const open = (task.questions || []).filter((q) => q.answer === null)
+  const question = task.openQuestionId
+    ? open.find((q) => q.id === task.openQuestionId)
+    : open.at(-1)
 
-  // Only one question can have anything waiting on it. Ones left behind by a
-  // run that died stay unanswered for ever, so the oldest unanswered is usually
-  // the wrong one. The id comes from the server; newest is the fallback for a
-  // task that predates it.
-  const unanswered = (task.questions || []).filter((q) => q.answer === null)
-  const open = task.openQuestionId
-    ? unanswered.find((q) => q.id === task.openQuestionId)
-    : unanswered.at(-1)
-  if (task.status === 'awaiting_answer' && open) {
-    return (
-      <section className="rounded-md border border-warn/40 bg-warn/5 p-3">
-        <header className="flex items-center gap-2 text-warn">
-          <IconMessageQuestion size={16} stroke={1.8} />
-          <h2 className="text-[13px] font-semibold">The agent is blocked on a question</h2>
-        </header>
-        <p className="mt-1 mb-3 text-[13px] whitespace-pre-wrap text-ink">{open.text}</p>
-        <Field label="Answer" hint="Screenshots can be pasted in." error={error || shots.error}>
-          <textarea
-            className={`${inputClass} min-h-[72px] resize-y font-mono`}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onPaste={shots.onPaste}
-            autoFocus
-          />
-        </Field>
-        <div className="mt-2"><ImageStrip images={shots.images} onRemove={shots.remove} /></div>
-        <div className="mt-3">
+  if (!gate && !question) return null
+
+  return (
+    <section className="flex flex-col gap-2.5 rounded-xl border border-warn-line bg-warn-bg p-3.5">
+      <div className="flex items-center gap-2 text-[13px] font-medium text-warn">
+        {gate ? <IconAlertTriangle size={14} /> : <IconMessageQuestion size={14} />}
+        {gate ? `Your call: ${task.awaitingPhase}` : 'Tern needs an answer'}
+      </div>
+
+      <div className="text-[13px] whitespace-pre-wrap text-ink-2">
+        {gate ? GATE[task.awaitingPhase] : question.text}
+      </div>
+
+      <textarea
+        rows={2}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onPaste={shots.onPaste}
+        placeholder={gate ? 'Optional. Anything here overrides the document.' : 'Your answer. Screenshots can be pasted in.'}
+        className={`${inputClass} resize-y bg-page font-mono`}
+      />
+      <ImageStrip images={shots.images} onRemove={shots.remove} size="h-12 w-16" />
+      {shots.error && <span className="text-[11px] text-bad">{shots.error}</span>}
+
+      <div className="flex flex-wrap gap-2">
+        {gate ? (
+          <>
+            <Button variant="primary" disabled={busy} onClick={() => run(() => api.approve(task.id, true, withImages()))}>
+              {text.trim() || shots.images.length ? 'Approve with feedback' : 'Approve'}
+            </Button>
+            <Button variant="danger" disabled={busy} onClick={() => run(() => api.approve(task.id, false, withImages()))}>
+              Reject and stop
+            </Button>
+          </>
+        ) : (
           <Button
             variant="primary"
             disabled={busy || (!text.trim() && !shots.images.length)}
-            onClick={() => run(() => onAnswer(open.id, withImages()))}
+            onClick={() => run(() => api.answer(task.id, question.id, withImages()))}
           >
             Send answer
           </Button>
-        </div>
-      </section>
-    )
-  }
-
-  return null
+        )}
+      </div>
+    </section>
+  )
 }

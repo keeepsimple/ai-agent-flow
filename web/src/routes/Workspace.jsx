@@ -1,0 +1,126 @@
+import { useEffect, useState } from 'react'
+import { IconPlayerStop, IconRefresh } from '@tabler/icons-react'
+import Header from '../components/Header.jsx'
+import Conversation from '../components/Conversation.jsx'
+import Composer from '../components/Composer.jsx'
+import Decision from '../components/Decision.jsx'
+import DiffLines from '../components/DiffLines.jsx'
+import FileList, { markOf } from '../components/FileList.jsx'
+import { Button, Stat, duration } from '../components/bits.jsx'
+import { api } from '../api.js'
+import { to } from '../router.js'
+
+const ACTIVE = new Set(['running', 'queued', 'awaiting_approval', 'awaiting_answer'])
+
+export default function Workspace({ task, flow }) {
+  const [repos, setRepos] = useState([])
+  const [selected, setSelected] = useState(null)
+
+  useEffect(() => {
+    api.diff(task.id).then(setRepos).catch(() => {})
+  }, [task.id, task.status, task.phase])
+
+  const files = repos.flatMap((r) => r.files.map((f) => ({ ...f, repo: r.repo, key: `${r.repo}:${f.path}` })))
+  const open = files.find((f) => f.key === selected) || files[0]
+  const started = Object.values(task.phases || {}).find((p) => p.status === 'running')?.startedAt
+
+  return (
+    <>
+      <Header active="workspace" task={task}>
+        {ACTIVE.has(task.status) && (
+          <span className="inline-flex items-center gap-2 text-xs text-ink-3">
+            <span className="ring-dot size-2 rounded-full bg-accent dot-live" />
+            {task.phase} {started ? `· ${duration(started)}` : ''}
+          </span>
+        )}
+        {ACTIVE.has(task.status) ? (
+          <Button onClick={() => api.cancel(task.id).catch((e) => flow.setError(e.message))}>
+            <IconPlayerStop size={14} /> Stop
+          </Button>
+        ) : (
+          <Button onClick={() => api.retry(task.id).catch((e) => flow.setError(e.message))}>
+            <IconRefresh size={14} /> Retry
+          </Button>
+        )}
+        <Button variant="primary" as="a" href={to.review(task.id)}>Review changes</Button>
+      </Header>
+
+      <div className="flex min-h-0 flex-1 flex-wrap">
+        <aside
+          aria-label="Changed files"
+          className="box-border min-h-0 flex-[1_1_220px] overflow-y-auto border-r border-line bg-panel px-2 py-3"
+        >
+          <FileList repos={repos} selected={open?.key} onSelect={setSelected} title="Explorer" />
+
+          <div className="mt-5 border-t border-line px-2 pt-3.5">
+            <div className="mb-2 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Run</div>
+            <dl className="m-0 flex flex-col gap-1.5 text-xs text-ink-3">
+              <div className="flex justify-between"><dt>Cost</dt><dd className="m-0 font-mono">${(task.cost || 0).toFixed(3)}</dd></div>
+              <div className="flex justify-between"><dt>Turns</dt><dd className="m-0 font-mono">{task.turns || 0}</dd></div>
+              <div className="flex justify-between text-muted"><dt>Permissions</dt><dd className="m-0">{task.permissionMode}</dd></div>
+              <div className="flex justify-between text-muted"><dt>Effort</dt><dd className="m-0">{task.effort || 'default'}</dd></div>
+            </dl>
+          </div>
+        </aside>
+
+        <section
+          aria-label="Agent conversation"
+          className="flex min-h-0 min-w-0 flex-[999_1_460px] flex-col border-r border-line"
+        >
+          <Conversation task={task}>
+            <Decision task={task} onError={flow.setError} />
+          </Conversation>
+          <Composer task={task} onError={flow.setError} />
+        </section>
+
+        <section aria-label="Changes" className="flex min-h-0 min-w-0 flex-[1_1_540px] flex-col bg-panel">
+          <div role="tablist" aria-label="Changed files" className="flex items-stretch overflow-x-auto border-b border-line">
+            {files.slice(0, 6).map((file) => {
+              const on = file.key === open?.key
+              return (
+                <button
+                  key={file.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => setSelected(file.key)}
+                  title={`${file.repo}/${file.path}`}
+                  className={`flex h-10 cursor-pointer items-center gap-2 border-r border-line px-3.5
+                              font-mono text-xs transition-colors duration-150
+                              ${on ? 'border-b-2 border-b-accent bg-page text-ink' : 'text-muted hover:text-ink'}`}
+                >
+                  {file.path.split('/').pop()}
+                  <span className={markOf(file) === 'A' ? 'text-ok' : markOf(file) === 'D' ? 'text-bad' : 'text-warn'}>
+                    {markOf(file)}
+                  </span>
+                </button>
+              )
+            })}
+            <div className="flex-1" />
+            {open && (
+              <div className="flex items-center gap-2 px-3">
+                <Stat added={open.added} removed={open.removed} />
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-auto bg-page">
+            {open ? (
+              open.patch ? (
+                <DiffLines patch={open.patch} single />
+              ) : (
+                <p className="px-4 py-3 font-mono text-xs text-muted">
+                  {(open.bytes / 1024).toFixed(0)} KB of changes, too much to read here.
+                </p>
+              )
+            ) : (
+              <p className="px-4 py-6 text-center text-sm text-muted">
+                Nothing has changed yet. Edits show up here as the agent makes them.
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
+    </>
+  )
+}

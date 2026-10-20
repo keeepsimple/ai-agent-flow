@@ -59,10 +59,22 @@ function statusOf(tree) {
     blocked = `uncommitted work in ${clash.slice(0, 3).join(', ')}${clash.length > 3 ? ` and ${clash.length - 3} more` : ''}`
   }
 
+  const stat = (quiet(() => git(tree.repoPath, 'diff', '--numstat', `${tree.baseRef}...${tree.branch}`)) || '')
+    .split('\n')
+    .filter(Boolean)
+    .reduce(
+      (acc, row) => {
+        const [added, removed] = row.split('\t')
+        return { added: acc.added + (Number(added) || 0), removed: acc.removed + (Number(removed) || 0) }
+      },
+      { added: 0, removed: 0 },
+    )
+
   return {
     repo: tree.repo,
     branch: tree.branch,
     base: tree.baseBranch,
+    ...stat,
     // What merging would actually bring in. Counting from the sha it forked
     // from would never fall to zero, so a merged branch would keep asking to be
     // merged again. The fork point is the fallback for a detached base.
@@ -93,7 +105,17 @@ function statusOf(tree) {
 export function status(id) {
   const task = tasks[id]
   if (!task?.trees) return []
-  return task.trees.map(statusOf)
+  const rows = task.trees.map(statusOf)
+
+  // Remember the totals on the task. The board shows them for every task at
+  // once, and running a diff per task on every page load is not worth it.
+  const stat = rows.reduce(
+    (acc, r) => ({ added: acc.added + r.added, removed: acc.removed + r.removed }),
+    { added: 0, removed: 0 },
+  )
+  if (task.stat?.added !== stat.added || task.stat?.removed !== stat.removed) update(id, { stat })
+
+  return rows
 }
 
 function treesOf(id, repo) {

@@ -1,5 +1,10 @@
 # Agent Flow
 
+Built to the Tern artboards in `design/` (`canvas.json` plus three boards).
+Palette, Geist/Geist Mono, spacing and the three-screen split come from there;
+anything the artboards show that this tool has no data for (a full file tree, a
+context-window meter, a terminal pane) is left out rather than faked.
+
 A local console for running Claude Code on several tasks at once. Each task gets
 its own git worktree, writes a spec, writes a plan, stops for your approval at
 both, implements, then reviews its own diff. You get a desktop notification when
@@ -14,6 +19,14 @@ npm start          # builds the UI and serves http://127.0.0.1:7777
 ```
 
 `npm run dev` runs the server plus Vite with hot reload on :5173.
+
+## Three screens
+
+```
+#/                Sessions   the board: start a task, see every one at a glance
+#/t/<id>          Workspace  explorer · conversation · the diff as it is written
+#/t/<id>/review   Review     changed files · diff · summary, checks and merge
+```
 
 ## How a task runs
 

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tern — Diff review</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0C0E}
+a{color:#C9CDD4}a:hover{color:#FFFFFF}
+input,select,textarea,button{font:inherit;color:inherit}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #0B0C0E; color: #EDEEF0; font-family: 'Geist', system-ui, sans-serif; font-size: 14px; line-height: 1.5">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 16px; min-height: 56px; box-sizing: border-box; border-bottom: 1px solid #23262D; background: #0E0F12">
+<a href="Sessions.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #EDEEF0; font-weight: 600; font-size: 15px">
+<span style="width: 26px; height: 26px; border-radius: 7px; background: {{accent}}; color: #0B0C0E; display: flex; align-items: center; justify-content: center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"></path></svg></span>
+Tern
+</a>
+<span style="color: #3A3E47" aria-hidden="true">/</span>
+<button type="button" style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1px solid #23262D; border-radius: 8px; background: #131418; font-size: 13px; cursor: pointer">acme/storefront<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9097A3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+<nav aria-label="Primary" style="display: flex; flex-wrap: wrap; gap: 2px; margin-left: 8px">
+<a href="Sessions.dc.html" style="padding: 8px 12px; border-radius: 8px; font-size: 13px; text-decoration: none; color: #9097A3">Sessions</a>
+<a href="Main.dc.html" style="padding: 8px 12px; border-radius: 8px; font-size: 13px; text-decoration: none; color: #9097A3">Workspace</a>
+<a href="Review.dc.html" style="padding: 8px 12px; border-radius: 8px; font-size: 13px; text-decoration: none; color: #EDEEF0; background: #1A1C21">Review</a>
+</nav>
+<div style="flex: 1"></div>
+<span aria-label="Account: Nhan" role="img" style="width: 32px; height: 32px; border-radius: 50%; background: #2A2D35; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">N</span>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 18px 24px; border-bottom: 1px solid #23262D">
+<div style="flex: 1 1 420px; min-width: 0">
+<h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em">Free-gift rule: support collections</h1>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 6px; font-size: 13px; color: #9097A3">
+<span style="font-family: 'Geist Mono', monospace; font-size: 12px; padding: 1px 6px; border-radius: 4px; background: #1A1C21; color: #C9CDD4">agent/gift-collections</span>
+<span aria-hidden="true">→</span>
+<span style="font-family: 'Geist Mono', monospace; font-size: 12px; padding: 1px 6px; border-radius: 4px; background: #1A1C21; color: #C9CDD4">main</span>
+<span>7 files</span>
+<span style="font-family: 'Geist Mono', monospace"><span style="color: #4ADE80">+214</span> <span style="color: #FF8080">−31</span></span>
+<span>Sonnet 5.5 · 9m 40s · 58k tokens</span>
+</div>
+</div>
+<button type="button" style="height: 38px; padding: 0 14px; border-radius: 8px; border: 1px solid #2E323A; background: #131418; font-size: 13px; cursor: pointer">Open in workspace</button>
+<button type="button" style="height: 38px; padding: 0 14px; border-radius: 8px; border: 1px solid #2E323A; background: #1A1C21; font-size: 13px; cursor: pointer">Send back to agent</button>
+<button type="button" style="height: 38px; padding: 0 16px; border-radius: 8px; border: 0; background: {{accent}}; color: #0B0C0E; font-size: 13px; font-weight: 600; cursor: pointer">Create pull request</button>
+</div>
+
+<div style="flex: 1; display: flex; flex-wrap: wrap; min-height: 0">
+
+<aside aria-label="Changed files" style="flex: 1 1 240px; box-sizing: border-box; padding: 14px 8px; border-right: 1px solid #23262D; background: #0E0F12">
+<div style="display: flex; justify-content: space-between; padding: 0 8px 8px; font-family: 'Geist Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #9097A3"><span>Changed files</span><span>2 / 7 viewed</span></div>
+<div style="display: flex; flex-direction: column; gap: 2px; font-family: 'Geist Mono', monospace; font-size: 12px">
+<button type="button" style="display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; background: #1A1C21; text-align: left; cursor: pointer"><span style="color: #FFB86B; width: 12px">M</span><span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">rules/eligibility.ts</span><span style="color: #4ADE80">+42</span></button>
+<button type="button" style="display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; color: #C9CDD4"><span style="color: #4ADE80; width: 12px">A</span><span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">rules/collections.ts</span><span style="color: #4ADE80">+88</span></button>
+<button type="button" style="display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; color: #C9CDD4"><span style="color: #4ADE80; width: 12px">A</span><span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">rules/collections.test.ts</span><span style="color: #4ADE80">+61</span></button>
+<button type="button" style="display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; color: #C9CDD4"><span style="color: #FFB86B; width: 12px">M</span><span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">admin/RuleForm.tsx</span><span style="color: #4ADE80">+14</span></button>
+<button type="button" style="display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; color: #C9CDD4"><span style="color: #FFB86B; width: 12px">M</span><span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">graphql/queries.ts</span><span style="color: #4ADE80">+6</span></button>
+<button type="button" style="display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; color: #C9CDD4"><span style="color: #FFB86B; width: 12px">M</span><span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">prisma/schema.prisma</span><span style="color: #4ADE80">+3</span></button>
+<button type="button" style="display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; color: #C9CDD4"><span style="color: #FF8080; width: 12px">D</span><span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">rules/legacyMatch.ts</span><span style="color: #FF8080">−31</span></button>
+</div>
+</aside>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 16px; box-sizing: border-box">
+<div style="border: 1px solid #23262D; border-radius: 12px; overflow: hidden; background: #0B0C0E">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #23262D; background: #111215; font-family: 'Geist Mono', monospace; font-size: 12px">
+<span style="color: #EDEEF0">src/rules/eligibility.ts</span>
+<span><span style="color: #4ADE80">+42</span> <span style="color: #FF8080">−4</span></span>
+<div style="flex: 1"></div>
+<label style="display: flex; align-items: center; gap: 6px; font-family: 'Geist', sans-serif; font-size: 12px; color: #C9CDD4; min-height: 32px"><input type="checkbox" checked="{{ true }}" style="accent-color: {{accent}}; width: 15px; height: 15px; margin: 0">Viewed</label>
+</div>
+<div style="overflow-x: auto; padding: 8px 0; font-family: 'Geist Mono', monospace; font-size: 12.5px; line-height: 1.85">
+<div style="display: flex; white-space: pre; padding-right: 16px; color: #9097A3; background: #111215"><span style="width: 88px; flex: none"></span><span>@@ -18,9 +18,14 @@ export function isEligible(cart, rule)</span></div>
+<div style="display: flex; white-space: pre; padding-right: 16px"><span style="width: 40px; text-align: right; color: #4A4F59; flex: none">18</span><span style="width: 40px; text-align: right; color: #4A4F59; flex: none; padding-right: 8px">18</span><span>  <span style="color: #C4B5FD">const</span> lines = cart.lines.<span style="color: #7DD3FC">filter</span>((l) =&gt; !l.isGift);</span></div>
+<div style="display: flex; white-space: pre; padding-right: 16px; background: rgba(255,107,107,0.09)"><span style="width: 40px; text-align: right; color: #8A5A5A; flex: none">19</span><span style="width: 40px; text-align: right; color: #8A5A5A; flex: none; padding-right: 8px"></span><span style="color: #E7C6C6"><span style="color: #FF8080">−</span> <span style="color: #C4B5FD">const</span> hit = lines.<span style="color: #7DD3FC">some</span>((l) =&gt; rule.productIds.<span style="color: #7DD3FC">includes</span>(l.productId));</span></div>
+<div style="display: flex; white-space: pre; padding-right: 16px; background: rgba(74,222,128,0.09)"><span style="width: 40px; text-align: right; color: #4F7A5C; flex: none"></span><span style="width: 40px; text-align: right; color: #4F7A5C; flex: none; padding-right: 8px">19</span><span><span style="color: #4ADE80">+</span> <span style="color: #C4B5FD">const</span> ids = <span style="color: #C4B5FD">await</span> <span style="color: #7DD3FC">resolveTargets</span>(rule.targets);</span></div>
+<div style="display: flex; white-space: pre; padding-right: 16px; background: rgba(74,222,128,0.09)"><span style="width: 40px; text-align: right; color: #4F7A5C; flex: none"></span><span style="width: 40px; text-align: right; color: #4F7A5C; flex: none; padding-right: 8px">20</span><span><span style="color: #4ADE80">+</span> <span style="color: #C4B5FD">const</span> hit = lines.<span style="color: #7DD3FC">some</span>((l) =&gt; ids.<span style="color: #7DD3FC">has</span>(l.productId));</span></div>
+<div style="display: flex; white-space: pre; padding-right: 16px"><span style="width: 40px; text-align: right; color: #4A4F59; flex: none">20</span><span style="width: 40px; text-align: right; color: #4A4F59; flex: none; padding-right: 8px">21</span><span>  <span style="color: #C4B5FD">if</span> (!hit) <span style="color: #C4B5FD">return</span> <span style="color: #FFB86B">false</span>;</span></div>
+<div style="display: flex; white-space: pre; padding-right: 16px; background: rgba(74,222,128,0.09)"><span style="width: 40px; text-align: right; color: #4F7A5C; flex: none"></span><span style="width: 40px; text-align: right; color: #4F7A5C; flex: none; padding-right: 8px">22</span><span><span style="color: #4ADE80">+</span> <span style="color: #C4B5FD">if</span> (rule.minSubtotal &amp;&amp; <span style="color: #7DD3FC">subtotal</span>(lines) &lt; rule.minSubtotal) <span style="color: #C4B5FD">return</span> <span style="color: #FFB86B">false</span>;</span></div>
+
+<div style="margin: 10px 16px 10px 88px; border: 1px solid #2E323A; border-radius: 10px; background: #131418; font-family: 'Geist', system-ui, sans-serif; font-size: 13px; line-height: 1.5; white-space: normal; overflow: hidden">
+<div style="display: flex; gap: 10px; padding: 12px">
+<span style="width: 24px; height: 24px; flex: none; border-radius: 50%; background: #2A2D35; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600">N</span>
+<div><div style="font-size: 12px; color: #9097A3">Nhan · 4 min ago</div><div style="margin-top: 2px">resolveTargets hits the Admin API on every cart change. Cache it?</div></div>
+</div>
+<div style="display: flex; gap: 10px; padding: 12px; border-top: 1px solid #23262D; background: #111215">
+<span style="width: 24px; height: 24px; flex: none; border-radius: 6px; background: {{accent}}; color: #0B0C0E; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"></path></svg></span>
+<div style="flex: 1"><div style="font-size: 12px; color: #9097A3">Tern · working on it</div><div style="margin-top: 2px; color: #DADDE2">Adding a 5-minute cache keyed by rule id, invalidated on the <code style="font-family: 'Geist Mono', monospace; font-size: 12px">collections/update</code> webhook.</div>
+<div style="margin-top: 8px; height: 3px; border-radius: 2px; background: #23262D"><div style="width: 40%; height: 3px; border-radius: 2px; background: {{accent}}"></div></div></div>
+</div>
+</div>
+
+<div style="display: flex; white-space: pre; padding-right: 16px"><span style="width: 40px; text-align: right; color: #4A4F59; flex: none">21</span><span style="width: 40px; text-align: right; color: #4A4F59; flex: none; padding-right: 8px">23</span><span>  <span style="color: #C4B5FD">return</span> <span style="color: #7DD3FC">withinSchedule</span>(rule, <span style="color: #C4B5FD">new</span> <span style="color: #FFB86B">Date</span>());</span></div>
+<div style="display: flex; white-space: pre; padding-right: 16px"><span style="width: 40px; text-align: right; color: #4A4F59; flex: none">22</span><span style="width: 40px; text-align: right; color: #4A4F59; flex: none; padding-right: 8px">24</span><span>}</span></div>
+</div>
+</div>
+</main>
+
+<aside aria-label="Summary and checks" style="flex: 1 1 320px; box-sizing: border-box; padding: 16px; border-left: 1px solid #23262D; background: #0E0F12; display: flex; flex-direction: column; gap: 20px">
+<section>
+<h2 style="margin: 0 0 8px; font-size: 13px; font-weight: 600">What the agent changed</h2>
+<ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #C9CDD4">
+<li>Rules can target collections, not only products</li>
+<li>New <code style="font-family: 'Geist Mono', monospace; font-size: 12px">resolveTargets</code> expands collections to product ids</li>
+<li>Added minimum-subtotal condition</li>
+<li>Removed unused <code style="font-family: 'Geist Mono', monospace; font-size: 12px">legacyMatch</code></li>
+</ul>
+</section>
+
+<section>
+<h2 style="margin: 0 0 8px; font-size: 13px; font-weight: 600">Checks</h2>
+<div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border: 1px solid #23262D; border-radius: 8px; background: #131418"><span style="color: #4ADE80; display: flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg></span>Unit tests<span style="margin-left: auto; font-family: 'Geist Mono', monospace; font-size: 12px; color: #9097A3">142 passed</span></div>
+<div style="display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border: 1px solid #23262D; border-radius: 8px; background: #131418"><span style="color: #4ADE80; display: flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg></span>Typecheck</div>
+<div style="display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border: 1px solid #23262D; border-radius: 8px; background: #131418"><span style="color: #4ADE80; display: flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg></span>Lint</div>
+<div style="display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border: 1px solid #5C4A2A; border-radius: 8px; background: #17140F"><span style="color: #FFB86B; display: flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20zM12 10v5M12 18v.01"></path></svg></span>Prisma migration needed</div>
+</div>
+</section>
+
+<section>
+<h2 style="margin: 0 0 8px; font-size: 13px; font-weight: 600">Flagged by agent</h2>
+<p style="margin: 0; font-size: 13px; color: #C9CDD4">Schema adds <code style="font-family: 'Geist Mono', monospace; font-size: 12px">Rule.targets</code>. Existing rules are backfilled from <code style="font-family: 'Geist Mono', monospace; font-size: 12px">productIds</code> — run the migration on staging first.</p>
+</section>
+
+<section style="margin-top: auto">
+<label for="followup" style="display: block; font-size: 12px; color: #9097A3; margin-bottom: 6px">Ask the agent for a follow-up</label>
+<div style="display: flex; gap: 8px">
+<input id="followup" type="text" placeholder="e.g. Add an e2e test for the admin form" style="flex: 1; min-width: 0; height: 38px; box-sizing: border-box; padding: 0 10px; border: 1px solid #2E323A; border-radius: 8px; background: #131418; font-size: 13px">
+<button type="button" aria-label="Send" style="width: 38px; height: 38px; flex: none; border: 0; border-radius: 8px; background: {{accent}}; color: #0B0C0E; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"></path></svg></button>
+</div>
+</section>
+</aside>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#C8F04A","options":["#C8F04A","#7DD3FC","#FFB86B","#C4B5FD"]},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#C8F04A' };
+  }
+}
+</script>
+</body>
+</html>

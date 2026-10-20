@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-export const taskIdFromHash = () => {
-  const hash = location.hash.slice(1).split('/')[0]
-  return hash && hash !== 'new' ? hash : null
-}
-
 async function call(method, url, payload) {
   const res = await fetch(url, {
     method,
@@ -48,14 +43,14 @@ export const api = {
   followUp: (id, request) => call('POST', `/api/tasks/${id}/follow-up`, { request }),
 }
 
-export function useFlow() {
+export function useFlow(taskId) {
   const [tasks, setTasks] = useState(null)
   const [repos, setRepos] = useState([])
   const [repoRoot, setRepoRoot] = useState('')
   const [options, setOptions] = useState(null)
   const [defaults, setDefaults] = useState(null)
   const [error, setError] = useState(null)
-  const [selectedId, setSelectedId] = useState(() => taskIdFromHash())
+
   const [detail, setDetail] = useState(null)
   const [live, setLive] = useState(false)
   const [, tick] = useState(0)
@@ -63,7 +58,7 @@ export function useFlow() {
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   )
   const selectedRef = useRef(null)
-  selectedRef.current = selectedId
+  selectedRef.current = taskId
 
   const loadState = useCallback(() => {
     api.state()
@@ -84,11 +79,7 @@ export function useFlow() {
   }, [])
 
   useEffect(loadState, [loadState])
-  useEffect(() => {
-    loadDetail(selectedId)
-    // Deep link, so a task survives a reload and can be shared as a URL.
-    if (selectedId && taskIdFromHash() !== selectedId) location.hash = selectedId
-  }, [selectedId, loadDetail])
+  useEffect(() => loadDetail(taskId), [taskId, loadDetail])
 
   useEffect(() => {
     const id = setInterval(() => tick((n) => n + 1), 30_000)
@@ -120,11 +111,11 @@ export function useFlow() {
     // server only falls back to a desktop one when no tab is listening.
     es.addEventListener('notify', (e) => {
       if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-      const { taskId, title, body } = JSON.parse(e.data)
-      const note = new Notification(title, { body, tag: taskId, icon: '/icon.svg' })
+      const { taskId: id, title, body } = JSON.parse(e.data)
+      const note = new Notification(title, { body, tag: id, icon: '/icon.svg' })
       note.onclick = () => {
         window.focus()
-        setSelectedId(taskId)
+        location.hash = `/t/${id}`
         note.close()
       }
     })
@@ -140,7 +131,7 @@ export function useFlow() {
   // boundary moves. Cheap: it is one local read.
   const phaseKey = detail ? `${detail.status}:${detail.phase}` : ''
   useEffect(() => {
-    if (selectedId) loadDetail(selectedId)
+    if (taskId) loadDetail(taskId)
   }, [phaseKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const askForNotifications = useCallback(async () => {
@@ -150,7 +141,6 @@ export function useFlow() {
 
   return {
     tasks, repos, repoRoot, options, defaults, error, live, detail,
-    selectedId, select: setSelectedId,
     notifications, askForNotifications,
     reload: loadState,
     setError,
