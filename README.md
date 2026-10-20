@@ -58,8 +58,13 @@ assumption into that phase's document. The prompt tells it so up front, rather
 than letting it waste a turn on a question that will never be answered.
 
 A **title is optional**. Leave it blank and the first line of the request stands
-in until the spec phase has read the code and can name the work; the branch keeps
-the name it was created with either way.
+in until the first phase has read the code and can name the work.
+
+The branch has to exist before anything has read the request, so it is named
+from the request itself. Accents are split off their letters rather than taken
+with them, so a request in any language still slugs to something readable, and
+once the agent has named the task — in English, which the prompt asks for — the
+branch is renamed to match. A branch already on a remote is left alone.
 
 ## Per task: model, effort, permissions
 
@@ -230,6 +235,35 @@ checkout and offers to drop the finished ones in one go.
 Dropping frees the checkout and nothing else: the branch and its commits stay.
 Directories under `data/worktrees/` with no task left to own them are listed
 separately and swept with the same button.
+
+## On another machine
+
+Nothing is installed globally and nothing is configured per machine. Clone it,
+install, start:
+
+```sh
+git clone https://github.com/keeepsimple/ai-agent-flow.git
+cd ai-agent-flow
+npm install
+npm start
+```
+
+What has to already be there:
+
+| | Why |
+| --- | --- |
+| **Node 20+** | `npm test` and the server both run on it |
+| **git** | worktrees are the whole isolation model |
+| **`claude` on your PATH**, signed in | every phase is a `claude -p` run. `claude` on its own should answer before you start this |
+| **Your repos in one folder** | the folder *above* this one is scanned for anything with a `.git`. Clone this beside them, or set `FLOW_REPO_ROOT` |
+
+Everything else is optional and only matters for the feature it belongs to:
+`glab auth login` for pipeline status, `terminal-notifier` for clickable
+notifications on macOS, Chrome for the preview browser.
+
+Nothing carries over from this machine. `data/` is ignored by git, so tasks,
+logs, worktrees, uploads and your Shopify choice all stay where they were made.
+A machine with its own `~/.claude/settings.json` picks that up on its own.
 
 ## Settings
 
