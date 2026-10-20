@@ -5,6 +5,7 @@ import { bus, sse, tasks, readLog, artifact } from './store.js'
 import * as runner from './runner.js'
 import * as uploads from './uploads.js'
 import * as repoGit from './git.js'
+import * as disk from './disk.js'
 
 const DIST = path.join(import.meta.dirname, '..', 'web', 'dist')
 const MIME = {
@@ -101,6 +102,13 @@ async function api(req, res, url) {
       bus.off('notify', onNotify)
     })
     return
+  }
+
+  if (section === 'disk') {
+    if (req.method === 'GET' && !id) return json(res, 200, disk.usage())
+    if (req.method === 'POST' && id === 'prune') {
+      return json(res, 200, { dropped: disk.prune(runner.removeWorktrees), usage: disk.usage() })
+    }
   }
 
   if (section === 'uploads') {

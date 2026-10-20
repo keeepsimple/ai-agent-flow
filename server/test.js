@@ -450,7 +450,7 @@ try {
     'the remote main should carry the work',
   )
 
-  // Dropping the checkouts must leave the work on the branches.
+  // Dropping one task's checkouts by hand, before the sweep takes the rest.
   await fetch(`${base}/api/tasks/${created.id}/worktree`, { method: 'DELETE' })
   task = await (await fetch(`${base}/api/tasks/${created.id}`)).json()
   assert.equal(task.root, null, 'the worktrees should be gone')
@@ -458,11 +458,29 @@ try {
     assert.ok(!fs.existsSync(tree.worktree), `${tree.repo} checkout should be removed`)
     assert.match(git(tree.repo, 'log', '--oneline', tree.branch), /impl/, `${tree.repo} branch should survive`)
   }
-  // The branch is still readable without its checkout, so it is still shippable.
   const afterDrop = await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()
   assert.equal(afterDrop[0].ahead, 0, 'merged into the base, so there is nothing left to merge')
   assert.ok(afterDrop[0].produced > 0, 'but the task did produce commits: that is a merged branch, not an empty one')
   assert.equal(afterDrop[0].branch, task.trees[0].branch, 'the branch is still reported')
+
+  // Disk: a worktree is a full checkout, and the one thing that must stay true
+  // is that reclaiming the space never reclaims the work.
+  const before = await (await fetch(`${base}/api/disk`)).json()
+  const counted = before.tasks.map((t) => t.id)
+  assert.ok(counted.includes(fast.id) && counted.includes(quiet.id), 'tasks with a checkout are counted')
+  assert.ok(!counted.includes(created.id), 'and one already dropped is not counted twice')
+  assert.ok(before.total > 0, 'the count is a real measurement')
+  assert.ok(
+    before.tasks.every((t) => t.reclaimable),
+    'nothing is running, so all of it can go',
+  )
+
+  const pruned = await (await fetch(`${base}/api/disk/prune`, { method: 'POST' })).json()
+  assert.equal(pruned.usage.total, 0, 'pruning should leave nothing behind')
+  assert.equal(pruned.usage.orphans.length, 0)
+  for (const repo of REPOS) {
+    assert.match(git(repo, 'log', '--oneline', 'main'), /impl/, `${repo} still has the merged work`)
+  }
 
   // Cancel has to actually stop the agent. It used to send SIGTERM to one pid,
   // leave the tree running, and the survivor could revive the task by asking.
@@ -498,7 +516,8 @@ try {
     '    unattended answers its own questions and the agent names an untitled task,\n' +
     '    a quick run skips spec and plan but still reviews itself,\n' +
     '    a finished task takes a follow-up on the same branches,\n' +
-    '    the diff is readable from the app and an enormous file is only described',
+    '    the diff is readable from the app and an enormous file is only described,\n' +
+    '    reclaiming worktree space never reclaims the work',
   )
 } catch (err) {
   failure = err

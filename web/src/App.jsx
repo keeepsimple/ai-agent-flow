@@ -1,16 +1,25 @@
-import { useState } from 'react'
-import { IconBellOff, IconPlus, IconX } from '@tabler/icons-react'
+import { useEffect, useState } from 'react'
+import { IconBellOff, IconDatabase, IconPlus, IconX } from '@tabler/icons-react'
 import { api, useFlow } from './api.js'
 import { Button } from './components/bits.jsx'
 import TaskList from './components/TaskList.jsx'
 import NewTask from './components/NewTask.jsx'
 import TaskDetail from './components/TaskDetail.jsx'
+import Disk, { size } from './components/Disk.jsx'
 
 const NEEDS_YOU = new Set(['awaiting_approval', 'awaiting_answer'])
 
 export default function App() {
   const flow = useFlow()
   const [composing, setComposing] = useState(() => location.hash === '#new')
+  const [showDisk, setShowDisk] = useState(false)
+  const [onDisk, setOnDisk] = useState(null)
+
+  useEffect(() => {
+    // One number, read when the page opens and after a clean-up. Counting it is
+    // a filesystem walk over gigabytes; it does not belong on a poll.
+    if (!showDisk) api.disk().then((u) => setOnDisk(u.total)).catch(() => {})
+  }, [showDisk])
   const waiting = (flow.tasks || []).filter((t) => NEEDS_YOU.has(t.status)).length
   const active = (flow.tasks || []).filter((t) => t.status === 'running').length
 
@@ -60,8 +69,18 @@ export default function App() {
           <TaskList tasks={flow.tasks} selectedId={flow.selectedId} onSelect={flow.select} />
         </div>
 
-        <footer className="border-t border-line px-3 py-2 font-mono text-[10px] text-ink-faint">
+        <footer className="flex items-center gap-2 border-t border-line px-3 py-2 font-mono text-[10px] text-ink-faint">
           <span className="truncate">{flow.repoRoot}</span>
+          {onDisk > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowDisk(true)}
+              title="Worktrees on disk"
+              className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 transition-colors duration-150 hover:text-ink"
+            >
+              <IconDatabase size={11} /> {size(onDisk)}
+            </button>
+          )}
         </footer>
       </aside>
 
@@ -91,6 +110,8 @@ export default function App() {
           }}
         />
       )}
+
+      {showDisk && <Disk onClose={() => setShowDisk(false)} onError={flow.setError} />}
 
       {flow.error && (
         <div

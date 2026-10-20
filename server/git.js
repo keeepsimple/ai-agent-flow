@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { tasks, update } from './store.js'
+import { pipelineFor } from './pipeline.js'
 
 const git = (cwd, ...args) =>
   execFileSync('git', ['-C', cwd, ...args], {
@@ -27,6 +28,7 @@ function statusOf(tree) {
   // on it stays shippable.
   const upstream = quiet(() => git(tree.repoPath, 'rev-parse', '--abbrev-ref', `${tree.branch}@{u}`))
   const remote = quiet(() => git(tree.repoPath, 'remote').split('\n')[0]) || null
+  const remoteUrl = remote ? quiet(() => git(tree.repoPath, 'remote', 'get-url', remote)) : null
 
   // Merging locally leaves the base branch ahead of its own remote. Without
   // this the tool walks you to 'merged' and then abandons the last step.
@@ -78,7 +80,9 @@ function statusOf(tree) {
     unpushed: upstream ? count(tree.repoPath, `${upstream}..${tree.branch}`) ?? 0 : null,
     upstream,
     remote,
-    reviewUrl: reviewUrl(quiet(() => git(tree.repoPath, 'remote', 'get-url', remote)), tree.branch, tree.baseBranch),
+    reviewUrl: reviewUrl(remoteUrl, tree.branch, tree.baseBranch),
+    // Only once the branch is on the remote is there anything for CI to run.
+    pipeline: upstream ? pipelineFor(remoteUrl, tree.branch) : null,
     baseUpstream,
     baseUnpushed,
     uncommitted: uncommitted.length,

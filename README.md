@@ -153,6 +153,34 @@ Neither button deletes the branch, and none of this is automatic.
 Both read the branch through the repo rather than the worktree, so **Drop
 worktrees** frees the disk without taking the work out of reach.
 
+## Pipeline status
+
+Once a branch is pushed, its row shows what CI made of it, linked to the
+pipeline. It reads through the `glab` CLI, so no token lives in this tool or its
+config. Sign in once per host:
+
+```sh
+glab auth login --hostname gitlab.abcsoft.vn
+```
+
+Until you do, the row says `CI unavailable` and hovering it gives you that
+command. `FLOW_GITLAB_TOKEN` works instead for a machine without `glab`. GitHub
+remotes are skipped: there is no equivalent read here yet.
+
+Lookups are cached for 20 seconds and refreshed in the background, so a slow
+network never makes the row stutter.
+
+## Disk
+
+A worktree shares the repo's history but keeps its own `node_modules`, pods and
+build output. One task here reached 1.1 GB, and a Flutter checkout is several
+times that. The sidebar footer shows the total; clicking it lists every task's
+checkout and offers to drop the finished ones in one go.
+
+Dropping frees the checkout and nothing else: the branch and its commits stay.
+Directories under `data/worktrees/` with no task left to own them are listed
+separately and swept with the same button.
+
 ## Settings
 
 | Env | Default | What it does |
@@ -165,6 +193,7 @@ worktrees** frees the disk without taking the work out of reach.
 | `FLOW_EFFORT` | CLI default | Default effort for new tasks |
 | `FLOW_PERMISSION_MODE` | `bypassPermissions` | Default permissions for new tasks. Accepts the CLI's full set, including the ones the form does not offer |
 | `FLOW_NOTIFY` | on | `off` silences desktop notifications |
+| `FLOW_GITLAB_TOKEN` | unset | Read pipelines without `glab` being signed in |
 | `FLOW_CLAUDE_BIN` | `claude` | Path to the CLI, if it is not on your PATH |
 
 ## The risk worth knowing about

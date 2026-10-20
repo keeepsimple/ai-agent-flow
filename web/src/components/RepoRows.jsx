@@ -2,6 +2,52 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   IconArrowMerge, IconCloudUpload, IconCopy, IconExternalLink, IconSitemap, IconSparkles,
 } from '@tabler/icons-react'
+
+// GitLab's own vocabulary, mapped onto what the eye needs: is it fine, is it
+// broken, or is it still going.
+const PIPELINE = {
+  success: ['text-accent', 'passed'],
+  failed: ['text-danger', 'failed'],
+  running: ['text-warn', 'running'],
+  pending: ['text-warn', 'pending'],
+  created: ['text-ink-faint', 'queued'],
+  canceled: ['text-ink-faint', 'cancelled'],
+  skipped: ['text-ink-faint', 'skipped'],
+  manual: ['text-ink-faint', 'manual'],
+  none: ['text-ink-faint', 'no pipeline'],
+}
+
+function Pipeline({ state }) {
+  if (!state) return null
+  if (state.status === 'unavailable') {
+    return (
+      <span title={state.reason} className="font-mono text-[10px] text-ink-faint">
+        CI unavailable
+      </span>
+    )
+  }
+  const [tone, label] = PIPELINE[state.status] || ['text-ink-faint', state.status]
+  const live = state.status === 'running' || state.status === 'pending'
+  const body = (
+    <>
+      <span className={`inline-block size-1.5 rounded-full ${tone.replace('text-', 'bg-')} ${live ? 'dot-live' : ''}`} />
+      CI {label}
+    </>
+  )
+  return state.url ? (
+    <a
+      href={state.url}
+      target="_blank"
+      rel="noreferrer"
+      title={`Pipeline for ${state.sha}`}
+      className={`inline-flex cursor-pointer items-center gap-1.5 font-mono text-[10px] ${tone} hover:underline`}
+    >
+      {body}
+    </a>
+  ) : (
+    <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] ${tone}`}>{body}</span>
+  )
+}
 import { Button } from './bits.jsx'
 import { api } from '../api.js'
 
@@ -58,6 +104,7 @@ function Ship({ task, state, onChanged, onError }) {
         <span className="font-mono text-[10px] text-ink-faint">
           {merged ? `${state.produced} commits · already in ${state.base}` : 'nothing to ship yet'}
         </span>
+        <Pipeline state={state.pipeline} />
         {openMr}
         {pushBase}
       </div>
@@ -103,6 +150,7 @@ function Ship({ task, state, onChanged, onError }) {
       >
         <IconArrowMerge size={13} /> {busy === 'merge' ? 'Merging' : `Merge into ${state.base}`}
       </Button>
+      <Pipeline state={state.pipeline} />
       {openMr}
       {pushBase}
       {state.mergeBlockedBy ? (
