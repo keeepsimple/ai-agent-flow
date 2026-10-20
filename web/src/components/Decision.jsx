@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { IconAlertTriangle, IconMessageQuestion } from '@tabler/icons-react'
-import { Button, ImageStrip, inputClass, usePastedImages } from './bits.jsx'
+import { AttachStrip, Button, inputClass, useAttachments } from './bits.jsx'
 import { api } from '../api.js'
 
 const GATE = {
@@ -12,17 +12,17 @@ const GATE = {
 export default function Decision({ task, onError }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
-  const shots = usePastedImages()
+  const attach = useAttachments()
 
   const withImages = () =>
-    [text.trim(), ...shots.paths.map((p) => `Screenshot: ${p}`)].filter(Boolean).join('\n')
+    [text.trim(), ...attach.paths.map((p) => `Attached: ${p}`)].filter(Boolean).join('\n')
 
   const run = async (fn) => {
     setBusy(true)
     try {
       await fn()
       setText('')
-      shots.clear()
+      attach.clear()
     } catch (err) {
       onError(err.message)
     } finally {
@@ -53,18 +53,19 @@ export default function Decision({ task, onError }) {
         rows={2}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        onPaste={shots.onPaste}
+        onPaste={attach.onPaste}
         placeholder={gate ? 'Optional. Anything here overrides the document.' : 'Your answer. Screenshots can be pasted in.'}
         className={`${inputClass} resize-y bg-page font-mono`}
       />
-      <ImageStrip images={shots.images} onRemove={shots.remove} size="h-12 w-16" />
-      {shots.error && <span className="text-[11px] text-bad">{shots.error}</span>}
+      <AttachStrip files={attach.files} onRemove={attach.remove} size="h-12 w-16" />
+      {attach.picker}
+      {attach.error && <span className="text-[11px] text-bad">{attach.error}</span>}
 
       <div className="flex flex-wrap gap-2">
         {gate ? (
           <>
             <Button variant="primary" disabled={busy} onClick={() => run(() => api.approve(task.id, true, withImages()))}>
-              {text.trim() || shots.images.length ? 'Approve with feedback' : 'Approve'}
+              {text.trim() || attach.files.length ? 'Approve with feedback' : 'Approve'}
             </Button>
             <Button variant="danger" disabled={busy} onClick={() => run(() => api.approve(task.id, false, withImages()))}>
               Reject and stop
@@ -73,7 +74,7 @@ export default function Decision({ task, onError }) {
         ) : (
           <Button
             variant="primary"
-            disabled={busy || (!text.trim() && !shots.images.length)}
+            disabled={busy || (!text.trim() && !attach.files.length)}
             onClick={() => run(() => api.answer(task.id, question.id, withImages()))}
           >
             Send answer

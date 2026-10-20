@@ -293,22 +293,47 @@ try {
     await fetch(`${base}/api/uploads`, { method: 'POST', headers: { 'X-Filename': 'figma frame.png' }, body: png })
   ).json()
   assert.match(uploaded.file, /^[0-9a-f]{8}-figma-frame\.png$/, 'the stored name should be sanitised')
+  assert.equal(uploaded.kind, 'image')
 
-  const notAnImage = await fetch(`${base}/api/uploads`, { method: 'POST', body: Buffer.from('<?php ?>') })
-  assert.equal(notAnImage.status, 400, 'a non-image must be refused on its bytes, not its headers')
+  // A build log is the other thing worth attaching, and it is not an image.
+  const log = await (
+    await fetch(`${base}/api/uploads`, {
+      method: 'POST',
+      headers: { 'X-Filename': 'build.log' },
+      body: Buffer.from('error TS2345: argument of type string\n'),
+    })
+  ).json()
+  assert.equal(log.kind, 'text')
+  assert.match(log.file, /\.log$/, 'a text file keeps the extension it came with')
+
+  // A binary wearing a text suffix must not get in on the suffix alone.
+  const liar = await fetch(`${base}/api/uploads`, {
+    method: 'POST',
+    headers: { 'X-Filename': 'notes.log' },
+    body: Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x00, 0x01, 0x02]),
+  })
+  assert.equal(liar.status, 400)
+  assert.match((await liar.json()).error, /not text/)
+
+  const notAnImage = await fetch(`${base}/api/uploads`, {
+    method: 'POST',
+    headers: { 'X-Filename': 'thing.bin' },
+    body: Buffer.from('<?php ?>'),
+  })
+  assert.equal(notAnImage.status, 400, 'an unknown kind is refused on its bytes, not its headers')
 
   const outsideUploads = await fetch(`${base}/api/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: 'x', repos: REPOS, prompt: 'x', images: ['/etc/passwd'] }),
+    body: JSON.stringify({ title: 'x', repos: REPOS, prompt: 'x', attachments: ['/etc/passwd'] }),
   })
-  assert.equal(outsideUploads.status, 400, 'an image path outside the uploads dir must be refused')
+  assert.equal(outsideUploads.status, 400, 'a path outside the uploads dir must be refused')
 
   const created = await post('/api/tasks', {
     title: 'Add a thing',
     repos: REPOS,
     prompt: 'add a thing',
-    images: [uploaded.path],
+    attachments: [uploaded.path, log.path],
     model: 'sonnet',
     effort: 'high',
   })
@@ -331,6 +356,7 @@ try {
   assert.equal(flag('--permission-mode'), 'bypassPermissions', 'the default mode should reach the CLI')
   const sentPrompt = fs.readFileSync(path.join(root, 'data', 'tasks', created.id, 'prompt.txt'), 'utf8')
   assert.ok(sentPrompt.includes(uploaded.path), 'the attached image should be named in the prompt')
+  assert.ok(sentPrompt.includes(log.path), 'and so should the attached log')
   assert.ok(
     argv.filter((a) => a === '--add-dir').length === 2,
     'the agent needs the artifact dir and the uploads dir',
@@ -560,6 +586,7 @@ try {
     '    unattended answers its own questions and the agent names an untitled task,\n' +
     '    a quick run skips spec and plan but still reviews itself,\n' +
     '    a finished task takes a follow-up on the same branches,\n' +
+    '    an attached log reaches the prompt and a binary in a .log is refused,\n' +
     '    the diff is readable from the app and an enormous file is only described,\n' +
     '    reclaiming worktree space never reclaims the work,\n' +
     '    a second folder can be added and an ambiguous repo name is refused',

@@ -4,7 +4,7 @@ import {
 } from '@tabler/icons-react'
 import { Mark } from './Header.jsx'
 import Markdown from './Markdown.jsx'
-import { duration } from './bits.jsx'
+import { AttachStrip, duration } from './bits.jsx'
 
 const TOOL_ICON = [
   [/grep|glob|search/i, IconSearch],
@@ -98,6 +98,19 @@ export default function Conversation({ task, children }) {
         <div className="max-w-[85%] self-end rounded-xl border border-line-strong bg-selected px-3.5 py-3 break-words">
           {task.prompt}
         </div>
+
+        {/* `images` is what attachments were called before text files counted. */}
+        {(task.attachments || task.images || []).length > 0 && (
+          <div className="self-end">
+            <AttachStrip
+              files={(task.attachments || task.images).map((p) => {
+                const file = p.split('/').pop()
+                return { file, name: file.replace(/^[0-9a-f]{8}-/, ''), kind: /\.(png|jpe?g|gif|webp)$/i.test(file) ? 'image' : 'text' }
+              })}
+              size="h-14 w-20"
+            />
+          </div>
+        )}
 
         <div className="flex items-center gap-2 text-xs text-muted">
           <Mark size={20} />

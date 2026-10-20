@@ -88,7 +88,8 @@ const slugify = (s) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task'
 
 export function createTask({
-  title, prompt, repos, images = [], autoApprove = false, run, model, effort, permissionMode,
+  title, prompt, repos, attachments = [], images = [], autoApprove = false, run, model, effort,
+  permissionMode,
 }) {
   if (!prompt?.trim()) throw new Error('prompt is required')
   // Repos can live under more than one folder now, so what the human picked is
@@ -96,7 +97,8 @@ export function createTask({
   const wanted = [...new Set(Array.isArray(repos) ? repos : [repos])].filter(Boolean)
   if (!wanted.length) throw new Error('pick at least one repo')
   const picked = wanted.map(resolveRepo)
-  const attached = images.map(verifyUpload)
+  // `images` is what the field was called before text files could be attached.
+  const attached = [...attachments, ...images].map(verifyUpload)
 
   const id = randomUUID().slice(0, 8)
   // A title is optional: with none, the first line of the prompt stands in
@@ -109,7 +111,7 @@ export function createTask({
     prompt: prompt.trim(),
     repos: picked.map((r) => r.name),
     repoPaths: picked.map((r) => r.path),
-    images: attached,
+    attachments: attached,
     model: pick(model, MODELS, DEFAULTS.model, 'model'),
     effort: pick(effort, EFFORTS, DEFAULTS.effort, 'effort'),
     permissionMode: pick(permissionMode, MODES, DEFAULTS.permissionMode, 'permission mode'),

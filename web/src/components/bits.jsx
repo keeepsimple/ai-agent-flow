@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react'
-import { IconX } from '@tabler/icons-react'
+import { useCallback, useRef, useState } from 'react'
+import { IconFileText, IconX } from '@tabler/icons-react'
 import { api } from '../api.js'
 
 // Four columns on the Sessions board, in the order the artboard puts them:
@@ -148,63 +148,129 @@ export const inputClass =
   "bg-no-repeat bg-[right_0.65rem_center] bg-[length:10px] " +
   "[&:is(select)]:pr-8 [&:is(select)]:bg-[image:var(--chevron)]"
 
-/** Paste-to-attach for any textarea: the file uploads and we keep its path. */
-export function usePastedImages() {
-  const [images, setImages] = useState([])
+/**
+ * Attaching a file, by whichever route the human reaches for: paste it, drop it
+ * on the box, or pick it. All three end at the same upload.
+ */
+export function useAttachments() {
+  const [files, setFiles] = useState([])
   const [error, setError] = useState(null)
+  const [dragging, setDragging] = useState(false)
+  const input = useRef(null)
 
-  const onPaste = useCallback(async (event) => {
-    const files = [...(event.clipboardData?.items || [])]
-      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
-      .map((item) => item.getAsFile())
-      .filter(Boolean)
-    if (!files.length) return
-    event.preventDefault()
+  const take = useCallback(async (list) => {
+    if (!list.length) return
     setError(null)
-    for (const file of files) {
+    for (const file of list) {
       try {
         const saved = await api.upload(file)
-        setImages((prev) => [...prev, saved])
+        setFiles((prev) => [...prev, saved])
       } catch (err) {
-        setError(err.message)
+        setError(`${file.name}: ${err.message}`)
       }
     }
   }, [])
 
+  const onPaste = useCallback(
+    (event) => {
+      const list = [...(event.clipboardData?.items || [])]
+        .filter((item) => item.kind === 'file')
+        .map((item) => item.getAsFile())
+        .filter(Boolean)
+      if (!list.length) return
+      event.preventDefault() // otherwise the filename lands in the textarea
+      take(list)
+    },
+    [take],
+  )
+
+  const onDrop = useCallback(
+    (event) => {
+      event.preventDefault()
+      setDragging(false)
+      take([...(event.dataTransfer?.files || [])])
+    },
+    [take],
+  )
+
+  const onDragOver = useCallback((event) => {
+    if (!event.dataTransfer?.types?.includes('Files')) return
+    event.preventDefault()
+    setDragging(true)
+  }, [])
+
+  const onDragLeave = useCallback((event) => {
+    if (event.currentTarget.contains(event.relatedTarget)) return
+    setDragging(false)
+  }, [])
+
+  const picker = (
+    <input
+      ref={input}
+      type="file"
+      multiple
+      className="hidden"
+      onChange={(event) => {
+        take([...event.target.files])
+        event.target.value = '' // so picking the same file twice still fires
+      }}
+    />
+  )
+
   return {
-    images,
-    paths: images.map((i) => i.path),
-    onPaste,
+    files,
+    paths: files.map((f) => f.path),
     error,
-    remove: useCallback((file) => setImages((prev) => prev.filter((i) => i.file !== file)), []),
-    clear: useCallback(() => setImages([]), []),
+    dragging,
+    picker,
+    pick: () => input.current?.click(),
+    onPaste,
+    onDrop,
+    onDragOver,
+    onDragLeave,
+    remove: useCallback((file) => setFiles((prev) => prev.filter((f) => f.file !== file)), []),
+    clear: useCallback(() => setFiles([]), []),
   }
 }
 
-export function ImageStrip({ images, onRemove, size = 'h-14 w-20' }) {
-  if (!images.length) return null
+/** Images show themselves; anything else shows its name. */
+export function AttachStrip({ files, onRemove, size = 'h-14 w-20' }) {
+  if (!files.length) return null
   return (
     <ul className="flex flex-wrap gap-2">
-      {images.map((image) => (
-        <li key={image.file} className="relative">
-          <img
-            src={`/api/uploads/${image.file}`}
-            alt={`Attached ${image.file}`}
-            className={`${size} rounded-lg border border-line object-cover`}
-          />
-          {onRemove && (
-            <button
-              type="button"
-              onClick={() => onRemove(image.file)}
-              aria-label={`Remove ${image.file}`}
-              className="absolute -top-1.5 -right-1.5 cursor-pointer rounded-full border border-line bg-page
-                         p-0.5 text-muted transition-colors duration-150 hover:text-ink"
-            >
-              <IconX size={11} />
-            </button>
-          )}
-        </li>
-      ))}
+      {files.map((file) => {
+        const label = file.name || file.file
+        return (
+          <li key={file.file} className="relative">
+            {file.kind === 'text' ? (
+              <span
+                className="flex h-9 max-w-52 items-center gap-2 rounded-xl border border-line bg-raised
+                           px-3 font-mono text-xs text-ink-3"
+              >
+                <IconFileText size={13} className="shrink-0 text-muted" />
+                <span className="truncate" title={label}>{label}</span>
+              </span>
+            ) : (
+              <img
+                src={`/api/uploads/${file.file}`}
+                alt={`Attached ${label}`}
+                className={`${size} rounded-xl border border-line object-cover`}
+              />
+            )}
+            {onRemove && (
+              <button
+                type="button"
+                onClick={() => onRemove(file.file)}
+                aria-label={`Remove ${label}`}
+                className="absolute -top-1.5 -right-1.5 cursor-pointer rounded-full border border-line bg-page
+                           p-0.5 text-muted transition-colors duration-150 hover:text-ink"
+              >
+                <IconX size={11} />
+              </button>
+            )}
+          </li>
+        )
+      })}
     </ul>
   )
 }

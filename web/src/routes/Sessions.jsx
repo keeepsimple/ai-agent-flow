@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { IconArrowRight, IconFolderPlus, IconSearch, IconX } from '@tabler/icons-react'
+import { IconArrowRight, IconFolderPlus, IconPaperclip, IconSearch, IconX } from '@tabler/icons-react'
 import {
-  Button, Chip, GROUPS, ImageStrip, Stat, ago, inputClass, selectChip, usePastedImages,
+  AttachStrip, Button, Chip, GROUPS, Stat, ago, inputClass, selectChip, useAttachments,
 } from '../components/bits.jsx'
 import Header, { AccentPicker } from '../components/Header.jsx'
 import { api } from '../api.js'
@@ -24,7 +24,7 @@ function NewTask({ flow, onError }) {
   const [permissionMode, setPermissionMode] = useState(defaults.permissionMode)
   const [autoApprove, setAutoApprove] = useState(false)
   const [busy, setBusy] = useState(false)
-  const shots = usePastedImages()
+  const attach = useAttachments()
 
   const byRoot = useMemo(() => {
     const q = filter.trim().toLowerCase()
@@ -68,7 +68,7 @@ function NewTask({ flow, onError }) {
     setBusy(true)
     try {
       const task = await api.create({
-        prompt, repos: picked, images: shots.paths, run, model, effort, permissionMode, autoApprove,
+        prompt, repos: picked, attachments: attach.paths, run, model, effort, permissionMode, autoApprove,
       })
       go(to.workspace(task.id))
     } catch (err) {
@@ -88,23 +88,35 @@ function NewTask({ flow, onError }) {
   )
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-2xl border border-line-strong bg-input p-4
-                    transition-colors duration-150
-                      focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15">
+    <div
+      onDrop={attach.onDrop}
+      onDragOver={attach.onDragOver}
+      onDragLeave={attach.onDragLeave}
+      className={`flex flex-col gap-2.5 rounded-2xl border bg-input p-4 transition-colors duration-150
+                  focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15
+                  ${attach.dragging ? 'border-accent ring-2 ring-accent/25' : 'border-line-strong'}`}
+    >
       <label htmlFor="task" className="text-xs text-muted">New task</label>
       <textarea
         id="task"
         rows={2}
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        onPaste={shots.onPaste}
+        onPaste={attach.onPaste}
         onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && start()}
         placeholder="e.g. get-discounts should return targeted product and collection names, capped at 5"
         className="field-bare w-full resize-none border-0 bg-transparent text-[15px] outline-none placeholder:text-faint"
       />
-      <ImageStrip images={shots.images} onRemove={shots.remove} size="h-12 w-16" />
+      <AttachStrip files={attach.files} onRemove={attach.remove} size="h-12 w-16" />
+      {attach.error && <span className="text-[11px] text-bad">{attach.error}</span>}
+      {attach.picker}
 
       <div className="flex flex-wrap items-center gap-2">
+        <Chip onClick={attach.pick} title="Attach a screenshot, a log, a diff">
+          <IconPaperclip size={13} />
+          Attach
+        </Chip>
+
         <Chip
           active={showRepos}
           onClick={() => setShowRepos((v) => !v)}

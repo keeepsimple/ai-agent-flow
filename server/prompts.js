@@ -68,11 +68,12 @@ ${treeTable(ctx)}
 
 Artifacts:  ${ctx.artifactDir}   (spec.md, plan.md, review.md live here, NOT in any repo)
 ${
-  ctx.images?.length
+  ctx.attachments?.length
     ? `
-Images the human attached. Open every one with the Read tool before you decide
-anything about layout, wording or visual detail. They are the brief, not a hint:
-${ctx.images.map((image) => `    ${image}`).join('\n')}
+Files the human attached. Open every one with the Read tool before you decide
+anything they could settle. An image is the brief, not a hint; a log or a diff
+is evidence, so read it rather than guessing at what it says:
+${ctx.attachments.map((file) => `    ${file}`).join('\n')}
 `
     : ''
 }
