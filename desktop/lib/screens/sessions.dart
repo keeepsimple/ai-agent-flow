@@ -209,10 +209,14 @@ class _NewTaskState extends State<NewTask> {
     }
   }
 
+  /// Picking a folder is not adding it. The server's browse endpoint only
+  /// answers with a path; without the second call nothing ever happened,
+  /// which is exactly how this looked.
   Future<void> _addFolder() async {
+    final path = await Pick.folder();
+    if (path == null) return; // cancelled
     try {
-      final picked = await widget.flow.api.browseRoot();
-      if (picked['path'] == null) return; // cancelled
+      await widget.flow.api.addRoot(path);
       await widget.flow.loadState();
     } catch (err) {
       widget.flow.fail(err);

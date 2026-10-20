@@ -6,10 +6,7 @@ class Pick {
   /// A file to attach. Null when the dialog was cancelled.
   static Future<String?> file() async {
     if (Platform.isMacOS) {
-      final out = await Process.run('osascript', [
-        '-e',
-        'POSIX path of (choose file with prompt "Attach a file")',
-      ]);
+      final out = await Process.run('osascript', ['-e', _frontmost('choose file')]);
       return _path(out);
     }
     if (Platform.isWindows) {
@@ -23,6 +20,28 @@ class Pick {
       return _path(out);
     }
     final out = await Process.run('zenity', ['--file-selection']);
+    return _path(out);
+  }
+
+  /// A folder of repos to work in. Asked for by the app rather than by the
+  /// server it started: a dialog from a background child has no application
+  /// to belong to, and opens behind everything.
+  static Future<String?> folder() async {
+    if (Platform.isMacOS) {
+      final out = await Process.run('osascript', ['-e', _frontmost('choose folder')]);
+      return _path(out);
+    }
+    if (Platform.isWindows) {
+      final out = await Process.run('powershell', [
+        '-NoProfile',
+        '-Command',
+        'Add-Type -AssemblyName System.Windows.Forms;'
+            r'$d = New-Object System.Windows.Forms.FolderBrowserDialog;'
+            r'if ($d.ShowDialog() -eq "OK") { $d.SelectedPath }',
+      ]);
+      return _path(out);
+    }
+    final out = await Process.run('zenity', ['--file-selection', '--directory']);
     return _path(out);
   }
 
@@ -64,6 +83,16 @@ class Pick {
 
     return null;
   }
+
+  /// osascript is its own process, so its dialog belongs to nothing and opens
+  /// behind the window. Addressing the frontmost application makes it the
+  /// app's own dialog, which is also what makes it come forward.
+  static String _frontmost(String choose) => '''
+    tell application (path to frontmost application as text)
+      set picked to $choose
+    end tell
+    POSIX path of picked
+  ''';
 
   static String? _path(ProcessResult out) {
     final text = (out.stdout as String).trim();

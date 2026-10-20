@@ -118,9 +118,6 @@ class Api {
   Future<Map<String, dynamic>> openBrowser() async =>
       (await _send('POST', '/api/browser')) as Map<String, dynamic>;
 
-  Future<Map<String, dynamic>> browseRoot() async =>
-      (await _send('POST', '/api/roots/browse')) as Map<String, dynamic>;
-
   Future<dynamic> addRoot(String path) => _send('POST', '/api/roots', {'path': path});
   Future<dynamic> removeRoot(String path) =>
       _send('DELETE', '/api/roots', {'path': path});
