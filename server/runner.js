@@ -230,7 +230,12 @@ function setupWorktrees(task) {
 
   // With one repo, run inside it, so the CLI finds its CLAUDE.md the usual way.
   // With several, run one level up and let the prompt name each worktree.
-  update(task.id, { trees, root: trees.length === 1 ? trees[0].worktree : base, artifactDir: dir })
+  update(task.id, {
+    trees,
+    root: trees.length === 1 ? trees[0].worktree : base,
+    artifactDir: dir,
+    droppedAt: null,
+  })
 }
 
 async function runTask(task) {
@@ -420,7 +425,10 @@ function readyForSideRun(id) {
   const task = tasks[id]
   if (!task) throw new Error('unknown task')
   if (task.status === 'running' || task.status === 'queued') throw new Error('this task is already running')
-  if (!task.root) throw new Error('the worktree was dropped, so there is nothing to work on')
+  // A dropped worktree means the checkout was reclaimed, not that the work is
+  // gone: the branches are still there. Check them out again and carry on,
+  // rather than making someone undo the tidying by hand.
+  if (!task.root) setupWorktrees(task)
   return task
 }
 

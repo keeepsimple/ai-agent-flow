@@ -8,11 +8,13 @@ export default function Composer({ task, onError }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const attach = useAttachments()
+  // The worktree being dropped no longer blocks this: asking for one more
+  // thing checks the branches back out.
   const dropped = !task.root
   const running = ['running', 'queued'].includes(task.status)
 
   const send = async () => {
-    if (!text.trim() || busy || dropped || running) return
+    if (!text.trim() || busy || running) return
     setBusy(true)
     try {
       await api.followUp(task.id, [text.trim(), ...attach.paths.map((p) => `Attached: ${p}`)].join('\n'))
@@ -43,12 +45,11 @@ export default function Composer({ task, onError }) {
           onChange={(e) => setText(e.target.value)}
           onPaste={attach.onPaste}
           onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && send()}
-          disabled={dropped}
           placeholder={
-            dropped
-              ? 'The worktree was dropped, so there is nothing left to work on.'
-              : running
-                ? 'Tern is working. This box opens when it stops.'
+            running
+              ? 'Tern is working. This box opens when it stops.'
+              : dropped
+                ? 'The worktree was dropped. Asking for something checks it back out.'
                 : 'Ask for a change. Paste a screenshot or an error straight in.'
           }
           className="field-bare w-full resize-none field-sizing-content min-h-[2lh] max-h-[40vh] border-0 bg-transparent outline-none placeholder:text-faint"
@@ -81,7 +82,7 @@ export default function Composer({ task, onError }) {
             type="button"
             aria-label="Send"
             onClick={send}
-            disabled={busy || dropped || running || !text.trim()}
+            disabled={busy || running || !text.trim()}
             className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-accent
                        text-on-accent transition-opacity duration-150 disabled:opacity-30"
           >

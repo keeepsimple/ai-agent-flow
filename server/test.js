@@ -76,7 +76,7 @@ if (prompt.includes('SLEEPY')) {
     const match = line.match(/^\\s+worktree\\s+(\\S+)$/)
     if (!match) continue
     const where = match[1]
-    fs.writeFileSync(path.join(where, 'fix.txt'), 'fixed the build')
+    fs.writeFileSync(path.join(where, 'fix.txt'), 'fixed the build ' + Date.now() + '-' + Math.random())
     execFileSync('git', ['-C', where, 'add', '-A'])
     execFileSync('git', ['-C', where, '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'fix build'])
   }
@@ -631,6 +631,20 @@ try {
   const branch = after.trees[0].branch
   assert.match(git('api', 'log', '--oneline', branch), /impl|ok/, 'nor the branch')
 
+  // Dropping is tidying, not finishing. Asking for one more thing has to put
+  // the checkout back rather than making someone rebuild it by hand.
+  await post(`/api/tasks/${doomed.id}/follow-up`, { request: 'one more thing' })
+  const revived = await waitFor(doomed.id, (t) => t.status === 'done' || t.status === 'failed', 'the revived run')
+  assert.equal(revived.status, 'done', `follow-up on a dropped worktree failed: ${revived.error}\n` +
+    revived.log.slice(-6).map((l) => `  [${l.kind}] ${l.text || ''}`).join('\n'))
+  assert.ok(revived.root && fs.existsSync(revived.root), 'the checkout is back on disk')
+  assert.equal(revived.droppedAt, null, 'and the task no longer reads as dropped')
+  assert.equal(revived.trees[0].branch, branch, 'on the branch it already had, not a new one')
+
+  await fetch(`${base}/api/tasks/${doomed.id}/worktree`, { method: 'DELETE' })
+  after = await (await fetch(`${base}/api/tasks/${doomed.id}`)).json()
+  assert.equal(after.root, null, 'and it can be dropped again')
+
   const gone = await (await fetch(`${base}/api/tasks/${doomed.id}`, { method: 'DELETE' })).json()
   assert.deepEqual(gone.branches, [`api/${branch}`], 'deleting names what it is leaving behind')
   assert.equal(
@@ -707,6 +721,7 @@ try {
     '    reclaiming worktree space never reclaims the work,\n' +
     '    a second folder can be added and an ambiguous repo name is refused,\n' +
     '    dropping a worktree keeps the conversation, deleting keeps the branch,\n' +
+    '    a follow-up on a dropped task checks the same branch back out,\n' +
     '    running the app refuses until the config it may repoint is named,\n' +
     '    and the configs offered come from the repo, paired with their dev stores',
   )
