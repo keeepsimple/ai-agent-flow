@@ -9,6 +9,7 @@ const count = (cwd, range) => {
   try { return Number(git(cwd, 'rev-list', '--count', range)) } catch { return null }
 }
 const quiet = (fn) => { try { return fn() } catch { return null } }
+const lines = (text) => (text || '').split('\n').filter(Boolean)
 
 /**
  * What shipping this branch would involve, per repo. Everything here is a read:
@@ -21,13 +22,23 @@ function statusOf(tree) {
   const upstream = quiet(() => git(tree.repoPath, 'rev-parse', '--abbrev-ref', `${tree.branch}@{u}`))
   const remote = quiet(() => git(tree.repoPath, 'remote').split('\n')[0]) || null
   const current = quiet(() => git(tree.repoPath, 'symbolic-ref', '--short', 'HEAD'))
-  const dirty = quiet(() => git(tree.repoPath, 'status', '--porcelain')) !== ''
 
   // Merging happens in the main checkout, which is the human's own working
-  // copy. Only offer it when that will not surprise them.
+  // copy. Uncommitted work there is only a problem when the merge touches the
+  // same files; git merges happily around everything else, and refusing on any
+  // dirty file at all blocks the normal case of having unrelated work open.
+  const uncommitted = [
+    ...lines(quiet(() => git(tree.repoPath, 'diff', '--name-only', 'HEAD'))),
+    ...lines(quiet(() => git(tree.repoPath, 'ls-files', '--others', '--exclude-standard'))),
+  ]
+  const touched = lines(quiet(() => git(tree.repoPath, 'diff', '--name-only', `${tree.baseBranch}...${tree.branch}`)))
+  const clash = uncommitted.filter((file) => touched.includes(file))
+
   let blocked = null
   if (current !== tree.baseBranch) blocked = `${tree.repo} is on ${current}, not ${tree.baseBranch}`
-  else if (dirty) blocked = `${tree.repo} has uncommitted changes`
+  else if (clash.length) {
+    blocked = `uncommitted work in ${clash.slice(0, 3).join(', ')}${clash.length > 3 ? ` and ${clash.length - 3} more` : ''}`
+  }
 
   return {
     repo: tree.repo,
@@ -43,6 +54,7 @@ function statusOf(tree) {
     unpushed: upstream ? count(tree.repoPath, `${upstream}..${tree.branch}`) ?? 0 : null,
     upstream,
     remote,
+    uncommitted: uncommitted.length,
     mergeBlockedBy: blocked,
   }
 }
@@ -80,7 +92,11 @@ export function merge(id, repo) {
     if (blocked) throw new Error(blocked)
     // Plain merge, so it fast-forwards when it can. The branch stays put either
     // way; nothing here deletes it.
-    git(tree.repoPath, 'merge', tree.branch)
+    try {
+      git(tree.repoPath, 'merge', tree.branch)
+    } catch (err) {
+      throw new Error(`${tree.repo}: ${String(err.stderr || err.message).trim().split('\n')[0]}`)
+    }
     done.push(`${tree.repo}: ${tree.branch} -> ${tree.baseBranch}`)
   }
   update(id, { mergedAt: Date.now() })

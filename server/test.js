@@ -280,12 +280,25 @@ try {
   assert.equal(noRemote.status, 400)
   assert.match((await noRemote.json()).error, /no remote/)
 
-  // A dirty base branch must stop the merge rather than drag the human's
-  // uncommitted work into it.
-  fs.writeFileSync(path.join(repos, 'web', 'scratch.txt'), 'in progress')
-  const dirty = await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()
-  assert.match(dirty.find((r) => r.repo === 'web').mergeBlockedBy, /uncommitted changes/)
-  fs.rmSync(path.join(repos, 'web', 'scratch.txt'))
+  // Unrelated uncommitted work must not block the merge: having something else
+  // open is the normal case, and git merges around it.
+  fs.writeFileSync(path.join(repos, 'web', 'unrelated.txt'), 'in progress')
+  let dirty = await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()
+  assert.equal(dirty.find((r) => r.repo === 'web').mergeBlockedBy, null, 'unrelated work is not a reason')
+  assert.equal(dirty.find((r) => r.repo === 'web').uncommitted, 1, 'but it is still reported')
+  fs.rmSync(path.join(repos, 'web', 'unrelated.txt'))
+
+  // Uncommitted work in a file the merge would overwrite must block it, by name.
+  fs.writeFileSync(path.join(repos, 'web', 'impl.txt'), 'my own edit')
+  dirty = await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()
+  assert.match(dirty.find((r) => r.repo === 'web').mergeBlockedBy, /impl\.txt/)
+  const refused = await fetch(`${base}/api/tasks/${created.id}/merge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo: 'web' }),
+  })
+  assert.equal(refused.status, 400, 'and the merge itself must refuse, not just the button')
+  fs.rmSync(path.join(repos, 'web', 'impl.txt'))
 
   await post(`/api/tasks/${created.id}/merge`, {})
   for (const repo of REPOS) {

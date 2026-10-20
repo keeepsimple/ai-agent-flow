@@ -42,9 +42,13 @@ function Ship({ task, state, onDone, onError }) {
       >
         <IconArrowMerge size={13} /> {busy === 'merge' ? 'Merging' : `Merge into ${state.base}`}
       </Button>
-      {state.mergeBlockedBy && (
+      {state.mergeBlockedBy ? (
         <span className="font-mono text-[10px] text-warn">{state.mergeBlockedBy}</span>
-      )}
+      ) : state.uncommitted > 0 ? (
+        <span className="font-mono text-[10px] text-ink-faint">
+          {state.uncommitted} uncommitted, none in this merge
+        </span>
+      ) : null}
     </div>
   )
 }
