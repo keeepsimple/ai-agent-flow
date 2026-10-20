@@ -336,7 +336,7 @@ export default function Sessions({ flow }) {
         <div
           role="tablist"
           aria-label="Filter sessions"
-          className="flex gap-1 self-start rounded-[10px] border border-line bg-input p-[3px]"
+          className="flex gap-1 self-start rounded-full border border-line bg-input p-[3px]"
         >
           {FILTERS.map(([key, label, match]) => (
             <button
@@ -345,7 +345,7 @@ export default function Sessions({ flow }) {
               role="tab"
               aria-selected={filter === key}
               onClick={() => setFilter(key)}
-              className={`h-8 cursor-pointer rounded-[7px] px-3 text-[13px] transition-colors duration-150
+              className={`h-8 cursor-pointer rounded-full px-3.5 text-[13px] transition-colors duration-150
                           ${filter === key ? 'bg-line text-ink' : 'text-muted hover:text-ink'}`}
             >
               {label} <span className="text-muted">{tasks.filter(match).length}</span>

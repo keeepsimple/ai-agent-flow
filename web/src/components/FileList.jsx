@@ -1,6 +1,10 @@
 import { Eyebrow, Stat } from './bits.jsx'
 
 // git's status letter, in the artboard's colours.
+//
+// These rows keep the soft 6px rather than the pill the controls use: a pill
+// around a file path wastes the width the path needs, and a list is not a
+// row of buttons.
 const MARK = { A: 'text-ok', D: 'text-bad', M: 'text-warn' }
 
 export function markOf(file) {

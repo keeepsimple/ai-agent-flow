@@ -84,7 +84,7 @@ export function Button({ variant = 'ghost', className = '', as: As = 'button', .
   return (
     <As
       {...(As === 'button' ? { type: 'button' } : {})}
-      className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg px-3.5 text-[13px]
+      className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-full px-4 text-[13px]
                   no-underline transition-colors duration-150 active:translate-y-px
                   disabled:pointer-events-none disabled:opacity-100
                   ${variant === 'primary' ? '' : 'disabled:opacity-40'}
@@ -99,7 +99,7 @@ export function Chip({ mono = false, active = false, className = '', as: As = 'b
   return (
     <As
       {...(As === 'button' ? { type: 'button' } : {})}
-      className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-xs
+      className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs
                   whitespace-nowrap no-underline transition-colors duration-150
                   ${active ? 'border-accent/50 bg-accent/10 text-accent' : 'border-line bg-transparent text-ink-3 hover:border-line-strong hover:text-ink'}
                   ${mono ? 'font-mono' : ''} ${className}`}
@@ -126,12 +126,18 @@ export function Field({ label, hint, error, children }) {
 }
 
 /**
+ * One radius rule: anything you press is a pill, anything you type into or read
+ * from keeps the artboard's soft corners. Mixing the two at random is what made
+ * the control row read as a line of boxes.
+ */
+
+/**
  * A select shaped like the artboard's chips. Not inputClass with overrides:
  * that one is w-full, and Tailwind emits w-full after w-auto, so the override
  * loses no matter which order the classes are written in.
  */
 export const selectChip =
-  'h-8 cursor-pointer rounded-lg border border-line bg-transparent pr-7 pl-2.5 text-xs text-ink-3 ' +
+  'h-8 cursor-pointer rounded-full border border-line bg-transparent pr-7 pl-3 text-xs text-ink-3 ' +
   'transition-colors duration-150 hover:border-line-strong hover:text-ink focus:outline-none ' +
   "appearance-none bg-no-repeat bg-[right_0.55rem_center] bg-[length:10px] bg-[image:var(--chevron)]"
 

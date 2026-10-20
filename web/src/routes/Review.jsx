@@ -247,7 +247,7 @@ export default function Review({ task, flow }) {
                 aria-label="Send"
                 disabled={!!busy || !followUp.trim() || !task.root}
                 onClick={() => act('follow-up', () => api.followUp(task.id, followUp).then(() => setFollowUp('')))}
-                className="flex size-[38px] flex-none cursor-pointer items-center justify-center rounded-lg
+                className="flex size-[38px] flex-none cursor-pointer items-center justify-center rounded-full
                            bg-accent text-on-accent disabled:opacity-30"
               >
                 <IconArrowUp size={16} stroke={2.4} />

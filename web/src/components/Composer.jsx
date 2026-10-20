@@ -61,7 +61,7 @@ export default function Composer({ task, onError }) {
           <button
             type="button"
             aria-label="Attach"
-            className="flex size-9 cursor-not-allowed items-center justify-center rounded-lg text-muted"
+            className="flex size-9 cursor-not-allowed items-center justify-center rounded-full text-muted"
             title="Paste an image into the box instead"
           >
             <IconPaperclip size={16} />
@@ -71,7 +71,7 @@ export default function Composer({ task, onError }) {
             aria-label="Send"
             onClick={send}
             disabled={busy || dropped || running || !text.trim()}
-            className="flex size-9 cursor-pointer items-center justify-center rounded-lg bg-accent
+            className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-accent
                        text-on-accent transition-opacity duration-150 disabled:opacity-30"
           >
             <IconArrowUp size={16} stroke={2.4} />
