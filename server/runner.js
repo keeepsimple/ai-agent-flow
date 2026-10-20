@@ -351,6 +351,9 @@ function runClaude(task, prompt) {
     let buffer = ''
     let summary = ''
     let resultError = null
+    // The final result repeats the last thing the model said. Remember it so the
+    // stream does not print the same paragraphs twice at the end of every phase.
+    const seen = { lastText: '' }
     child.stdout.setEncoding('utf8')
     child.stdout.on('data', (chunk) => {
       buffer += chunk
@@ -360,7 +363,7 @@ function runClaude(task, prompt) {
         if (!line.trim()) continue
         let msg
         try { msg = JSON.parse(line) } catch { log(task.id, { kind: 'text', text: line }); continue }
-        const entry = toLogEntry(task, msg)
+        const entry = toLogEntry(task, msg, seen)
         if (entry) log(task.id, entry)
         if (msg.type === 'result') {
           summary = msg.result || ''
@@ -392,12 +395,15 @@ function runClaude(task, prompt) {
   })
 }
 
-function toLogEntry(task, msg) {
+function toLogEntry(task, msg, seen) {
   if (msg.type === 'assistant') {
     // One assistant message can carry prose and several tool calls. Log each in
     // order here and return nothing, so the stream stays chronological.
     for (const block of msg.message?.content || []) {
-      if (block.type === 'text' && block.text.trim()) log(task.id, { kind: 'text', text: block.text })
+      if (block.type === 'text' && block.text.trim()) {
+        seen.lastText = block.text
+        log(task.id, { kind: 'text', text: block.text })
+      }
       if (block.type === 'tool_use') log(task.id, { kind: 'tool', tool: block.name, text: describeTool(block.name, block.input) })
     }
     return null
@@ -412,9 +418,10 @@ function toLogEntry(task, msg) {
     task.cost = +(task.cost + (msg.total_cost_usd || 0)).toFixed(4)
     task.turns += msg.num_turns || 0
     emit(task)
+    const result = msg.result || msg.subtype || ''
     return {
       kind: 'result',
-      text: msg.result || msg.subtype || '',
+      text: result === seen.lastText ? '' : result,
       cost: msg.total_cost_usd,
       turns: msg.num_turns,
     }

@@ -52,8 +52,8 @@ export default function LogStream({ entries, live }) {
               <span className={`text-[12px] leading-5 whitespace-pre-wrap break-words ${kind.tone}`}>
                 {entry.text}
                 {entry.kind === 'result' && entry.cost != null && (
-                  <span className="ml-2 font-mono text-[10px] text-ink-faint">
-                    ${entry.cost.toFixed(3)} · {entry.turns} turns
+                  <span className={`font-mono text-[10px] text-ink-faint ${entry.text ? 'ml-2' : ''}`}>
+                    phase done · ${entry.cost.toFixed(3)} · {entry.turns} turns
                   </span>
                 )}
               </span>
