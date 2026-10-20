@@ -33,6 +33,7 @@ export const api = {
   addRoot: (path) => call('POST', '/api/roots', { path }),
   browseRoot: () => call('POST', '/api/roots/browse'),
   openBrowser: () => call('POST', '/api/browser'),
+  shopify: (repo) => call('GET', `/api/shopify?repo=${encodeURIComponent(repo)}`),
   removeRoot: (path) => call('DELETE', '/api/roots', { path }),
   prune: () => call('POST', '/api/disk/prune'),
   create: (payload) => call('POST', '/api/tasks', payload),

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   IconArrowRight, IconFolderOpen, IconFolderPlus, IconPaperclip, IconSearch, IconX,
 } from '@tabler/icons-react'
@@ -25,6 +25,8 @@ function NewTask({ flow, onError }) {
   const [effort, setEffort] = useState(defaults.effort)
   const [permissionMode, setPermissionMode] = useState(defaults.permissionMode)
   const [autoApprove, setAutoApprove] = useState(false)
+  const [shop, setShop] = useState(null) // { configs, stores, current } for a Shopify repo
+  const [shopPick, setShopPick] = useState({ config: '', store: '' })
   const [busy, setBusy] = useState(false)
   const attach = useAttachments()
 
@@ -38,6 +40,25 @@ function NewTask({ flow, onError }) {
     }
     return [...groups.entries()]
   }, [repos, filter])
+
+  // Only a repo with a shopify.app.toml has an app to run, so the picker only
+  // appears for one.
+  useEffect(() => {
+    let dropped = false
+    setShop(null)
+    Promise.all(picked.map((repo) => api.shopify(repo).catch(() => null)))
+      .then((results) => {
+        if (dropped) return
+        const found = results.find((r) => r?.configs?.length)
+        setShop(found || null)
+        if (found) {
+          const current = found.current || {}
+          const chosen = found.configs.find((c) => c.config === current.config) || found.configs[0]
+          setShopPick({ config: chosen.config, store: current.store || chosen.store || '' })
+        }
+      })
+    return () => { dropped = true }
+  }, [picked])
 
   const addFolder = async (given) => {
     const path = (given ?? folder).trim()
@@ -87,6 +108,7 @@ function NewTask({ flow, onError }) {
     try {
       const task = await api.create({
         prompt, repos: picked, attachments: attach.paths, run, model, effort, permissionMode, autoApprove,
+        shopify: shop ? shopPick : null,
       })
       go(to.workspace(task.id))
     } catch (err) {
@@ -154,6 +176,36 @@ function NewTask({ flow, onError }) {
         {select(permissionMode, setPermissionMode, options.modes, (m) => (
           <option key={m.value} value={m.value}>{m.label}</option>
         ))}
+        {shop && (
+          <>
+            <span className="h-5 w-px bg-line" aria-hidden="true" />
+            <select
+              value={shopPick.config}
+              title="Which app `shopify app dev` may repoint. It rewrites that app's URLs."
+              onChange={(e) => {
+                const next = shop.configs.find((c) => c.config === e.target.value)
+                setShopPick({ config: next.config, store: next.store || shopPick.store })
+              }}
+              className={selectChip}
+            >
+              {shop.configs.map((c) => (
+                <option key={c.config} value={c.config}>{c.config}</option>
+              ))}
+            </select>
+            <select
+              value={shopPick.store}
+              title="The dev store to open the app in"
+              onChange={(e) => setShopPick((p) => ({ ...p, store: e.target.value }))}
+              className={selectChip}
+            >
+              <option value="">no store</option>
+              {shop.stores.map((store) => (
+                <option key={store} value={store}>{store.replace('.myshopify.com', '')}</option>
+              ))}
+            </select>
+          </>
+        )}
+
         <span className="h-5 w-px bg-line" aria-hidden="true" />
 
         <Chip

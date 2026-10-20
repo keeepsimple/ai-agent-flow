@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { log } from './store.js'
+import { DATA, log } from './store.js'
 
 /**
  * Running the app so it can be looked at.
@@ -11,16 +11,29 @@ import { log } from './store.js'
  * config has to be named in FLOW_SHOPIFY_CONFIG, and what that resolves to is
  * logged before anything starts.
  */
-const CONFIG = process.env.FLOW_SHOPIFY_CONFIG || ''
-const STORE = process.env.FLOW_SHOPIFY_STORE || ''
 const READY_MS = Number(process.env.FLOW_SHOPIFY_TIMEOUT_MS || 240_000)
+const REMEMBERED = path.join(DATA, 'shopify.json')
+
+/** The last pair that was used, so the form opens on it next time. */
+export function lastChoice() {
+  try {
+    return JSON.parse(fs.readFileSync(REMEMBERED, 'utf8'))
+  } catch {
+    return {
+      config: process.env.FLOW_SHOPIFY_CONFIG || '',
+      store: process.env.FLOW_SHOPIFY_STORE || '',
+    }
+  }
+}
+
+const remember = (choice) => fs.writeFileSync(REMEMBERED, JSON.stringify(choice, null, 2))
 
 const running = new Map() // worktree -> { child, url, output }
 
 export const isShopifyApp = (dir) => fs.existsSync(path.join(dir, 'shopify.app.toml'))
 
 /** What the named config actually points at, so it is on the record. */
-export function target(dir, config = CONFIG) {
+export function target(dir, config) {
   const file = path.join(dir, `shopify.app.${config}.toml`)
   if (!fs.existsSync(file)) return null
   const text = fs.readFileSync(file, 'utf8')
@@ -54,35 +67,40 @@ export function stopAll() {
  * Start the dev server for a worktree, or hand back the one already up.
  * Resolves once the preview URL has been printed.
  */
-export function start(taskId, worktree) {
+export function start(taskId, worktree, choice = {}) {
   const live = running.get(worktree)
   if (live?.url) return Promise.resolve({ url: live.url, reused: true })
   if (live) return live.ready
 
   if (!isShopifyApp(worktree)) throw new Error('this repo has no shopify.app.toml')
-  if (!CONFIG) {
+
+  const config = choice.config || lastChoice().config
+  const store = choice.store || lastChoice().store
+  if (!config) {
     throw new Error(
-      'set FLOW_SHOPIFY_CONFIG to the config `shopify app dev` may repoint, ' +
-        'e.g. ego-mobile-builder-dev. It rewrites that app\'s URLs, so it is never guessed.',
+      'pick which app config `shopify app dev` may repoint. It rewrites that ' +
+        "app's URLs on the Partner dashboard, so it is never guessed.",
     )
   }
-  const app = target(worktree)
-  if (!app) throw new Error(`no shopify.app.${CONFIG}.toml in this worktree`)
+  const app = target(worktree, config)
+  if (!app) throw new Error(`no shopify.app.${config}.toml in this worktree`)
+  remember({ config, store })
 
   log(taskId, {
     kind: 'text',
     text:
-      `Starting \`shopify app dev\` against **${app.name}** (\`${app.clientId}\`).\n` +
+      `Starting \`shopify app dev\` against **${app.name}** (\`${app.clientId}\`)` +
+      `${store ? ` on \`${store}\`` : ''}.\n` +
       `Its app URL will be repointed at a tunnel, away from ${app.appUrl}.`,
   })
 
   const args = [
     'app', 'dev',
-    '--config', CONFIG,
+    '--config', config,
     '--no-input', // fail instead of asking something nobody is there to answer
     '--no-update',
     '--no-color',
-    ...(STORE ? ['--store', STORE] : []),
+    ...(store ? ['--store', store] : []),
   ]
 
   const child = spawn('shopify', args, {
@@ -137,3 +155,36 @@ export function start(taskId, worktree) {
 }
 
 for (const event of ['exit', 'SIGINT', 'SIGTERM']) process.on(event, stopAll)
+
+/** The configs in a worktree and the stores the CLI has already been told about. */
+export function options(dir) {
+  if (!isShopifyApp(dir)) return null
+
+  // The file slug is what --config takes; the name inside the file is the app's
+  // own and is only for reading. Spreading one over the other loses the slug,
+  // and they are equal often enough for that to look fine until it is not.
+  const configs = fs
+    .readdirSync(dir)
+    .map((file) => file.match(/^shopify\.app\.(.+)\.toml$/)?.[1])
+    .filter(Boolean)
+    .map((slug) => {
+      const app = target(dir, slug)
+      return app && { config: slug, appName: app.name, clientId: app.clientId, appUrl: app.appUrl }
+    })
+    .filter((c) => c?.clientId)
+
+  // .shopify/project.json keys a remembered dev store by client id, which is
+  // how a config and a store get paired without asking.
+  let remembered = {}
+  try {
+    remembered = JSON.parse(fs.readFileSync(path.join(dir, '.shopify', 'project.json'), 'utf8'))
+  } catch {}
+
+  for (const config of configs) {
+    config.store = remembered[config.clientId]?.dev_store_url || null
+    delete config.file
+  }
+
+  const stores = [...new Set(Object.values(remembered).map((v) => v.dev_store_url).filter(Boolean))]
+  return { configs, stores, current: lastChoice() }
+}

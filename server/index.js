@@ -106,6 +106,11 @@ async function api(req, res, url) {
     return
   }
 
+  if (section === 'shopify' && req.method === 'GET') {
+    const repo = url.searchParams.get('repo')
+    return json(res, 200, (repo && runner.shopifyOptions(repo)) || { configs: [], stores: [] })
+  }
+
   if (section === 'browser' && req.method === 'POST') {
     // Opens the tool's own Chrome so a human can sign in to it once.
     return json(res, 200, { ...(await browser.ensure()), profile: browser.profile() })

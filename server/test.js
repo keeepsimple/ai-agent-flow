@@ -551,13 +551,30 @@ try {
   )
   assert.equal(target(shopTree, 'nope'), null)
 
+  // The configs a repo offers come from the files beside it, and a remembered
+  // dev store pairs with a config by client id.
+  fs.mkdirSync(path.join(shopTree, '.shopify'), { recursive: true })
+  fs.writeFileSync(
+    path.join(shopTree, '.shopify', 'project.json'),
+    JSON.stringify({ demo456: { dev_store_url: 'demo-store.myshopify.com' } }),
+  )
+  const offered = await (
+    await fetch(`${base}/api/shopify?repo=${encodeURIComponent(shopTree)}`)
+  ).json()
+  assert.deepEqual(
+    offered.configs.map((c) => [c.config, c.appName, c.store]),
+    [['demo', 'Demo App', 'demo-store.myshopify.com']],
+    'the active shopify.app.toml is not offered: it is the one that gets rewritten',
+  )
+  assert.deepEqual(offered.stores, ['demo-store.myshopify.com'])
+
   const ungated = await fetch(`${base}/api/tasks/${fast.id}/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
   })
   assert.equal(ungated.status, 400, 'with no config named, it must refuse to start')
-  assert.match((await ungated.json()).error, /FLOW_SHOPIFY_CONFIG/)
+  assert.match((await ungated.json()).error, /never guessed/)
 
   // Disk: a worktree is a full checkout, and the one thing that must stay true
   // is that reclaiming the space never reclaims the work.
@@ -616,7 +633,8 @@ try {
     '    the diff is readable from the app and an enormous file is only described,\n' +
     '    reclaiming worktree space never reclaims the work,\n' +
     '    a second folder can be added and an ambiguous repo name is refused,\n' +
-    '    running the app refuses until the config it may repoint is named',
+    '    running the app refuses until the config it may repoint is named,\n' +
+    '    and the configs offered come from the repo, paired with their dev stores',
   )
 } catch (err) {
   failure = err

@@ -180,17 +180,22 @@ The second form returns the page's visible text and saves a screenshot the
 agent opens with its Read tool.
 
 **`shopify app dev` rewrites an app's URLs on the Partner dashboard**, so which
-app it points at is the whole safety question, and this never guesses it:
+app it points at is the whole safety question, and this never guesses it. Pick
+a repo with a `shopify.app.toml` and two more chips appear on the form: the app
+config and the dev store. The configs are the `shopify.app.<name>.toml` files
+beside the repo, each already paired with the store the CLI remembered for it.
 
-```sh
-FLOW_SHOPIFY_CONFIG=ego-mobile-builder-dev   # required; it refuses without one
-FLOW_SHOPIFY_STORE=your-store.myshopify.com  # optional, if the CLI has not remembered one
-```
+The live `shopify.app.toml` is deliberately not offered: that is the file
+`shopify app dev` rewrites.
+
+With nothing picked it refuses rather than falling back to whatever is linked.
+Your last choice is remembered in `data/shopify.json`, and
+`FLOW_SHOPIFY_CONFIG` / `FLOW_SHOPIFY_STORE` seed it the first time.
 
 It runs with `--no-input`, so anything it would have asked fails the run rather
-than hanging on a prompt nobody can answer, and it logs the app name, client id
-and the URL being repointed before it starts. The dev server stops when the
-task finishes or is cancelled.
+than hanging on a prompt nobody can answer, and it logs the app name, client id,
+store and the URL being repointed before it starts. The dev server stops when
+the task finishes or is cancelled.
 
 The browser is a Chrome the tool owns, with its own profile under `data/chrome`.
 It cannot be the browser you already have open: that one was started without a

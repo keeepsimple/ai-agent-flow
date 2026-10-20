@@ -15,6 +15,7 @@ import * as browser from './browser.js'
 
 export const PORT = Number(process.env.FLOW_PORT || 7777)
 export { listRepos, roots, addRoot, removeRoot, browse, DEFAULT_ROOT } from './roots.js'
+export { options as shopifyOptions } from './preview.js'
 const MAX_CONCURRENT = Number(process.env.FLOW_MAX_CONCURRENT || 3)
 const CLAUDE_BIN = process.env.FLOW_CLAUDE_BIN || 'claude'
 const WIN = process.platform === 'win32'
@@ -92,7 +93,7 @@ const slugify = (s) =>
 
 export function createTask({
   title, prompt, repos, attachments = [], images = [], autoApprove = false, run, model, effort,
-  permissionMode,
+  permissionMode, shopify,
 }) {
   if (!prompt?.trim()) throw new Error('prompt is required')
   // Repos can live under more than one folder now, so what the human picked is
@@ -115,6 +116,8 @@ export function createTask({
     repos: picked.map((r) => r.name),
     repoPaths: picked.map((r) => r.path),
     attachments: attached,
+    // Which app config and store `shopify app dev` may use for this task.
+    shopify: shopify?.config ? { config: shopify.config, store: shopify.store || '' } : null,
     model: pick(model, MODELS, DEFAULTS.model, 'model'),
     effort: pick(effort, EFFORTS, DEFAULTS.effort, 'effort'),
     permissionMode: pick(permissionMode, MODES, DEFAULTS.permissionMode, 'permission mode'),
@@ -431,7 +434,7 @@ export async function preview(id, where = '') {
   const tree = task.trees?.find((t) => devServer.isShopifyApp(t.worktree)) || task.trees?.[0]
   if (!tree) throw new Error('this task has no worktree')
 
-  const { url, reused } = await devServer.start(id, tree.worktree)
+  const { url, reused } = await devServer.start(id, tree.worktree, task.shopify || {})
   if (!reused) update(id, { previewUrl: url })
   if (!where) return { url }
 
