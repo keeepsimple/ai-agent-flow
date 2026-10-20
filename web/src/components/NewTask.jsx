@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Field, inputClass } from './bits.jsx'
+import { Button, Field, ImageStrip, inputClass, usePastedImages } from './bits.jsx'
 
 const named = (v) => v || 'default'
 
@@ -13,13 +13,16 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
   const [autoApprove, setAutoApprove] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const shots = usePastedImages()
 
   const submit = async (e) => {
     e.preventDefault()
     setBusy(true)
     setError(null)
     try {
-      await onCreate({ title, repos: picked, prompt, model, effort, permissionMode, autoApprove })
+      await onCreate({
+        title, repos: picked, prompt, images: shots.paths, model, effort, permissionMode, autoApprove,
+      })
       onClose()
     } catch (err) {
       setError(err.message)
@@ -73,11 +76,16 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
         </button>
       </div>
 
-      <Field label="What to do" hint="Write it as you would to a colleague. The spec phase turns this into a real spec.">
+      <Field
+        label="What to do"
+        hint="Write it as you would to a colleague. Paste a screenshot or a Figma frame straight in."
+        error={shots.error}
+      >
         <textarea className={`${inputClass} min-h-[110px] resize-y`} value={prompt} required
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => setPrompt(e.target.value)} onPaste={shots.onPaste}
           placeholder="get-discounts should return the targeted product and collection names, capped at 5, fail-soft if Shopify is down." />
       </Field>
+      <ImageStrip images={shots.images} onRemove={shots.remove} />
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Model">

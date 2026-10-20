@@ -1,6 +1,8 @@
+import { useCallback, useState } from 'react'
 import {
   IconCircleCheck, IconAlertTriangle, IconPlayerPause, IconClock, IconX,
 } from '@tabler/icons-react'
+import { api } from '../api.js'
 
 export const STATUS = {
   queued: { label: 'Queued', color: 'text-ink-faint', dot: 'bg-ink-faint', Icon: IconClock },
@@ -60,3 +62,64 @@ export function Field({ label, hint, error, children }) {
 export const inputClass =
   'w-full rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[13px] text-ink ' +
   'placeholder:text-ink-faint focus:border-line-strong focus:outline-none'
+
+/**
+ * Paste-to-attach for any textarea. The file goes to the server straight away
+ * and what we keep is the path the agent will read it from.
+ */
+export function usePastedImages() {
+  const [images, setImages] = useState([])
+  const [error, setError] = useState(null)
+
+  const onPaste = useCallback(async (event) => {
+    const files = [...(event.clipboardData?.items || [])]
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter(Boolean)
+    if (!files.length) return
+    event.preventDefault() // otherwise the filename lands in the textarea
+    setError(null)
+    for (const file of files) {
+      try {
+        const saved = await api.upload(file)
+        setImages((prev) => [...prev, saved])
+      } catch (err) {
+        setError(err.message)
+      }
+    }
+  }, [])
+
+  const remove = useCallback((file) => setImages((prev) => prev.filter((i) => i.file !== file)), [])
+  const clear = useCallback(() => setImages([]), [])
+  const paths = images.map((i) => i.path)
+
+  return { images, paths, onPaste, remove, clear, error }
+}
+
+export function ImageStrip({ images, onRemove, size = 'h-16 w-24' }) {
+  if (!images.length) return null
+  return (
+    <ul className="flex flex-wrap gap-2">
+      {images.map((image) => (
+        <li key={image.file} className="relative">
+          <img
+            src={`/api/uploads/${image.file}`}
+            alt={`Attached image ${image.file}`}
+            className={`${size} rounded-md border border-line object-cover`}
+          />
+          {onRemove && (
+            <button
+              type="button"
+              onClick={() => onRemove(image.file)}
+              aria-label={`Remove ${image.file}`}
+              className="absolute -top-1.5 -right-1.5 cursor-pointer rounded-full border border-line
+                         bg-surface p-0.5 text-ink-dim transition-colors duration-150 hover:text-ink"
+            >
+              <IconX size={11} />
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}

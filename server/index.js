@@ -3,9 +3,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { bus, tasks, readLog, artifact } from './store.js'
 import * as runner from './runner.js'
+import * as uploads from './uploads.js'
 
 const DIST = path.join(import.meta.dirname, '..', 'web', 'dist')
 const MIME = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -19,17 +24,25 @@ const json = (res, code, body) => {
   res.end(JSON.stringify(body))
 }
 
-function body(req) {
+function rawBody(req, limit) {
   return new Promise((resolve, reject) => {
-    let data = ''
-    req.on('data', (c) => {
-      data += c
-      if (data.length > 1e6) reject(new Error('request body too large'))
+    const chunks = []
+    let size = 0
+    req.on('data', (chunk) => {
+      size += chunk.length
+      if (size > limit) {
+        reject(new Error('request body too large'))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
     })
-    req.on('end', () => resolve(data))
+    req.on('end', () => resolve(Buffer.concat(chunks)))
     req.on('error', reject)
   })
 }
+
+const body = async (req) => (await rawBody(req, 1e6)).toString('utf8')
 
 const ARTIFACTS = ['spec.md', 'plan.md', 'review.md']
 
@@ -76,6 +89,19 @@ async function api(req, res, url) {
       bus.off('log', onLog)
     })
     return
+  }
+
+  if (section === 'uploads') {
+    if (req.method === 'POST' && !id) {
+      const saved = uploads.save(await rawBody(req, 12e6), req.headers['x-filename'] || '')
+      return json(res, 201, saved)
+    }
+    if (req.method === 'GET' && id) {
+      const file = uploads.read(decodeURIComponent(id))
+      if (!file) return json(res, 404, { error: 'not found' })
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' })
+      return fs.createReadStream(file).pipe(res)
+    }
   }
 
   if (section !== 'tasks') return json(res, 404, { error: 'not found' })

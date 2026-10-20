@@ -50,6 +50,20 @@ Anything with no shell has nobody to answer a permission prompt, so modes other
 than Full access also get `--permission-prompts none`: a tool call that would
 have asked is denied straight away instead of stalling the phase.
 
+## Pasting images
+
+Paste a screenshot or a Figma frame straight into the task box, the gate feedback
+box, or an answer. The file is uploaded to `data/uploads/`, the thumbnail shows
+up under the field, and the agent is told to open it with the Read tool before it
+decides anything about layout or wording.
+
+Uploads are checked on their bytes, not their headers: PNG, JPEG, GIF and WebP
+only, 10 MB each. A path that does not resolve inside `data/uploads/` is refused,
+so a task cannot be talked into attaching `/etc/passwd`.
+
+For images pasted mid-task, the path travels inside the text that goes back to
+the agent, and the uploads folder is always on the agent's allowed list.
+
 ## When the agent needs you mid-phase
 
 The agent gets a script it can run to ask you something:
@@ -101,6 +115,12 @@ checkouts and leaves every branch alone.
 | `FLOW_CLAUDE_BIN` | `claude` | Path to the CLI, if it is not on your PATH |
 
 ## The risk worth knowing about
+
+**Stop really stops.** The agent runs in its own process group and cancelling
+signals the whole tree, then follows up with SIGKILL. On this machine `claude` is
+a shell wrapper around the real binary, and signalling only the wrapper left the
+agent alive, spending money against a worktree nobody was watching. Killing the
+server takes its agents with it for the same reason.
 
 Permissions default to `bypassPermissions`. An agent running under it can run any
 command in its worktree without asking, which is the only way the implement phase

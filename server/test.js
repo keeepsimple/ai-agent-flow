@@ -51,9 +51,15 @@ for await (const chunk of process.stdin) prompt += chunk
 const say = (text) =>
   console.log(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } }))
 
-if (prompt.includes('Phase: write the spec')) {
+if (prompt.includes('SLEEPY')) {
+  process.on('SIGTERM', () => {}) // ignore it, the way a real agent tree can
+  fs.writeFileSync(path.join(art, 'pid'), String(process.pid))
+  say('settling in')
+  await new Promise((r) => setTimeout(r, 120000))
+} else if (prompt.includes('Phase: write the spec')) {
   say('spec phase')
   fs.writeFileSync(path.join(art, 'argv.json'), JSON.stringify(args))
+  fs.writeFileSync(path.join(art, 'prompt.txt'), prompt)
   fs.writeFileSync(path.join(art, 'spec.md'), '# spec')
 } else if (prompt.includes('Phase: write the implementation plan')) {
   say('plan phase')
@@ -155,10 +161,31 @@ try {
   assert.equal(rejected.status, 400, 'an unknown model should be refused')
   assert.match((await rejected.json()).error, /model must be one of/)
 
+  // A pasted image: uploaded, sniffed, then handed to the agent by path.
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  )
+  const uploaded = await (
+    await fetch(`${base}/api/uploads`, { method: 'POST', headers: { 'X-Filename': 'figma frame.png' }, body: png })
+  ).json()
+  assert.match(uploaded.file, /^[0-9a-f]{8}-figma-frame\.png$/, 'the stored name should be sanitised')
+
+  const notAnImage = await fetch(`${base}/api/uploads`, { method: 'POST', body: Buffer.from('<?php ?>') })
+  assert.equal(notAnImage.status, 400, 'a non-image must be refused on its bytes, not its headers')
+
+  const outsideUploads = await fetch(`${base}/api/tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: 'x', repos: REPOS, prompt: 'x', images: ['/etc/passwd'] }),
+  })
+  assert.equal(outsideUploads.status, 400, 'an image path outside the uploads dir must be refused')
+
   const created = await post('/api/tasks', {
     title: 'Add a thing',
     repos: REPOS,
     prompt: 'add a thing',
+    images: [uploaded.path],
     model: 'sonnet',
     effort: 'high',
   })
@@ -179,6 +206,12 @@ try {
   assert.equal(flag('--model'), 'sonnet', 'the chosen model should reach the CLI')
   assert.equal(flag('--effort'), 'high', 'the chosen effort should reach the CLI')
   assert.equal(flag('--permission-mode'), 'bypassPermissions', 'the default mode should reach the CLI')
+  const sentPrompt = fs.readFileSync(path.join(root, 'data', 'tasks', created.id, 'prompt.txt'), 'utf8')
+  assert.ok(sentPrompt.includes(uploaded.path), 'the attached image should be named in the prompt')
+  assert.ok(
+    argv.filter((a) => a === '--add-dir').length === 2,
+    'the agent needs the artifact dir and the uploads dir',
+  )
   assert.ok(!argv.includes('--permission-prompts'), 'bypassPermissions has nothing to prompt about')
 
   await post(`/api/tasks/${created.id}/approve`, { approved: true, feedback: 'keep it narrow' })
@@ -218,7 +251,35 @@ try {
     assert.match(git(tree.repo, 'log', '--oneline', tree.branch), /impl/, `${tree.repo} branch should survive`)
   }
 
-  console.log('ok  2 repos, 2 worktrees, both gates, blocking ask, 4 phases, per-repo commits, drop keeps branches')
+  // Cancel has to actually stop the agent. It used to send SIGTERM to one pid,
+  // leave the tree running, and the survivor could revive the task by asking.
+  const sleepy = await post('/api/tasks', { title: 'SLEEPY', repos: ['api'], prompt: 'SLEEPY' })
+  const pidFile = path.join(root, 'data', 'tasks', sleepy.id, 'pid')
+  for (let i = 0; i < 100 && !fs.existsSync(pidFile); i++) await sleep(100)
+  const pid = Number(fs.readFileSync(pidFile, 'utf8'))
+  assert.doesNotThrow(() => process.kill(pid, 0), 'the stub should be running before cancel')
+
+  await post(`/api/tasks/${sleepy.id}/cancel`)
+  let stopped = false
+  for (let i = 0; i < 70; i++) {
+    try { process.kill(pid, 0) } catch { stopped = true; break }
+    await sleep(100)
+  }
+  assert.ok(stopped, 'cancel must stop a process that ignores SIGTERM')
+
+  const lateAsk = await fetch(`${base}/api/tasks/${sleepy.id}/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: 'am I still needed?',
+  })
+  assert.equal(lateAsk.status, 400, 'a cancelled task must not be revived by a late question')
+  assert.match((await lateAsk.json()).error, /cancelled/)
+
+  console.log(
+    'ok  2 repos, 2 worktrees, both gates, blocking ask, 4 phases, per-repo commits,\n' +
+    '    drop keeps branches, pasted image reaches the prompt, bad uploads refused,\n' +
+    '    cancel kills a SIGTERM-ignoring tree, late ask cannot revive a dead task',
+  )
 } catch (err) {
   failure = err
 } finally {

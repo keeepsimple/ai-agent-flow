@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { IconHandStop, IconMessageQuestion } from '@tabler/icons-react'
-import { Button, Field, inputClass } from './bits.jsx'
+import { Button, Field, ImageStrip, inputClass, usePastedImages } from './bits.jsx'
 
 const GATE_COPY = {
   spec: 'The spec is written. Read it before the plan gets built on top of it.',
@@ -11,6 +11,11 @@ export default function Decision({ task, onApprove, onAnswer }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const shots = usePastedImages()
+
+  // The agent reads these as text, so an attached image travels as its path.
+  const withImages = () =>
+    [text.trim(), ...shots.paths.map((p) => `Screenshot: ${p}`)].filter(Boolean).join('\n')
 
   const run = async (fn) => {
     setBusy(true)
@@ -18,6 +23,7 @@ export default function Decision({ task, onApprove, onAnswer }) {
     try {
       await fn()
       setText('')
+      shots.clear()
     } catch (e) {
       setError(e.message)
     } finally {
@@ -34,20 +40,26 @@ export default function Decision({ task, onApprove, onAnswer }) {
           <h2 className="text-[13px] font-semibold">Your call: {phase}</h2>
         </header>
         <p className="mt-1 mb-3 text-[12px] text-ink-dim">{GATE_COPY[phase]}</p>
-        <Field label="Feedback" hint="Optional. Anything here overrides the document in the next phase.">
+        <Field
+          label="Feedback"
+          hint="Optional. Anything here overrides the document in the next phase. Screenshots can be pasted in."
+          error={shots.error}
+        >
           <textarea
             className={`${inputClass} min-h-[72px] resize-y font-mono`}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onPaste={shots.onPaste}
             placeholder="Keep the scope to the admin side. Skip the migration for now."
           />
         </Field>
+        <div className="mt-2"><ImageStrip images={shots.images} onRemove={shots.remove} /></div>
         {error && <p className="mt-2 text-[11px] text-danger">{error}</p>}
         <div className="mt-3 flex gap-2">
-          <Button variant="primary" disabled={busy} onClick={() => run(() => onApprove(true, text))}>
-            {text.trim() ? 'Approve with feedback' : 'Approve'}
+          <Button variant="primary" disabled={busy} onClick={() => run(() => onApprove(true, withImages()))}>
+            {text.trim() || shots.images.length ? 'Approve with feedback' : 'Approve'}
           </Button>
-          <Button variant="danger" disabled={busy} onClick={() => run(() => onApprove(false, text))}>
+          <Button variant="danger" disabled={busy} onClick={() => run(() => onApprove(false, withImages()))}>
             Reject and stop
           </Button>
         </div>
@@ -64,19 +76,21 @@ export default function Decision({ task, onApprove, onAnswer }) {
           <h2 className="text-[13px] font-semibold">The agent is blocked on a question</h2>
         </header>
         <p className="mt-1 mb-3 text-[13px] whitespace-pre-wrap text-ink">{open.text}</p>
-        <Field label="Answer" error={error}>
+        <Field label="Answer" hint="Screenshots can be pasted in." error={error || shots.error}>
           <textarea
             className={`${inputClass} min-h-[72px] resize-y font-mono`}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onPaste={shots.onPaste}
             autoFocus
           />
         </Field>
+        <div className="mt-2"><ImageStrip images={shots.images} onRemove={shots.remove} /></div>
         <div className="mt-3">
           <Button
             variant="primary"
-            disabled={busy || !text.trim()}
-            onClick={() => run(() => onAnswer(open.id, text))}
+            disabled={busy || (!text.trim() && !shots.images.length)}
+            onClick={() => run(() => onAnswer(open.id, withImages()))}
           >
             Send answer
           </Button>

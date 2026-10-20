@@ -4,6 +4,7 @@ import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { DATA, tasks, artifactDir, emit, update, log } from './store.js'
 import { PHASES, GATES, PHASE_LABEL, buildPrompt } from './prompts.js'
+import { UPLOADS, verify as verifyUpload } from './uploads.js'
 import { notify } from './notify.js'
 
 export const PORT = Number(process.env.FLOW_PORT || 7777)
@@ -61,13 +62,14 @@ export function listRepos() {
 const slugify = (s) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task'
 
-export function createTask({ title, prompt, repos, autoApprove = false, model, effort, permissionMode }) {
+export function createTask({ title, prompt, repos, images = [], autoApprove = false, model, effort, permissionMode }) {
   if (!title?.trim()) throw new Error('title is required')
   if (!prompt?.trim()) throw new Error('prompt is required')
   const known = listRepos()
   const picked = [...new Set(Array.isArray(repos) ? repos : [repos])].filter(Boolean)
   if (!picked.length) throw new Error('pick at least one repo')
   for (const r of picked) if (!known.includes(r)) throw new Error(`unknown repo: ${r}`)
+  const attached = images.map(verifyUpload)
 
   const id = randomUUID().slice(0, 8)
   const task = {
@@ -75,6 +77,7 @@ export function createTask({ title, prompt, repos, autoApprove = false, model, e
     title: title.trim(),
     prompt: prompt.trim(),
     repos: picked,
+    images: attached,
     model: pick(model, MODELS, DEFAULTS.model, 'model'),
     effort: pick(effort, EFFORTS, DEFAULTS.effort, 'effort'),
     permissionMode: pick(permissionMode, MODES, DEFAULTS.permissionMode, 'permission mode'),
@@ -227,9 +230,16 @@ export function approve(id, { approved, feedback = '' }) {
   return task
 }
 
+const ALIVE = new Set(['running', 'awaiting_approval', 'awaiting_answer'])
+
 export function askQuestion(id, text) {
   const task = tasks[id]
   if (!task) throw new Error('unknown task')
+  // An agent that outlived its cancellation must not be able to revive the task
+  // by asking something. Tell it to stop instead.
+  if (!ALIVE.has(task.status)) {
+    throw new Error(`this task is ${task.status}. Stop what you are doing and exit.`)
+  }
   const question = { id: randomUUID().slice(0, 8), text, askedAt: Date.now(), answer: null }
   task.questions.push(question)
   update(id, { status: 'awaiting_answer' })
@@ -288,6 +298,9 @@ export function retry(id) {
 export function removeWorktrees(id) {
   const task = tasks[id]
   if (!task?.root) throw new Error('nothing to remove')
+  // Status alone is not enough: cancelling does not instantly stop the process,
+  // and pulling the worktree out from under a live agent is how it goes strange.
+  if (children.has(id)) throw new Error('the agent is still shutting down, try again in a moment')
   if (task.status === 'running') throw new Error('task is still running')
   for (const tree of task.trees) {
     git(tree.repoPath, 'worktree', 'remove', '--force', tree.worktree)
@@ -321,6 +334,7 @@ function runClaude(task, prompt) {
     '--verbose',
     '--permission-mode', task.permissionMode,
     '--add-dir', task.artifactDir,
+    '--add-dir', UPLOADS,
   ]
   if (task.model) args.push('--model', task.model)
   if (task.effort) args.push('--effort', task.effort)
@@ -343,6 +357,9 @@ function runClaude(task, prompt) {
         FLOW_ARTIFACTS: task.artifactDir,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
+      // Own process group, so cancelling can signal the agent's whole tree.
+      // SIGTERM to the claude pid alone leaves it running.
+      detached: !WIN,
     })
     children.set(task.id, child)
     child.stdin.on('error', () => {}) // the child can die before the prompt lands
@@ -430,19 +447,38 @@ function toLogEntry(task, msg, seen) {
 }
 
 /**
- * On Windows the child is a cmd.exe wrapper, and killing it leaves the claude
- * process underneath still running. taskkill /T is what actually stops the tree.
+ * Stop the agent and everything it started. The process may already be gone by
+ * the time a human gets to the button, so every step here tolerates that.
+ *
+ * SIGTERM to the claude pid on its own is not enough: it leaves the agent alive,
+ * which is how a cancelled task once came back to life and asked a question.
  */
 function killTree(child) {
-  if (!child) return
-  if (!WIN) return void child.kill('SIGTERM')
-  // The process may have exited between the click and here, and taskkill
-  // treats that as an error. Cancelling is still what the human asked for.
-  try {
-    execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
-  } catch {
-    child.kill()
+  if (!child?.pid) return
+  if (WIN) {
+    // On Windows the child is a cmd.exe wrapper; /T is what reaches underneath.
+    try {
+      execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+    } catch {
+      child.kill()
+    }
+    return
   }
+  const signal = (sig) => {
+    try { process.kill(-child.pid, sig) } catch { try { child.kill(sig) } catch {} }
+  }
+  signal('SIGTERM')
+  // SIGTERM is a request. Give it a moment, then stop asking.
+  setTimeout(() => { if (!child.killed || child.exitCode === null) signal('SIGKILL') }, 3000).unref()
+}
+
+// A detached child outlives its parent, so the server has to take them with it
+// rather than leave paid agents running against worktrees nobody is watching.
+for (const event of ['exit', 'SIGINT', 'SIGTERM']) {
+  process.on(event, () => {
+    for (const child of children.values()) killTree(child)
+    if (event !== 'exit') process.exit(0)
+  })
 }
 
 /** Quote an argument for cmd.exe. Windows paths cannot contain a double quote. */

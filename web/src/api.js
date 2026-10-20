@@ -17,7 +17,19 @@ async function call(method, url, payload) {
   return data
 }
 
+async function upload(file) {
+  const res = await fetch('/api/uploads', {
+    method: 'POST',
+    headers: { 'X-Filename': file.name || 'pasted' },
+    body: file,
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data?.error || 'upload failed')
+  return data
+}
+
 export const api = {
+  upload,
   state: () => call('GET', '/api/state'),
   task: (id) => call('GET', `/api/tasks/${id}`),
   create: (payload) => call('POST', '/api/tasks', payload),

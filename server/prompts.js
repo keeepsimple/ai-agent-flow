@@ -31,6 +31,15 @@ Working directory: ${ctx.root}
 ${treeTable(ctx)}
 
 Artifacts:  ${ctx.artifactDir}   (spec.md, plan.md, review.md live here, NOT in any repo)
+${
+  ctx.images?.length
+    ? `
+Images the human attached. Open every one with the Read tool before you decide
+anything about layout, wording or visual detail. They are the brief, not a hint:
+${ctx.images.map((image) => `    ${image}`).join('\n')}
+`
+    : ''
+}
 
 ${
   many
