@@ -41,8 +41,11 @@ class Header extends StatelessWidget {
       height: 48,
       padding: EdgeInsets.only(left: Platform.isMacOS ? 82 : 14, right: 14),
       decoration: const BoxDecoration(
-        color: Tern.panel,
-        border: Border(bottom: BorderSide(color: Tern.line)),
+        // A shade above the page, not level with it. At panel colour the bar
+        // and the body were the same dark, and the hairline between them read
+        // as a stray line rather than the edge of a toolbar.
+        color: Tern.raised,
+        border: Border(bottom: BorderSide(color: Tern.lineStrong)),
       ),
       child: Row(
         children: [
@@ -52,7 +55,9 @@ class Header extends StatelessWidget {
               tooltip: 'Sessions',
               onTap: onBack,
             )
-          else
+          else ...[
+            const Mark(),
+            const SizedBox(width: 9),
             Padding(
               padding: const EdgeInsets.only(right: 10),
               child: Text(
@@ -60,6 +65,7 @@ class Header extends StatelessWidget {
                 style: t(13, color: Tern.ink, weight: FontWeight.w600),
               ),
             ),
+          ],
           if (task != null) ...[
             const SizedBox(width: 10),
             StatusDot(task!.status),

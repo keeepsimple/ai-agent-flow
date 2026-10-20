@@ -211,6 +211,26 @@ void main() {
     );
   });
 
+  testWidgets('the header with nothing open', (tester) async {
+    final flow = _flow();
+    await _shoot(
+      tester,
+      'header-idle',
+      Header(
+        flow: flow,
+        task: null,
+        tab: 'workspace',
+        onTab: (_) {},
+        onBack: () {},
+        accent: Accent.sky,
+        onAccent: (_) {},
+        onDropped: () {},
+        onDeleted: () {},
+      ),
+      const Size(1340, 110),
+    );
+  });
+
   testWidgets('the header carries what the screen can do', (tester) async {
     final flow = _flow();
     final task = _task({'status': 'done', 'phase': null, 'root': '/w/tree'});

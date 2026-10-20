@@ -249,6 +249,24 @@ class Panel extends StatelessWidget {
       );
 }
 
+/// The mark from the artboards: the accent square with the code brackets.
+class Mark extends StatelessWidget {
+  const Mark({super.key, this.size = 22});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary,
+          borderRadius: BorderRadius.circular(size * 0.27),
+        ),
+        alignment: Alignment.center,
+        child: Icon(Icons.code, size: size * 0.62, color: Tern.onAccent),
+      );
+}
+
 /// The phase label the server uses, spelled for people.
 const phaseLabels = {
   'spec': 'Spec',
