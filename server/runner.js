@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { DATA, bus, sse, tasks, artifactDir, emit, update, log } from './store.js'
+import { DATA, bus, sse, tasks, artifactDir, emit, update, log, save } from './store.js'
 import {
   RUNS, GATES, PHASE_LABEL, phasesFor, buildPrompt, buildCatchUpPrompt, buildFollowUpPrompt,
 } from './prompts.js'
@@ -461,6 +461,34 @@ export function cancel(id) {
     }
   }
   return task
+}
+
+/**
+ * Throw the whole task away: its conversation, its documents, its checkout.
+ * The branches are left alone, because they are the work and this is not the
+ * button for discarding that.
+ */
+export function remove(id) {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  if (task.status === 'running' || task.status === 'queued') throw new Error('stop the task first')
+  if (children.has(id)) throw new Error('the agent is still shutting down, try again in a moment')
+
+  if (task.root) {
+    try {
+      removeWorktrees(id)
+    } catch (err) {
+      throw new Error(`could not remove the worktree: ${err.message}`)
+    }
+  }
+
+  fs.rmSync(artifactDir(id), { recursive: true, force: true })
+  fs.rmSync(path.join(DATA, 'logs', `${id}.jsonl`), { force: true })
+  delete tasks[id]
+  bus.emit('task', { id, removed: true })
+  save()
+
+  return { id, branches: (task.trees || []).map((t) => `${t.repo}/${t.branch}`) }
 }
 
 export function retry(id) {

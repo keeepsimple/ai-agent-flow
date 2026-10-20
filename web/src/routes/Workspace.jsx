@@ -7,6 +7,7 @@ import Decision from '../components/Decision.jsx'
 import DiffLines from '../components/DiffLines.jsx'
 import FileList, { markOf } from '../components/FileList.jsx'
 import { Button, Stat, duration } from '../components/bits.jsx'
+import TaskActions from '../components/TaskActions.jsx'
 import { api } from '../api.js'
 import { to } from '../router.js'
 
@@ -42,6 +43,7 @@ export default function Workspace({ task, flow }) {
             <IconRefresh size={14} /> Retry
           </Button>
         )}
+<TaskActions task={task} onError={flow.setError} />
         <Button variant="primary" as="a" href={to.review(task.id)}>Review changes</Button>
       </Header>
 

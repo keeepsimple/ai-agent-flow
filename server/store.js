@@ -38,7 +38,7 @@ for (const t of Object.values(tasks)) {
 }
 
 let writeTimer = null
-function save() {
+export function save() {
   clearTimeout(writeTimer)
   writeTimer = setTimeout(() => {
     fs.writeFileSync(TASKS_FILE, JSON.stringify(tasks, null, 2))

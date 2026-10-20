@@ -7,6 +7,7 @@ import DiffLines from '../components/DiffLines.jsx'
 import FileList from '../components/FileList.jsx'
 import Markdown from '../components/Markdown.jsx'
 import { Button, Stat, inputClass, span } from '../components/bits.jsx'
+import TaskActions from '../components/TaskActions.jsx'
 import { api } from '../api.js'
 import { to } from '../router.js'
 
@@ -96,6 +97,7 @@ export default function Review({ task, flow }) {
           </div>
         </div>
 
+<TaskActions task={task} onError={flow.setError} />
         <Button as="a" href={to.workspace(task.id)}>Open in workspace</Button>
         {primary?.behind > 0 && (
           <Button

@@ -212,6 +212,7 @@ async function api(req, res, url) {
   if (req.method === 'POST' && action === 'cancel') return json(res, 200, runner.cancel(id))
   if (req.method === 'POST' && action === 'retry') return json(res, 200, runner.retry(id))
   if (req.method === 'DELETE' && action === 'worktree') return json(res, 200, runner.removeWorktrees(id))
+  if (req.method === 'DELETE' && !action) return json(res, 200, runner.remove(id))
 
   return json(res, 404, { error: 'not found' })
 }

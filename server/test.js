@@ -96,7 +96,7 @@ if (prompt.includes('SLEEPY')) {
     const match = line.match(/^\\s+worktree\\s+(\\S+)$/)
     if (!match) continue
     const tree = match[1]
-    fs.writeFileSync(path.join(tree, 'impl.txt'), 'stubbed')
+    fs.writeFileSync(path.join(tree, 'impl.txt'), 'stubbed ' + Date.now() + '-' + Math.random())
     execFileSync('git', ['-C', tree, 'add', '-A'])
     execFileSync('git', ['-C', tree, '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'impl'])
   }
@@ -576,6 +576,52 @@ try {
   assert.equal(ungated.status, 400, 'with no config named, it must refuse to start')
   assert.match((await ungated.json()).error, /never guessed/)
 
+  // Two ways to let go of a task, and the difference between them is the point:
+  // dropping frees the disk, deleting throws the conversation away, and neither
+  // touches a branch.
+  // Its own task: the other checks count the ones above and this one ends by
+  // deleting what it made.
+  const doomed = await post('/api/tasks', { repos: ['api'], prompt: 'throwaway', run: 'quick', autoApprove: true })
+  await waitFor(doomed.id, (t) => t.status === 'done' || t.status === 'failed', 'the throwaway run')
+
+  const born = await (await fetch(`${base}/api/tasks/${doomed.id}`)).json()
+  assert.equal(
+    born.status,
+    'done',
+    `throwaway run failed: ${born.error}\n` +
+      born.log.slice(-8).map((l) => `  [${l.kind}] ${(l.text || '').slice(0, 160)}`).join('\n'),
+  )
+  assert.deepEqual(Object.keys(born.phases), ['implement', 'review'])
+  assert.ok(born.docs['review.md'], `no review.md; docs were ${Object.keys(born.docs)}`)
+  const keptLog = born.log.length
+  assert.ok(keptLog > 0, 'it has a conversation to lose')
+
+  await fetch(`${base}/api/tasks/${doomed.id}/worktree`, { method: 'DELETE' })
+  let after = await (await fetch(`${base}/api/tasks/${doomed.id}`)).json()
+  assert.equal(after.root, null, 'the checkout is gone')
+  assert.equal(after.log.length, keptLog, 'but the conversation is not')
+  assert.ok(after.docs['review.md'], 'nor the documents')
+
+  const branch = after.trees[0].branch
+  assert.match(git('api', 'log', '--oneline', branch), /impl|ok/, 'nor the branch')
+
+  const gone = await (await fetch(`${base}/api/tasks/${doomed.id}`, { method: 'DELETE' })).json()
+  assert.deepEqual(gone.branches, [`api/${branch}`], 'deleting names what it is leaving behind')
+  assert.equal(
+    (await fetch(`${base}/api/tasks/${doomed.id}`)).status,
+    404,
+    'and the task is really gone, not hidden',
+  )
+  assert.ok(
+    !fs.existsSync(path.join(root, 'data', 'logs', `${doomed.id}.jsonl`)) &&
+      !fs.existsSync(path.join(root, 'data', 'tasks', doomed.id)),
+    'with its log and its documents',
+  )
+  assert.doesNotThrow(
+    () => git('api', 'rev-parse', '--verify', branch),
+    'but the branch it produced is still there',
+  )
+
   // Disk: a worktree is a full checkout, and the one thing that must stay true
   // is that reclaiming the space never reclaims the work.
   const before = await (await fetch(`${base}/api/disk`)).json()
@@ -633,6 +679,7 @@ try {
     '    the diff is readable from the app and an enormous file is only described,\n' +
     '    reclaiming worktree space never reclaims the work,\n' +
     '    a second folder can be added and an ambiguous repo name is refused,\n' +
+    '    dropping a worktree keeps the conversation, deleting keeps the branch,\n' +
     '    running the app refuses until the config it may repoint is named,\n' +
     '    and the configs offered come from the repo, paired with their dev stores',
   )
