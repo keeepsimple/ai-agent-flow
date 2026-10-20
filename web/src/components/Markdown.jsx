@@ -1,4 +1,4 @@
-import { blocks, INLINE } from '../markdown.js'
+import { blocks, INLINE, url } from '../markdown.js'
 
 // React nodes, never innerHTML: agent output can carry no markup into this page.
 function inline(text, key) {
@@ -9,6 +9,23 @@ function inline(text, key) {
         <code key={id} className="rounded bg-surface-3 px-1 py-px font-mono text-[0.92em] text-accent">
           {part.slice(1, -1)}
         </code>
+      )
+    }
+    const link = url(part)
+    if (link) {
+      return (
+        <span key={id}>
+          <a
+            href={link.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent underline decoration-accent/40 underline-offset-2
+                       transition-colors duration-150 hover:decoration-accent"
+          >
+            {link.text}
+          </a>
+          {link.trail}
+        </span>
       )
     }
     if (part.startsWith('**')) return <strong key={id} className="font-semibold text-ink">{part.slice(2, -2)}</strong>

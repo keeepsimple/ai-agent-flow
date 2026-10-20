@@ -90,5 +90,22 @@ export function blocks(source) {
   return out
 }
 
-/** Split a line into plain text and inline marks, in order. */
-export const INLINE = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*)/g
+/**
+ * Split a line into plain text and inline marks, in order.
+ *
+ * Code first, so a URL inside backticks stays code. The `[text](url)` form has
+ * to be matched before the bare URL: otherwise the bare pattern eats the URL
+ * out of the middle of the link and leaves the brackets behind as text.
+ */
+export const INLINE =
+  /(`[^`]+`|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s<>]+|\*\*[^*]+\*\*|\*[^*\n]+\*)/g
+
+/** A bare URL swallows the sentence's punctuation, so hand that back as text. */
+export function url(part) {
+  const md = part.match(/^\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)$/)
+  if (md) return { href: md[2], text: md[1], trail: '' }
+  if (!/^https?:\/\//.test(part)) return null
+  const trail = part.match(/[.,;:!?)\]]+$/)?.[0] || ''
+  const href = part.slice(0, part.length - trail.length)
+  return { href, text: href, trail }
+}

@@ -1,6 +1,6 @@
 // Check for the markdown block splitter. Run: npm test
 import assert from 'node:assert/strict'
-import { blocks } from './markdown.js'
+import { blocks, INLINE, url } from './markdown.js'
 
 const p = (src) => blocks(src).filter((b) => b.type === 'p')
 
@@ -56,4 +56,33 @@ assert.deepEqual(blocks('> noted'), [{ type: 'quote', text: 'noted' }])
 assert.deepEqual(blocks(''), [])
 assert.deepEqual(blocks(null), [])
 
-console.log('ok  markdown: paragraph joining, headings, lists, fences, quotes, tables')
+const marks = (line) => line.split(INLINE).filter(Boolean)
+
+assert.deepEqual(
+  marks('I opened MR !307 https://gitlab.abcsoft.vn/x/-/merge_requests/307 into develop'),
+  ['I opened MR !307 ', 'https://gitlab.abcsoft.vn/x/-/merge_requests/307', ' into develop'],
+)
+assert.deepEqual(
+  marks('see [MR !307](https://gitlab.abcsoft.vn/x/-/merge_requests/307) now'),
+  ['see ', '[MR !307](https://gitlab.abcsoft.vn/x/-/merge_requests/307)', ' now'],
+  'the bare pattern must not eat the URL out of a markdown link',
+)
+assert.deepEqual(
+  marks('run `curl https://example.com` first'),
+  ['run ', '`curl https://example.com`', ' first'],
+  'a URL inside backticks stays code',
+)
+
+assert.deepEqual(
+  url('https://example.com/a.'),
+  { href: 'https://example.com/a', text: 'https://example.com/a', trail: '.' },
+  'a sentence full stop is not part of the link',
+)
+assert.deepEqual(
+  url('[MR !307](https://example.com/307)'),
+  { href: 'https://example.com/307', text: 'MR !307', trail: '' },
+)
+assert.equal(url('plain words'), null)
+assert.equal(url('javascript:alert(1)'), null, 'only http and https ever become a link')
+
+console.log('ok  markdown: paragraph joining, headings, lists, fences, quotes, tables, links')
