@@ -4,7 +4,7 @@ import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { DATA, bus, sse, tasks, artifactDir, emit, update, log } from './store.js'
-import { PHASES, GATES, PHASE_LABEL, buildPrompt, buildCatchUpPrompt } from './prompts.js'
+import { RUNS, GATES, PHASE_LABEL, phasesFor, buildPrompt, buildCatchUpPrompt } from './prompts.js'
 import { UPLOADS, verify as verifyUpload } from './uploads.js'
 import { notify } from './notify.js'
 
@@ -21,6 +21,8 @@ const ASK_SCRIPT = path.join(import.meta.dirname, 'ask.mjs')
 export const MODELS = ['', 'fable', 'opus', 'sonnet', 'haiku']
 export const EFFORTS = ['', 'low', 'medium', 'high', 'xhigh', 'max']
 export const MODES = ['bypassPermissions', 'acceptEdits', 'auto', 'dontAsk', 'plan', 'manual']
+export const RUN_VALUES = RUNS.map((r) => r.value)
+export { RUNS }
 
 // MODES is the security allowlist. These are the two that make sense with
 // nobody at a keyboard, so they are what the form offers; the rest stay
@@ -90,7 +92,9 @@ const firstLine = (text) => {
 const slugify = (s) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task'
 
-export function createTask({ title, prompt, repos, images = [], autoApprove = false, model, effort, permissionMode }) {
+export function createTask({
+  title, prompt, repos, images = [], autoApprove = false, run, model, effort, permissionMode,
+}) {
   if (!prompt?.trim()) throw new Error('prompt is required')
   const known = listRepos()
   const picked = [...new Set(Array.isArray(repos) ? repos : [repos])].filter(Boolean)
@@ -115,7 +119,10 @@ export function createTask({ title, prompt, repos, images = [], autoApprove = fa
     autoApprove,
     status: 'queued',
     phase: null,
-    phases: Object.fromEntries(PHASES.map((p) => [p, { status: 'pending' }])),
+    run: pick(run, RUN_VALUES, 'full', 'run'),
+    phases: Object.fromEntries(
+      phasesFor(pick(run, RUN_VALUES, 'full', 'run')).map((p) => [p, { status: 'pending' }]),
+    ),
     questions: [],
     cost: 0,
     turns: 0,
@@ -190,7 +197,7 @@ async function runTask(task) {
   }
 
   let feedback = null
-  for (const phase of PHASES) {
+  for (const phase of phasesFor(task.run)) {
     if (task.status === 'cancelled') return
     if (task.phases[phase].status === 'done') continue
 
@@ -388,7 +395,7 @@ export function retry(id) {
   if (task.status === 'running' || task.status === 'queued') {
     throw new Error(`task is already ${task.status}`)
   }
-  for (const p of PHASES) {
+  for (const p of phasesFor(task.run)) {
     if (task.phases[p].status === 'failed') task.phases[p] = { status: 'pending' }
   }
   update(id, { status: 'queued', error: null, openQuestionId: null })

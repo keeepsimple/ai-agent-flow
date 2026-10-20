@@ -82,6 +82,7 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
   const [effort, setEffort] = useState(defaults.effort)
   const [permissionMode, setPermissionMode] = useState(defaults.permissionMode)
   const [autoApprove, setAutoApprove] = useState(false)
+  const [run, setRun] = useState('full')
   const [showOptions, setShowOptions] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -104,7 +105,7 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
     setError(null)
     try {
       await onCreate({
-        title, repos: picked, prompt, images: shots.paths, model, effort, permissionMode, autoApprove,
+        title, repos: picked, prompt, images: shots.paths, run, model, effort, permissionMode, autoApprove,
       })
       onClose()
     } catch (err) {
@@ -114,6 +115,7 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
   }
 
   const mode = options.modes.find((m) => m.value === permissionMode)
+  const chosenRun = options.runs.find((r) => r.value === run)
 
   return (
     <div
@@ -162,6 +164,28 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
             />
           </Field>
           <ImageStrip images={shots.images} onRemove={shots.remove} />
+
+          <Field label="How far to go">
+            <div className="grid grid-cols-2 gap-2">
+              {options.runs.map((option) => {
+                const on = option.value === run
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setRun(option.value)}
+                    className={`rounded-md border px-3 py-2 text-left transition-colors duration-150
+                                ${on ? 'border-accent bg-accent/10' : 'border-line hover:border-line-strong'}`}
+                  >
+                    <span className={`block text-[12.5px] font-medium ${on ? 'text-accent' : 'text-ink'}`}>
+                      {option.label}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-ink-faint">{option.hint}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </Field>
 
           <Field
             label={`Repos · ${picked.length} selected`}
@@ -239,8 +263,9 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
                       Run unattended
                     </span>
                     <span className="block text-[11px] text-ink-faint">
-                      No gates and no questions: where it would have asked you, it decides and writes
-                      down the assumption.
+                      {run === 'quick'
+                        ? 'No questions: where it would have asked you, it decides and writes down the assumption.'
+                        : 'No gates and no questions: where it would have asked you, it decides and writes down the assumption.'}
                     </span>
                   </span>
                 </button>

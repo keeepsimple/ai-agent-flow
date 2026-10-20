@@ -18,8 +18,17 @@ npm start          # builds the UI and serves http://127.0.0.1:7777
 ## How a task runs
 
 ```
-worktree  ->  spec  ->  [your call]  ->  plan  ->  [your call]  ->  implement  ->  review
+Spec, plan, then build
+  worktree -> spec -> [your call] -> plan -> [your call] -> implement -> review
+
+Just build it
+  worktree -> implement -> review
 ```
+
+Not every change earns a spec. A one-line fix spends more on the document than
+on the work, so **Just build it** goes straight to it. The review is not part of
+what gets skipped: it is the phase that catches the bug, and it is cheap next to
+implement. The question channel stays open on both routes.
 
 Each phase is a separate `claude -p` run in the worktree. They hand off through
 files, not through a shared session, so a failed phase can be retried on its own.

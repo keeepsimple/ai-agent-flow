@@ -1,5 +1,27 @@
 export const PHASES = ['spec', 'plan', 'implement', 'review']
 
+/**
+ * Not every change earns a spec. A one-line fix spends more on writing the
+ * document than on the work, so there is a shorter route that still reviews
+ * itself: the review is what catches the bug, and it is cheap next to implement.
+ */
+export const RUNS = [
+  {
+    value: 'full',
+    label: 'Spec, plan, then build',
+    hint: 'Writes a spec and a plan and stops for you at each, before any code moves.',
+    phases: PHASES,
+  },
+  {
+    value: 'quick',
+    label: 'Just build it',
+    hint: 'Straight to the work, then the same self review. No spec, no plan, no gates.',
+    phases: ['implement', 'review'],
+  },
+]
+
+export const phasesFor = (run) => (RUNS.find((r) => r.value === run) || RUNS[0]).phases
+
 // Phases that stop for a human before the next one starts.
 export const GATES = { spec: true, plan: true, implement: false, review: false }
 
@@ -117,11 +139,21 @@ Write no product code in this phase. Do not commit.
 End your output with the step list, one line each.`,
 
   implement: (ctx) => `## Phase: implement
+${
+  ctx.run === 'quick'
+    ? `
+What the human asked for:
+${ctx.prompt}
 
-Read ${ctx.artifactDir}/spec.md and ${ctx.artifactDir}/plan.md and build it.
-${ctx.feedback ? `\nHuman feedback on the plan:\n${ctx.feedback}\n` : ''}
-- Work the plan in order. Commit each step separately with a real message.
-- Run the verification commands from the plan. If they fail, fix the cause.
+There is no spec and no plan for this one on purpose: it was started as a small
+change. Read enough of the code to be sure that is true. If it turns out to need
+a spec, say so plainly in your output and build the narrow version only.
+`
+    : `
+Read ${ctx.artifactDir}/spec.md and ${ctx.artifactDir}/plan.md and build it.`
+}${ctx.feedback ? `\nHuman feedback on the plan:\n${ctx.feedback}\n` : ''}
+- ${ctx.run === 'quick' ? 'Commit in logical steps with real messages.' : 'Work the plan in order. Commit each step separately with a real message.'}
+- Run the repo's own checks (test, typecheck, lint). If they fail, fix the cause.
 - Match the surrounding code: its naming, its idiom, its comment density.
 - Do not invent abstractions the plan did not call for.
 
@@ -135,8 +167,12 @@ ${ctx.trees.map((t) => `    git -C ${t.worktree} diff ${t.baseRef}...HEAD`).join
 
 Review it as if someone else wrote it and you are the one paged at 3am:
 
-1. Correctness: does it do what ${ctx.artifactDir}/spec.md says, including the
-   acceptance criteria? Trace the real flow, do not trust the diff's intent.
+1. Correctness: does it do what ${
+    ctx.run === 'quick'
+      ? `the human asked for?\n\n   ${ctx.prompt.split('\n').join('\n   ')}\n`
+      : `${ctx.artifactDir}/spec.md says, including the
+   acceptance criteria?`
+  } Trace the real flow, do not trust the diff's intent.
 2. Code quality: dead code, duplicated logic, names that lie, error paths that
    swallow failures, missing input validation at trust boundaries.
 3. Over-engineering: abstractions with one caller, config for values that never

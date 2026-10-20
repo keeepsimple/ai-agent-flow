@@ -1,17 +1,15 @@
 import { IconCheck, IconHandStop, IconX } from '@tabler/icons-react'
 import { duration } from './bits.jsx'
 
-const PHASES = [
-  ['spec', 'Spec'],
-  ['plan', 'Plan'],
-  ['implement', 'Implement'],
-  ['review', 'Review'],
-]
+const LABEL = { spec: 'Spec', plan: 'Plan', implement: 'Implement', review: 'Review' }
 
 export default function PhaseRail({ task }) {
+  // Which phases a task has is its own business: a quick run skips the writing.
+  const phases = Object.keys(task.phases || {})
   return (
     <ol className="flex items-start">
-      {PHASES.map(([key, label], i) => {
+      {phases.map((key, i) => {
+        const label = LABEL[key] || key
         const phase = task.phases?.[key] || { status: 'pending' }
         const gated = task.status === 'awaiting_approval' && task.awaitingPhase === key
         const done = phase.status === 'done' && !gated
@@ -45,7 +43,7 @@ export default function PhaseRail({ task }) {
                 {gated ? 'waiting on you' : phase.startedAt ? duration(phase.startedAt, phase.endedAt) : phase.status}
               </span>
             </div>
-            {i < PHASES.length - 1 && (
+            {i < phases.length - 1 && (
               <span
                 className={`mt-3 h-px flex-1 transition-colors duration-300
                             ${done ? 'bg-accent/40' : 'bg-line'}`}

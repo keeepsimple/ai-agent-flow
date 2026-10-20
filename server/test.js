@@ -175,6 +175,29 @@ try {
 
   // Unattended has to mean unattended: a run nobody is watching must not sit
   // blocked on a question, and a task with no title gets named by the agent.
+  // A quick run skips the writing entirely: two phases, no gates, same review.
+  const fast = await post('/api/tasks', { repos: ['api'], prompt: 'small fix', run: 'quick' })
+  assert.deepEqual(Object.keys(fast.phases), ['implement', 'review'], 'quick runs skip spec and plan')
+  // No gates, but the question channel is still open: skipping the writing is
+  // not the same as deciding alone.
+  let fastTask = await waitFor(fast.id, (t) => t.status === 'awaiting_answer', 'the quick run to ask')
+  await post(`/api/tasks/${fast.id}/answer`, { questionId: fastTask.openQuestionId, answer: 'narrow' })
+  fastTask = await waitFor(fast.id, (t) => t.status === 'done' || t.status === 'failed', 'the quick run')
+  assert.equal(fastTask.status, 'done', `quick run failed: ${fastTask.error}`)
+  assert.ok(!fastTask.docs['spec.md'], 'no spec should have been written')
+  assert.ok(fastTask.docs['review.md'], 'but the review still happens')
+  assert.ok(
+    !fastTask.log.some((l) => l.kind === 'decision'),
+    'and there was nothing to approve on the way',
+  )
+
+  const badRun = await fetch(`${base}/api/tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repos: ['api'], prompt: 'x', run: 'whatever' }),
+  })
+  assert.equal(badRun.status, 400, 'an unknown run shape should be refused')
+
   const quiet = await post('/api/tasks', { repos: ['api'], prompt: 'just do it, nobody is watching', autoApprove: true })
   assert.equal(quiet.title, 'just do it, nobody is watching', 'the prompt stands in until the agent names it')
   assert.equal(quiet.namedByHuman, false)
@@ -418,7 +441,8 @@ try {
     '    push needs a remote, merge refuses a clashing edit and lands on a clean base,\n' +
     '    catch-up merges the base in from the worktree without touching the checkout,\n' +
     '    push covers the task branch and the base branch after it is merged,\n' +
-    '    unattended answers its own questions and the agent names an untitled task',
+    '    unattended answers its own questions and the agent names an untitled task,\n' +
+    '    a quick run skips spec and plan but still reviews itself',
   )
 } catch (err) {
   failure = err
