@@ -163,7 +163,49 @@ try {
   }
 
   const state = await (await fetch(`${base}/api/state`)).json()
-  assert.deepEqual(state.repos, REPOS, 'should discover both demo repos')
+  assert.deepEqual(state.repos.map((r) => r.name), REPOS, 'should discover both demo repos')
+
+  // A repo can live under a second folder entirely. Adding one must find it,
+  // and a folder with nothing to work on is a typo rather than a workspace.
+  const other = path.join(root, 'elsewhere')
+  fs.mkdirSync(path.join(other, 'api'), { recursive: true })
+  const noRepoThere = await fetch(`${base}/api/roots`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: other }),
+  })
+  assert.equal(noRepoThere.status, 400, 'a folder with no repo in it is refused')
+  assert.match((await noRepoThere.json()).error, /no git repo/)
+
+  execFileSync('git', ['-C', path.join(other, 'api'), 'init', '-q', '-b', 'main'])
+  fs.writeFileSync(path.join(other, 'api', 'R.md'), 'other')
+  execFileSync('git', ['-C', path.join(other, 'api'), 'add', '-A'])
+  execFileSync('git', [
+    '-C', path.join(other, 'api'), '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'init',
+  ])
+  const added = await post('/api/roots', { path: other })
+  assert.equal(added.roots.length, 2, 'the second folder should be watched')
+  assert.equal(added.repos.length, 3, 'and its repo found')
+
+  // 'api' now exists in both folders, so the bare name cannot be resolved.
+  const ambiguous = await fetch(`${base}/api/tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repos: ['api'], prompt: 'x' }),
+  })
+  assert.equal(ambiguous.status, 400, 'an ambiguous name must be refused, not guessed')
+  assert.match((await ambiguous.json()).error, /full path/)
+
+  // The full path still works, and names stay unambiguous once it is gone.
+  const elsewhere = await post('/api/tasks', { repos: [path.join(other, 'api')], prompt: 'quick', run: 'quick' })
+  assert.equal(elsewhere.repoPaths[0], path.join(other, 'api'), 'the task should hold the real path')
+  await post(`/api/tasks/${elsewhere.id}/cancel`, {})
+  await post('/api/roots', { path: other }).catch(() => {})
+  await fetch(`${base}/api/roots`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: other }),
+  })
 
   // The watcher count decides who raises notifications. If it leaks, the server
   // stops raising desktop ones and a closed tab means never hearing about a run.
@@ -517,7 +559,8 @@ try {
     '    a quick run skips spec and plan but still reviews itself,\n' +
     '    a finished task takes a follow-up on the same branches,\n' +
     '    the diff is readable from the app and an enormous file is only described,\n' +
-    '    reclaiming worktree space never reclaims the work',
+    '    reclaiming worktree space never reclaims the work,\n' +
+    '    a second folder can be added and an ambiguous repo name is refused',
   )
 } catch (err) {
   failure = err

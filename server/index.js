@@ -66,7 +66,7 @@ async function api(req, res, url) {
     return json(res, 200, {
       tasks: Object.values(tasks).sort((a, b) => b.createdAt - a.createdAt),
       repos: runner.listRepos(),
-      repoRoot: runner.REPO_ROOT,
+      roots: runner.roots(),
       options: {
         models: runner.MODELS,
         efforts: runner.EFFORTS,
@@ -102,6 +102,18 @@ async function api(req, res, url) {
       bus.off('notify', onNotify)
     })
     return
+  }
+
+  if (section === 'roots') {
+    if (req.method === 'GET') return json(res, 200, { roots: runner.roots(), repos: runner.listRepos() })
+    if (req.method === 'POST') {
+      const { path: dir } = JSON.parse(await body(req))
+      return json(res, 200, { roots: runner.addRoot(dir), repos: runner.listRepos() })
+    }
+    if (req.method === 'DELETE') {
+      const { path: dir } = JSON.parse(await body(req))
+      return json(res, 200, { roots: runner.removeRoot(dir), repos: runner.listRepos() })
+    }
   }
 
   if (section === 'disk') {
@@ -213,5 +225,5 @@ const server = http.createServer(async (req, res) => {
 // has no business listening on the network.
 server.listen(runner.PORT, '127.0.0.1', () => {
   console.log(`agent-flow  http://127.0.0.1:${runner.PORT}`)
-  console.log(`repos       ${runner.REPO_ROOT}`)
+  console.log(`repos       ${runner.listRepos().length} in ${runner.roots().length} folder(s)`)
 })

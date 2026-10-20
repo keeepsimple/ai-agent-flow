@@ -30,6 +30,8 @@ export const api = {
   gitState: (id) => call('GET', `/api/tasks/${id}/git`),
   diff: (id) => call('GET', `/api/tasks/${id}/diff`),
   disk: () => call('GET', '/api/disk'),
+  addRoot: (path) => call('POST', '/api/roots', { path }),
+  removeRoot: (path) => call('DELETE', '/api/roots', { path }),
   prune: () => call('POST', '/api/disk/prune'),
   create: (payload) => call('POST', '/api/tasks', payload),
   approve: (id, approved, feedback) => call('POST', `/api/tasks/${id}/approve`, { approved, feedback }),
@@ -46,7 +48,7 @@ export const api = {
 export function useFlow(taskId) {
   const [tasks, setTasks] = useState(null)
   const [repos, setRepos] = useState([])
-  const [repoRoot, setRepoRoot] = useState('')
+  const [roots, setRoots] = useState([])
   const [options, setOptions] = useState(null)
   const [defaults, setDefaults] = useState(null)
   const [error, setError] = useState(null)
@@ -64,8 +66,17 @@ export function useFlow(taskId) {
     api.state()
       .then((s) => {
         setTasks(s.tasks)
-        setRepos(s.repos)
-        setRepoRoot(s.repoRoot)
+        // A repo used to be a bare name, before repos could live under more
+        // than one folder. Normalise here so a server running older code
+        // cannot white-screen the page.
+        setRepos(
+          (s.repos || []).map((repo) =>
+            typeof repo === 'string'
+              ? { name: repo, path: `${s.roots?.[0] || s.repoRoot || ''}/${repo}`, root: s.roots?.[0] || s.repoRoot || '' }
+              : repo,
+          ),
+        )
+        setRoots(s.roots || (s.repoRoot ? [s.repoRoot] : []))
         setOptions(s.options)
         setDefaults(s.defaults)
         setError(null)
@@ -140,7 +151,7 @@ export function useFlow(taskId) {
   }, [])
 
   return {
-    tasks, repos, repoRoot, options, defaults, error, live, detail,
+    tasks, repos, roots, setRepos, setRoots, options, defaults, error, live, detail,
     notifications, askForNotifications,
     reload: loadState,
     setError,

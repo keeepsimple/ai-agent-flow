@@ -68,7 +68,12 @@ export function Stat({ added, removed, className = '' }) {
 }
 
 const VARIANTS = {
-  primary: 'bg-accent text-on-accent font-semibold border border-transparent hover:bg-accent/90',
+  // Disabled fades to neutral rather than to a washed-out accent: a 40% lime
+  // with 40% near-black on it is a muddy block with unreadable text, which
+  // reads as broken instead of as unavailable.
+  primary:
+    'bg-accent text-on-accent font-semibold border border-transparent hover:bg-accent/90 ' +
+    'disabled:bg-selected disabled:text-faint disabled:border-line',
   ghost: 'border border-line-strong bg-input text-ink hover:border-ghost',
   quiet: 'border border-line bg-transparent text-ink-3 hover:border-line-strong hover:text-ink',
   subtle: 'border border-line-strong bg-selected text-ink hover:border-ghost',
@@ -81,7 +86,9 @@ export function Button({ variant = 'ghost', className = '', as: As = 'button', .
       {...(As === 'button' ? { type: 'button' } : {})}
       className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg px-3.5 text-[13px]
                   no-underline transition-colors duration-150 active:translate-y-px
-                  disabled:pointer-events-none disabled:opacity-40 ${VARIANTS[variant]} ${className}`}
+                  disabled:pointer-events-none disabled:opacity-100
+                  ${variant === 'primary' ? '' : 'disabled:opacity-40'}
+                  ${VARIANTS[variant]} ${className}`}
       {...props}
     />
   )

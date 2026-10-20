@@ -9,9 +9,10 @@ import {
 } from './prompts.js'
 import { UPLOADS, verify as verifyUpload } from './uploads.js'
 import { notify } from './notify.js'
+import { listRepos, resolveRepo } from './roots.js'
 
 export const PORT = Number(process.env.FLOW_PORT || 7777)
-export const REPO_ROOT = process.env.FLOW_REPO_ROOT || path.resolve(import.meta.dirname, '..', '..')
+export { listRepos, roots, addRoot, removeRoot, DEFAULT_ROOT } from './roots.js'
 const MAX_CONCURRENT = Number(process.env.FLOW_MAX_CONCURRENT || 3)
 const CLAUDE_BIN = process.env.FLOW_CLAUDE_BIN || 'claude'
 const WIN = process.platform === 'win32'
@@ -78,14 +79,6 @@ let running = 0
 const git = (cwd, ...args) =>
   execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 
-export function listRepos() {
-  return fs
-    .readdirSync(REPO_ROOT, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && fs.existsSync(path.join(REPO_ROOT, e.name, '.git')))
-    .map((e) => e.name)
-    .sort()
-}
-
 const firstLine = (text) => {
   const line = text.trim().split('\n')[0].trim()
   return line.length > 72 ? `${line.slice(0, 69)}...` : line
@@ -98,10 +91,11 @@ export function createTask({
   title, prompt, repos, images = [], autoApprove = false, run, model, effort, permissionMode,
 }) {
   if (!prompt?.trim()) throw new Error('prompt is required')
-  const known = listRepos()
-  const picked = [...new Set(Array.isArray(repos) ? repos : [repos])].filter(Boolean)
-  if (!picked.length) throw new Error('pick at least one repo')
-  for (const r of picked) if (!known.includes(r)) throw new Error(`unknown repo: ${r}`)
+  // Repos can live under more than one folder now, so what the human picked is
+  // resolved to a real path before anything is created from it.
+  const wanted = [...new Set(Array.isArray(repos) ? repos : [repos])].filter(Boolean)
+  if (!wanted.length) throw new Error('pick at least one repo')
+  const picked = wanted.map(resolveRepo)
   const attached = images.map(verifyUpload)
 
   const id = randomUUID().slice(0, 8)
@@ -113,7 +107,8 @@ export function createTask({
     title: named ? title.trim() : firstLine(prompt),
     namedByHuman: named,
     prompt: prompt.trim(),
-    repos: picked,
+    repos: picked.map((r) => r.name),
+    repoPaths: picked.map((r) => r.path),
     images: attached,
     model: pick(model, MODELS, DEFAULTS.model, 'model'),
     effort: pick(effort, EFFORTS, DEFAULTS.effort, 'effort'),
@@ -159,7 +154,8 @@ function setupWorktrees(task) {
   const branch = task.trees?.[0]?.branch || `flow/${slugify(task.title)}-${task.id}`
 
   const trees = task.repos.map((repo, i) => {
-    const repoPath = path.join(REPO_ROOT, repo)
+    // Older tasks stored only a name, back when every repo sat under one root.
+    const repoPath = task.repoPaths?.[i] || resolveRepo(repo).path
     const previous = task.trees?.[i]
     const worktree = path.join(base, repo)
 

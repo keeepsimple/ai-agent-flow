@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
-import { IconArrowRight, IconSearch } from '@tabler/icons-react'
+import { IconArrowRight, IconFolderPlus, IconSearch, IconX } from '@tabler/icons-react'
 import {
   Button, Chip, GROUPS, ImageStrip, Stat, ago, inputClass, selectChip, usePastedImages,
 } from '../components/bits.jsx'
-import Header from '../components/Header.jsx'
+import Header, { AccentPicker } from '../components/Header.jsx'
 import { api } from '../api.js'
 import { go, to } from '../router.js'
 
@@ -12,7 +12,10 @@ const named = (v) => v || 'default'
 function NewTask({ flow, onError }) {
   const { repos, options, defaults } = flow
   const [prompt, setPrompt] = useState('')
-  const [picked, setPicked] = useState(repos.slice(0, 1))
+  // Repos are picked by path: two folders can hold repos of the same name.
+  const [picked, setPicked] = useState(repos.slice(0, 1).map((r) => r.path))
+  const [folder, setFolder] = useState('')
+  const [adding, setAdding] = useState(false)
   const [showRepos, setShowRepos] = useState(false)
   const [filter, setFilter] = useState('')
   const [run, setRun] = useState('full')
@@ -23,10 +26,42 @@ function NewTask({ flow, onError }) {
   const [busy, setBusy] = useState(false)
   const shots = usePastedImages()
 
-  const shown = useMemo(() => {
+  const byRoot = useMemo(() => {
     const q = filter.trim().toLowerCase()
-    return q ? repos.filter((r) => r.toLowerCase().includes(q)) : repos
+    const matching = q ? repos.filter((r) => r.name.toLowerCase().includes(q)) : repos
+    const groups = new Map()
+    for (const repo of matching) {
+      if (!groups.has(repo.root)) groups.set(repo.root, [])
+      groups.get(repo.root).push(repo)
+    }
+    return [...groups.entries()]
   }, [repos, filter])
+
+  const addFolder = async () => {
+    if (!folder.trim() || adding) return
+    setAdding(true)
+    try {
+      const result = await api.addRoot(folder)
+      flow.setRoots(result.roots)
+      flow.setRepos(result.repos)
+      setFolder('')
+    } catch (err) {
+      onError(err.message)
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const dropFolder = async (root) => {
+    try {
+      const result = await api.removeRoot(root)
+      flow.setRoots(result.roots)
+      flow.setRepos(result.repos)
+      setPicked((prev) => prev.filter((p) => !p.startsWith(`${root}/`) && p !== root))
+    } catch (err) {
+      onError(err.message)
+    }
+  }
 
   const start = async () => {
     if (!prompt.trim() || !picked.length || busy) return
@@ -68,9 +103,17 @@ function NewTask({ flow, onError }) {
       <ImageStrip images={shots.images} onRemove={shots.remove} size="h-12 w-16" />
 
       <div className="flex flex-wrap items-center gap-2">
-        <Chip active={showRepos} onClick={() => setShowRepos((v) => !v)} mono>
-          {picked.length === 1 ? picked[0] : `${picked.length} repos`}
+        <Chip
+          active={showRepos}
+          onClick={() => setShowRepos((v) => !v)}
+          mono
+          className={showRepos ? '' : 'border-line-strong bg-input text-ink'}
+        >
+          {picked.length === 1 ? picked[0].split('/').pop() : `${picked.length} repos`}
         </Chip>
+
+        <span className="h-5 w-px bg-line" aria-hidden="true" />
+
         {select(run, setRun, options.runs, (r) => <option key={r.value} value={r.value}>{r.label}</option>)}
         {select(model, setModel, options.models, (m) => (
           <option key={m} value={m}>{m || (defaults.cliModel ? `default (${defaults.cliModel})` : 'default')}</option>
@@ -79,7 +122,18 @@ function NewTask({ flow, onError }) {
         {select(permissionMode, setPermissionMode, options.modes, (m) => (
           <option key={m.value} value={m.value}>{m.label}</option>
         ))}
-        <Chip active={autoApprove} onClick={() => setAutoApprove((v) => !v)}>
+        <span className="h-5 w-px bg-line" aria-hidden="true" />
+
+        <Chip
+          active={autoApprove}
+          onClick={() => setAutoApprove((v) => !v)}
+          title={
+            autoApprove
+              ? 'No gates and no questions: it decides and writes down the assumption'
+              : 'Stops at the gates, and asks you when it needs a decision'
+          }
+        >
+          <span className={`size-1.5 rounded-full ${autoApprove ? 'bg-accent' : 'bg-faint'}`} />
           {autoApprove ? 'Unattended' : 'Ask me'}
         </Chip>
         <div className="flex-1" />
@@ -99,32 +153,69 @@ function NewTask({ flow, onError }) {
               placeholder={`Filter ${repos.length} repos`}
             />
           </div>
-          <ul className="grid max-h-44 grid-cols-2 gap-x-3 overflow-y-auto lg:grid-cols-3">
-            {shown.map((repo) => {
-              const on = picked.includes(repo)
-              return (
-                <li key={repo}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPicked((prev) => (on ? prev.filter((r) => r !== repo) : [...prev, repo]))
-                    }
-                    className={`flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1 text-left
-                                font-mono text-xs transition-colors duration-150
-                                ${on ? 'text-accent' : 'text-ink-3 hover:bg-selected hover:text-ink'}`}
-                  >
-                    <span
-                      className={`flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border
-                                  ${on ? 'border-accent bg-accent text-on-accent' : 'border-line-strong'}`}
+          <div className="max-h-56 overflow-y-auto">
+            {byRoot.map(([root, list]) => (
+              <div key={root} className="mb-2">
+                <div className="flex items-center gap-2 px-2 py-1">
+                  <span className="truncate font-mono text-[11px] text-muted" title={root}>{root}</span>
+                  {flow.roots.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => dropFolder(root)}
+                      aria-label={`Stop watching ${root}`}
+                      className="cursor-pointer text-faint transition-colors duration-150 hover:text-bad"
                     >
-                      {on && <span className="text-[9px] leading-none">✓</span>}
-                    </span>
-                    <span className="truncate">{repo}</span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
+                      <IconX size={11} />
+                    </button>
+                  )}
+                </div>
+                <ul className="grid grid-cols-2 gap-x-3 lg:grid-cols-3">
+                  {list.map((repo) => {
+                    const on = picked.includes(repo.path)
+                    return (
+                      <li key={repo.path}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPicked((prev) =>
+                              on ? prev.filter((p) => p !== repo.path) : [...prev, repo.path])
+                          }
+                          className={`flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1 text-left
+                                      font-mono text-xs transition-colors duration-150
+                                      ${on ? 'text-accent' : 'text-ink-3 hover:bg-selected hover:text-ink'}`}
+                        >
+                          <span
+                            className={`flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border
+                                        ${on ? 'border-accent bg-accent text-on-accent' : 'border-line-strong'}`}
+                          >
+                            {on && <span className="text-[9px] leading-none">✓</span>}
+                          </span>
+                          <span className="truncate" title={repo.path}>{repo.name}</span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            ))}
+            {!byRoot.length && <p className="px-2 text-xs text-muted">Nothing matches.</p>}
+          </div>
+
+          <div className="flex gap-2 border-t border-line pt-3">
+            <div className="relative flex-1">
+              <IconFolderPlus size={13} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-muted" />
+              <input
+                className={`${inputClass} pl-7`}
+                value={folder}
+                onChange={(e) => setFolder(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addFolder()}
+                placeholder="~/Documents/something — a repo, or a folder of them"
+              />
+            </div>
+            <Button disabled={adding || !folder.trim()} onClick={addFolder}>
+              {adding ? 'Adding' : 'Add folder'}
+            </Button>
+          </div>
         </div>
       )}
     </div>
@@ -209,7 +300,14 @@ export default function Sessions({ flow }) {
 
   return (
     <>
-      <Header active="sessions" repoLabel={flow.repoRoot?.split('/').pop()}>
+      <Header
+        active="sessions"
+        repoLabel={
+          flow.roots.length === 1
+            ? flow.roots[0].split('/').pop()
+            : `${flow.roots.length} folders`
+        }
+      >
         <span className="font-mono text-xs text-muted">
           {tasks.length} task{tasks.length === 1 ? '' : 's'} ·{' '}
           ${tasks.reduce((n, t) => n + (t.cost || 0), 0).toFixed(2)}
@@ -217,6 +315,7 @@ export default function Sessions({ flow }) {
         {flow.notifications === 'default' && (
           <Chip onClick={flow.askForNotifications}>Notify me</Chip>
         )}
+        <AccentPicker />
       </Header>
 
       <main className="flex-1 overflow-y-auto">

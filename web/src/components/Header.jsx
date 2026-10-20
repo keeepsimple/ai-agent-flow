@@ -1,5 +1,6 @@
 import { IconChevronDown, IconGitBranch } from '@tabler/icons-react'
 import { Button, Chip } from './bits.jsx'
+import { ACCENTS, useAccent } from '../accent.js'
 import { to } from '../router.js'
 
 export function Mark({ size = 26 }) {
@@ -30,6 +31,28 @@ const NAV = [
   ['workspace', 'Workspace'],
   ['review', 'Review'],
 ]
+
+/** The artboards make the accent a prop with four options. This is that prop. */
+export function AccentPicker() {
+  const [accent, setAccent] = useAccent()
+  return (
+    <div role="group" aria-label="Accent colour" className="flex items-center gap-1">
+      {ACCENTS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => setAccent(option.value)}
+          aria-label={option.name}
+          aria-pressed={accent === option.value}
+          title={option.name}
+          style={{ background: option.value }}
+          className={`size-3.5 cursor-pointer rounded-full transition-[box-shadow] duration-150
+                      ${accent === option.value ? 'ring-2 ring-ink/70 ring-offset-2 ring-offset-panel' : 'opacity-60 hover:opacity-100'}`}
+        />
+      ))}
+    </div>
+  )
+}
 
 export default function Header({ active, task, repoLabel, children }) {
   return (
