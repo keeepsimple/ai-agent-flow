@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { DATA, bus, sse, tasks, artifactDir, emit, update, log, save } from './store.js'
+import { DATA, bus, sse, tasks, artifactDir, emit, update, log, save, flush } from './store.js'
 import {
   RUNS, GATES, PHASE_LABEL, phasesFor, buildPrompt, buildCatchUpPrompt, buildFollowUpPrompt,
 } from './prompts.js'
@@ -744,6 +744,7 @@ function killTree(child) {
 // rather than leave paid agents running against worktrees nobody is watching.
 for (const event of ['exit', 'SIGINT', 'SIGTERM']) {
   process.on(event, () => {
+    flush()
     for (const child of children.values()) killTree(child)
     if (event !== 'exit') process.exit(0)
   })

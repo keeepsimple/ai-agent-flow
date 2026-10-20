@@ -44,9 +44,19 @@ for (const t of Object.values(tasks)) {
 let writeTimer = null
 export function save() {
   clearTimeout(writeTimer)
-  writeTimer = setTimeout(() => {
-    fs.writeFileSync(TASKS_FILE, JSON.stringify(tasks, null, 2))
-  }, 120)
+  writeTimer = setTimeout(flush, 120)
+}
+
+/**
+ * Write now rather than in a moment. The debounce is there so a busy phase
+ * does not rewrite the file on every log line, but a process that exits
+ * inside that window loses whatever it last decided: a worktree dropped and
+ * then forgotten leaves a task claiming a checkout that is not there.
+ */
+export function flush() {
+  clearTimeout(writeTimer)
+  writeTimer = null
+  fs.writeFileSync(TASKS_FILE, JSON.stringify(tasks, null, 2))
 }
 
 export function artifactDir(id) {
