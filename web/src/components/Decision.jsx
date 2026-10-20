@@ -45,9 +45,14 @@ export default function Decision({ task, onError }) {
         {gate ? `Your call: ${task.awaitingPhase}` : 'Tern needs an answer'}
       </div>
 
-      <div className="text-[13px] break-words whitespace-pre-wrap text-ink-2">
-        {gate ? GATE[task.awaitingPhase] : question.text}
-      </div>
+      {/* A question is already in the transcript directly above this card, so
+          repeating it here only makes it harder to read. A gate has no
+          transcript entry of its own, so its line has to live here. */}
+      {gate && (
+        <div className="text-[13px] break-words whitespace-pre-wrap text-ink-2">
+          {GATE[task.awaitingPhase]}
+        </div>
+      )}
 
       <textarea
         rows={2}
