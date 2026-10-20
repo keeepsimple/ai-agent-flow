@@ -23,6 +23,9 @@ fs.mkdirSync(bin)
 const REPOS = ['api', 'web']
 const git = (repo, ...args) =>
   execFileSync('git', ['-C', path.join(repos, repo), ...args], { encoding: 'utf8' })
+const origin = path.join(root, 'origin.git')
+execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origin])
+
 for (const repo of REPOS) {
   fs.mkdirSync(path.join(repos, repo), { recursive: true })
   git(repo, 'init', '-q', '-b', 'main')
@@ -32,6 +35,9 @@ for (const repo of REPOS) {
   git(repo, 'add', '.')
   git(repo, 'commit', '-qm', 'init')
 }
+// Only 'web' gets a remote, so the no-remote path stays covered by 'api'.
+git('web', 'remote', 'add', 'origin', origin)
+git('web', 'push', '-q', '-u', 'origin', 'main')
 
 // The stub reads the prompt from stdin exactly as the real CLI does, writes the
 // artifact its phase is supposed to write, and blocks on `ask` once so the
@@ -325,10 +331,29 @@ try {
   assert.equal(refused.status, 400, 'and the merge itself must refuse, not just the button')
   fs.rmSync(path.join(repos, 'web', 'impl.txt'))
 
+  // Pushing the task branch, then the base branch after the merge lands on it.
+  // Merging locally leaves the base ahead of its own remote, which is the step
+  // the tool used to stop short of.
+  await post(`/api/tasks/${created.id}/push`, { repo: 'web' })
+  let web = (await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()).find((r) => r.repo === 'web')
+  assert.equal(web.unpushed, 0, 'the task branch should be on the remote')
+  assert.equal(web.baseUnpushed, 0, 'and the base has not moved yet')
+
   await post(`/api/tasks/${created.id}/merge`, {})
   for (const repo of REPOS) {
     assert.match(git(repo, 'log', '--oneline', 'main'), /impl/, `${repo} main should have the work`)
   }
+
+  web = (await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()).find((r) => r.repo === 'web')
+  assert.ok(web.baseUnpushed > 0, 'merging locally leaves the base ahead of its remote')
+  await post(`/api/tasks/${created.id}/push`, { repo: 'web', base: true })
+  web = (await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()).find((r) => r.repo === 'web')
+  assert.equal(web.baseUnpushed, 0, 'and that last step must be reachable from here')
+  assert.match(
+    execFileSync('git', ['-C', origin, 'log', '--oneline', 'main'], { encoding: 'utf8' }),
+    /impl/,
+    'the remote main should carry the work',
+  )
 
   // Dropping the checkouts must leave the work on the branches.
   await fetch(`${base}/api/tasks/${created.id}/worktree`, { method: 'DELETE' })
@@ -373,7 +398,8 @@ try {
     '    drop keeps branches, pasted image reaches the prompt, bad uploads refused,\n' +
     '    cancel kills a SIGTERM-ignoring tree, late ask cannot revive a dead task,\n' +
     '    push needs a remote, merge refuses a clashing edit and lands on a clean base,\n' +
-    '    catch-up merges the base in from the worktree without touching the checkout',
+    '    catch-up merges the base in from the worktree without touching the checkout,\n' +
+    '    push covers the task branch and the base branch after it is merged',
   )
 } catch (err) {
   failure = err

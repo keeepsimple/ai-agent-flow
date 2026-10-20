@@ -21,6 +21,13 @@ function statusOf(tree) {
   // on it stays shippable.
   const upstream = quiet(() => git(tree.repoPath, 'rev-parse', '--abbrev-ref', `${tree.branch}@{u}`))
   const remote = quiet(() => git(tree.repoPath, 'remote').split('\n')[0]) || null
+
+  // Merging locally leaves the base branch ahead of its own remote. Without
+  // this the tool walks you to 'merged' and then abandons the last step.
+  const baseUpstream = quiet(() => git(tree.repoPath, 'rev-parse', '--abbrev-ref', `${tree.baseBranch}@{u}`))
+  const baseUnpushed = baseUpstream
+    ? count(tree.repoPath, `${baseUpstream}..${tree.baseBranch}`) ?? 0
+    : null
   const current = quiet(() => git(tree.repoPath, 'symbolic-ref', '--short', 'HEAD'))
 
   // Merging happens in the main checkout, which is the human's own working
@@ -61,6 +68,8 @@ function statusOf(tree) {
     unpushed: upstream ? count(tree.repoPath, `${upstream}..${tree.branch}`) ?? 0 : null,
     upstream,
     remote,
+    baseUpstream,
+    baseUnpushed,
     uncommitted: uncommitted.length,
     mergeBlockedBy: blocked,
   }
@@ -80,13 +89,20 @@ function treesOf(id, repo) {
   return trees
 }
 
-export function push(id, repo) {
+export function push(id, repo, { base = false } = {}) {
   const done = []
   for (const tree of treesOf(id, repo)) {
     const remote = quiet(() => git(tree.repoPath, 'remote').split('\n')[0])
     if (!remote) throw new Error(`${tree.repo} has no remote to push to`)
-    git(tree.repoPath, 'push', '-u', remote, `${tree.branch}:${tree.branch}`)
-    done.push(`${tree.repo} -> ${remote}/${tree.branch}`)
+    const ref = base ? tree.baseBranch : tree.branch
+    // No force, ever. If the remote has moved on, git says so and we pass that
+    // along rather than deciding on the human's behalf.
+    try {
+      git(tree.repoPath, 'push', '-u', remote, `${ref}:${ref}`)
+    } catch (err) {
+      throw new Error(`${tree.repo}: ${String(err.stderr || err.message).trim().split('\n').pop()}`)
+    }
+    done.push(`${tree.repo} -> ${remote}/${ref}`)
   }
   update(id, { shippedAt: Date.now() })
   return done

@@ -18,16 +18,35 @@ function Ship({ task, state, onDone, onError }) {
     }
   }
 
-  if (!state || state.ahead === 0) {
-    return (
-      <span className="font-mono text-[10px] text-ink-faint">
-        {state?.produced ? `${state.produced} commits · already in ${state.base}` : 'nothing to ship yet'}
-      </span>
-    )
-  }
+  if (!state) return <span className="font-mono text-[10px] text-ink-faint">nothing to ship yet</span>
 
   const pushed = state.unpushed === 0
   const stale = state.behind > 0
+  const merged = state.ahead === 0 && state.produced > 0
+  // The base branch carries the merge, so it is the thing left to publish.
+  const pushBase = state.baseUnpushed > 0 && (
+    <Button
+      disabled={!!busy}
+      title={`git push ${state.remote} ${state.base}`}
+      onClick={() => run('push-base', () => api.push(task.id, state.repo, true))}
+    >
+      <IconCloudUpload size={13} />
+      {busy === 'push-base' ? 'Pushing' : `Push ${state.base}`}
+      <span className="text-ink-faint">({state.baseUnpushed})</span>
+    </Button>
+  )
+
+  if (state.ahead === 0) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[10px] text-ink-faint">
+          {merged ? `${state.produced} commits · already in ${state.base}` : 'nothing to ship yet'}
+        </span>
+        {pushBase}
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="font-mono text-[10px] text-ink-faint">
@@ -67,6 +86,7 @@ function Ship({ task, state, onDone, onError }) {
       >
         <IconArrowMerge size={13} /> {busy === 'merge' ? 'Merging' : `Merge into ${state.base}`}
       </Button>
+      {pushBase}
       {state.mergeBlockedBy ? (
         <span className="font-mono text-[10px] text-warn">{state.mergeBlockedBy}</span>
       ) : stale ? (

@@ -148,8 +148,8 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && action === 'git') return json(res, 200, repoGit.status(id))
   if (req.method === 'POST' && action === 'push') {
-    const { repo } = JSON.parse((await body(req)) || '{}')
-    return json(res, 200, { done: repoGit.push(id, repo), git: repoGit.status(id) })
+    const { repo, base } = JSON.parse((await body(req)) || '{}')
+    return json(res, 200, { done: repoGit.push(id, repo, { base }), git: repoGit.status(id) })
   }
   if (req.method === 'POST' && action === 'catch-up') {
     const { repo } = JSON.parse((await body(req)) || '{}')

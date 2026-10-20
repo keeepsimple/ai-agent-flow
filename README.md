@@ -100,6 +100,9 @@ commits the base branch is missing and offers two buttons:
 
 - **Push** runs `git push -u <remote> <branch>` so the branch exists on the
   remote and can be turned into an MR.
+- **Push \<base\>** appears once a local merge has left the base branch ahead of
+  its own remote, with the count beside it. Neither push ever forces: if the
+  remote has moved, git says so and you get its words.
 - **Merge into \<base\>** merges the branch into the branch it forked from, in
   your own checkout. It is refused, naming the files, when something uncommitted
   there would be overwritten by the merge, and when the checkout is on some other

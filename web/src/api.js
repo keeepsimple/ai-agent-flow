@@ -38,7 +38,7 @@ export const api = {
   cancel: (id) => call('POST', `/api/tasks/${id}/cancel`),
   retry: (id) => call('POST', `/api/tasks/${id}/retry`),
   dropWorktree: (id) => call('DELETE', `/api/tasks/${id}/worktree`),
-  push: (id, repo) => call('POST', `/api/tasks/${id}/push`, { repo }),
+  push: (id, repo, base = false) => call('POST', `/api/tasks/${id}/push`, { repo, base }),
   merge: (id, repo) => call('POST', `/api/tasks/${id}/merge`, { repo }),
   catchUp: (id, repo) => call('POST', `/api/tasks/${id}/catch-up`, { repo }),
 }
