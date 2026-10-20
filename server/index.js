@@ -78,6 +78,9 @@ async function api(req, res, url) {
       },
       defaults: runner.DEFAULTS,
       watching: sse.clients,
+      // Of those, how many can raise a notification. When it is zero the
+      // server raises the desktop one itself.
+      notifying: sse.notifiers,
     })
   }
 
@@ -96,10 +99,13 @@ async function api(req, res, url) {
     bus.on('log', onLog)
     bus.on('notify', onNotify)
     sse.clients++
+    const notifier = url.searchParams.get('notify') !== '0'
+    if (notifier) sse.notifiers++
     const beat = setInterval(() => res.write(': beat\n\n'), 25_000)
     req.on('close', () => {
       clearInterval(beat)
       sse.clients--
+      if (notifier) sse.notifiers--
       bus.off('task', onTask)
       bus.off('log', onLog)
       bus.off('notify', onNotify)

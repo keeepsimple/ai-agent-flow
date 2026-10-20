@@ -42,6 +42,17 @@ if (process.platform !== 'darwin') {
   process.exit(1)
 }
 
+try {
+  run('swiftc', ['--version'])
+} catch {
+  console.error(
+    'The window is compiled with swiftc, which comes with the Xcode command line tools:\n' +
+      '  xcode-select --install\n' +
+      'Only this machine needs it. The app it builds does not.',
+  )
+  process.exit(1)
+}
+
 /** The official tarball, verified against the release SHASUMS before it is opened. */
 async function node() {
   const binary = path.join(CACHE, SLUG, 'bin', 'node')
@@ -95,33 +106,22 @@ const PLIST = `<?xml version="1.0" encoding="UTF-8"?>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>agent-flow</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <!-- The window talks to a server on loopback, which is plain http. -->
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict>
 </plist>
 `
 
-// exec, not a background child: the process LaunchServices started has to stay
-// the process that runs the server, or macOS hangs Full Disk Access on the
-// wrong thing.
-//
-// A GUI app inherits almost no PATH, so git and claude have to be found here.
-// Whatever already runs the web mode is tried first.
-const LAUNCHER = `#!/bin/sh
-set -e
-HERE=$(cd "$(dirname "$0")/.." && pwd)
-PORT="\${FLOW_PORT:-7777}"
-
-if curl -fsS -o /dev/null -m 1 "http://127.0.0.1:$PORT/api/state" 2>/dev/null; then
-  open "http://127.0.0.1:$PORT"
-  exit 0
-fi
-
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-export FLOW_DATA="\${FLOW_DATA:-$HOME/Library/Application Support/Agent Flow}"
-export FLOW_REPO_ROOT="\${FLOW_REPO_ROOT:-$HOME}"
-export FLOW_OPEN=1
-mkdir -p "$FLOW_DATA"
-exec "$HERE/Resources/node" "$HERE/Resources/app/server/index.js"
-`
+/** The window. Compiled here so the machine running it needs no Swift. */
+function launcher(into) {
+  const source = path.join(import.meta.dirname, 'AgentFlow.swift')
+  run('swiftc', [
+    '-O', '-target', `${ARCH === 'arm64' ? 'arm64' : 'x86_64'}-apple-macosx12.0`,
+    '-o', into, source, '-framework', 'Cocoa', '-framework', 'WebKit',
+  ], { stdio: 'inherit' })
+}
 
 async function build() {
   if (!fs.existsSync(path.join(ROOT, 'web', 'dist', 'index.html'))) {
@@ -139,7 +139,7 @@ async function build() {
   fs.mkdirSync(path.join(res, 'app'), { recursive: true })
 
   fs.writeFileSync(path.join(APP, 'Contents', 'Info.plist'), PLIST)
-  fs.writeFileSync(path.join(macos, 'agent-flow'), LAUNCHER, { mode: 0o755 })
+  launcher(path.join(macos, 'agent-flow'))
   fs.copyFileSync(binary, path.join(res, 'node'))
   fs.chmodSync(path.join(res, 'node'), 0o755)
 

@@ -14,7 +14,11 @@ bus.setMaxListeners(0)
 
 // How many browser tabs are watching. A connected tab raises its own clickable
 // notification, so the server only falls back to a desktop one when nobody is.
-export const sse = { clients: 0 }
+// `clients` is who is watching; `notifiers` is who will actually raise a
+// notification. They are not the same number: a tab that was never granted
+// permission, and the app's own window, which has no Notification API at all,
+// watch without being able to tell anyone.
+export const sse = { clients: 0, notifiers: 0 }
 
 /** @type {Record<string, any>} */
 export const tasks = fs.existsSync(TASKS_FILE)

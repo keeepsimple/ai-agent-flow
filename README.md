@@ -26,8 +26,12 @@ npm start          # builds the UI and serves http://127.0.0.1:7777
 npm run app        # dist/Agent Flow.app
 ```
 
-Same server, same UI, wrapped so it is its own application. Two things that
-buys, both of which the web mode cannot have:
+Same server, same UI, in its own window. No tab, no address bar, no browser:
+the window is a WKWebView and the app underneath it starts the server, waits
+for the port and shuts the server down when you quit. Links that leave the
+tool — a merge request, a pipeline — open in your real browser.
+
+Three things that buys, none of which the web mode can have:
 
 - **It can be granted Full Disk Access itself.** In the web mode that
   permission is held against whichever terminal you started the server from,
@@ -37,6 +41,11 @@ buys, both of which the web mode cannot have:
   Homebrew `node` is not used for this: it links against a dozen Homebrew
   dylibs and would die on the first machine without them. The build refuses
   any runtime that borrows a library from outside `/usr/lib`.
+- **It is a window, not a tab**, so it has its own Dock icon and quits like an
+  application.
+
+Building it needs `swiftc`, which comes with the Xcode command line tools
+(`xcode-select --install`). Only the machine doing the building needs it.
 
 It still needs `git` and `claude`. A GUI app inherits almost no `PATH`, so the
 launcher adds `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin` before
@@ -347,8 +356,13 @@ With the tab open, the notification comes from the browser, and clicking it
 focuses this window and opens the task it is about. Turn it on with **Notify me**
 in the header the first time.
 
-With no tab open, the server raises a desktop notification instead, so closing
-the browser does not mean missing the end of a run. On macOS that goes through
+When nothing watching can raise one, the server raises a desktop notification
+instead, so closing the browser does not mean missing the end of a run.
+
+The test is whether anyone *can* raise one, not whether anyone is watching. A
+tab that was never granted permission is watching and silent, and so is the
+app's window, which has no `Notification` API at all — both say so when they
+connect, and the server falls back for both. On macOS that goes through
 `terminal-notifier` when it is installed (`brew install terminal-notifier`),
 because clicking that one opens the web app. Without it the fallback is
 `osascript`, whose notifications belong to Script Editor, so clicking one opens

@@ -102,7 +102,10 @@ export function useFlow(taskId) {
   }, [])
 
   useEffect(() => {
-    const es = new EventSource('/api/events')
+    // Say whether this client can raise a notification, so the server knows
+    // when it has to raise one itself. Reconnects when permission changes.
+    const canNotify = notifications === 'granted'
+    const es = new EventSource(`/api/events${canNotify ? '' : '?notify=0'}`)
     es.onerror = () => setLive(false)
     es.onopen = () => {
       setLive(true)
@@ -145,7 +148,7 @@ export function useFlow(taskId) {
       setDetail((d) => (d ? { ...d, log: [...d.log, entry] } : d))
     })
     return () => es.close()
-  }, [loadState, loadDetail])
+  }, [loadState, loadDetail, notifications])
 
   // Artifacts arrive as files, not events, so re-read the detail when a phase
   // boundary moves. Cheap: it is one local read.

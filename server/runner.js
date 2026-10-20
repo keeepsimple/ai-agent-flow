@@ -70,12 +70,16 @@ export const DEFAULTS = {
 
 /**
  * Tell the human. A watching tab gets it over SSE and raises a notification that
- * opens the task when clicked; with no tab open the server raises the desktop
- * one itself, so closing the browser does not mean missing the end of a run.
+ * opens the task when clicked; when nothing watching can do that, the server
+ * raises the desktop one itself.
+ *
+ * The test is whether anyone can raise one, not whether anyone is watching.
+ * A tab that was never granted permission is watching and silent, and so is
+ * the app's own window, which has no Notification API at all.
  */
 function tell(task, title, body, urgent = false) {
   bus.emit('notify', { taskId: task.id, title, body, urgent })
-  if (!sse.clients) notify(title, body, { urgent, url: `http://127.0.0.1:${PORT}/#${task.id}` })
+  if (!sse.notifiers) notify(title, body, { urgent, url: `http://127.0.0.1:${PORT}/#${task.id}` })
 }
 
 const children = new Map() // taskId -> ChildProcess
