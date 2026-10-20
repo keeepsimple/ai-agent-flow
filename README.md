@@ -44,6 +44,13 @@ Three things that buys, none of which the web mode can have:
 - **It is a window, not a tab**, so it has its own Dock icon and quits like an
   application.
 
+A web view has no `Notification` API, so in the app the server raises the
+desktop notification itself. It decides that by counting the clients that can
+raise one rather than the clients that are connected — which also closes the
+same hole in the web mode, where a tab that was never granted permission
+silenced the server while raising nothing itself. `/api/state` reports both
+counts (`watching`, `notifying`) if you want to see which is which.
+
 Building it needs `swiftc`, which comes with the Xcode command line tools
 (`xcode-select --install`). Only the machine doing the building needs it.
 
