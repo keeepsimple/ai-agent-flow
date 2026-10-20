@@ -42,7 +42,11 @@ function statusOf(tree) {
   const clash = uncommitted.filter((file) => touched.includes(file))
 
   let blocked = null
-  if (current !== tree.baseBranch) blocked = `${tree.repo} is on ${current}, not ${tree.baseBranch}`
+  if (current !== tree.baseBranch) {
+    // symbolic-ref gives nothing on a detached HEAD, and "is on null" reads
+    // like a crash rather than a state.
+    blocked = `${tree.repo} is on ${current || 'a detached HEAD'}, not ${tree.baseBranch}`
+  }
   else if (clash.length) {
     blocked = `uncommitted work in ${clash.slice(0, 3).join(', ')}${clash.length > 3 ? ` and ${clash.length - 3} more` : ''}`
   }

@@ -32,6 +32,7 @@ export const api = {
   upload,
   state: () => call('GET', '/api/state'),
   task: (id) => call('GET', `/api/tasks/${id}`),
+  gitState: (id) => call('GET', `/api/tasks/${id}/git`),
   create: (payload) => call('POST', '/api/tasks', payload),
   approve: (id, approved, feedback) => call('POST', `/api/tasks/${id}/approve`, { approved, feedback }),
   answer: (id, questionId, answer) => call('POST', `/api/tasks/${id}/answer`, { questionId, answer }),
@@ -53,6 +54,7 @@ export function useFlow() {
   const [selectedId, setSelectedId] = useState(() => taskIdFromHash())
   const [detail, setDetail] = useState(null)
   const [live, setLive] = useState(false)
+  const [, tick] = useState(0)
   const [notifications, setNotifications] = useState(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   )
@@ -83,6 +85,11 @@ export function useFlow() {
     // Deep link, so a task survives a reload and can be shared as a URL.
     if (selectedId && taskIdFromHash() !== selectedId) location.hash = selectedId
   }, [selectedId, loadDetail])
+
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     const es = new EventSource('/api/events')

@@ -1,16 +1,16 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { IconArrowMerge, IconCloudUpload, IconCopy, IconSitemap, IconSparkles } from '@tabler/icons-react'
 import { Button } from './bits.jsx'
 import { api } from '../api.js'
 
-function Ship({ task, state, onDone, onError }) {
+function Ship({ task, state, onChanged, onError }) {
   const [busy, setBusy] = useState('')
 
   const run = async (what, call) => {
     setBusy(what)
     try {
-      const result = await call()
-      if (result?.git) onDone(result)
+      await call()
+      await onChanged()
     } catch (err) {
       onError(err.message)
     } finally {
@@ -101,9 +101,27 @@ function Ship({ task, state, onDone, onError }) {
 }
 
 export default function RepoRows({ task, onError }) {
-  const [git, setGit] = useState(null)
-  const state = git || task.git || []
+  // Git state is not pushed over the stream, and it changes under us: an agent
+  // commits, a catch-up finishes, or the human does something in a terminal.
+  // Holding a snapshot from the last button click froze the row until a reload.
+  const [git, setGit] = useState(task.git || [])
   const trees = task.trees || task.repos.map((repo) => ({ repo }))
+
+  const refresh = useCallback(
+    () => api.gitState(task.id).then(setGit).catch(() => {}),
+    [task.id],
+  )
+
+  useEffect(() => {
+    refresh()
+    // Each poll runs a handful of git commands per repo, and on a large repo
+    // the working-tree scan is not free. Watch closely while an agent is
+    // committing; idle, nothing moves unless the human moves it.
+    const id = setInterval(refresh, task.status === 'running' ? 5000 : 20_000)
+    return () => clearInterval(id)
+  }, [task.status, refresh])
+
+  const state = git
 
   return (
     <ul className="mt-2 divide-y divide-line/60 rounded-md border border-line bg-surface-2">
@@ -137,7 +155,7 @@ export default function RepoRows({ task, onError }) {
               <Ship
                 task={task}
                 state={state.find((s) => s.repo === tree.repo)}
-                onDone={(result) => setGit(result.git)}
+                onChanged={refresh}
                 onError={onError}
               />
             </div>
