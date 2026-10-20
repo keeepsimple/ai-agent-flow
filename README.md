@@ -110,7 +110,6 @@ checkouts and leaves every branch alone.
 | `FLOW_MODEL` | CLI default | Default model for new tasks |
 | `FLOW_EFFORT` | CLI default | Default effort for new tasks |
 | `FLOW_PERMISSION_MODE` | `bypassPermissions` | Default permissions for new tasks. Accepts the CLI's full set, including the ones the form does not offer |
-| `FLOW_MAX_BUDGET_USD` | unset | Per-phase spend cap |
 | `FLOW_NOTIFY` | on | `off` silences desktop notifications |
 | `FLOW_CLAUDE_BIN` | `claude` | Path to the CLI, if it is not on your PATH |
 

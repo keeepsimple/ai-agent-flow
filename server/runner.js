@@ -341,7 +341,6 @@ function runClaude(task, prompt) {
   // Nobody is at a keyboard to answer a permission prompt. Without this, a mode
   // that wants to ask would stall the phase instead of getting on with it.
   if (task.permissionMode !== 'bypassPermissions') args.push('--permission-prompts', 'none')
-  if (process.env.FLOW_MAX_BUDGET_USD) args.push('--max-budget-usd', process.env.FLOW_MAX_BUDGET_USD)
 
   return new Promise((resolve, reject) => {
     // On Windows `claude` is a .cmd, which Node refuses to spawn directly, so it
