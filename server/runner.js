@@ -61,17 +61,20 @@ export function listRepos() {
 const slugify = (s) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task'
 
-export function createTask({ title, prompt, repo, autoApprove = false, model, effort, permissionMode }) {
+export function createTask({ title, prompt, repos, autoApprove = false, model, effort, permissionMode }) {
   if (!title?.trim()) throw new Error('title is required')
   if (!prompt?.trim()) throw new Error('prompt is required')
-  if (!listRepos().includes(repo)) throw new Error(`unknown repo: ${repo}`)
+  const known = listRepos()
+  const picked = [...new Set(Array.isArray(repos) ? repos : [repos])].filter(Boolean)
+  if (!picked.length) throw new Error('pick at least one repo')
+  for (const r of picked) if (!known.includes(r)) throw new Error(`unknown repo: ${r}`)
 
   const id = randomUUID().slice(0, 8)
   const task = {
     id,
     title: title.trim(),
     prompt: prompt.trim(),
-    repo,
+    repos: picked,
     model: pick(model, MODELS, DEFAULTS.model, 'model'),
     effort: pick(effort, EFFORTS, DEFAULTS.effort, 'effort'),
     permissionMode: pick(permissionMode, MODES, DEFAULTS.permissionMode, 'permission mode'),
@@ -103,33 +106,50 @@ function pump() {
   }
 }
 
-function setupWorktree(task) {
-  const repoPath = path.join(REPO_ROOT, task.repo)
-  const branch = task.branch || `flow/${slugify(task.title)}-${task.id}`
-  const worktree = path.join(DATA, 'worktrees', `${task.repo}-${task.id}`)
+/**
+ * One worktree per repo, all under data/worktrees/<taskId>/. A feature that
+ * spans three repos gets three branches and three isolated checkouts, so every
+ * repo still has something to roll back to.
+ */
+function setupWorktrees(task) {
+  const base = path.join(DATA, 'worktrees', task.id)
+  const branch = task.trees?.[0]?.branch || `flow/${slugify(task.title)}-${task.id}`
 
-  // Pin the diff base to a sha: the branch it forked from keeps moving.
-  const baseRef = task.baseRef || git(repoPath, 'rev-parse', 'HEAD')
-  let baseBranch = task.baseBranch || 'HEAD (detached)'
-  if (!task.baseBranch) {
-    try { baseBranch = git(repoPath, 'symbolic-ref', '--short', 'HEAD') } catch {}
-  }
+  const trees = task.repos.map((repo, i) => {
+    const repoPath = path.join(REPO_ROOT, repo)
+    const previous = task.trees?.[i]
+    const worktree = path.join(base, repo)
 
-  let exists = false
-  try { git(repoPath, 'rev-parse', '--verify', branch); exists = true } catch {}
-  // Dropping a worktree leaves its branch behind, so a retry has to reuse it.
-  if (exists) git(repoPath, 'worktree', 'add', worktree, branch)
-  else git(repoPath, 'worktree', 'add', '-b', branch, worktree, baseRef)
+    // Pin the diff base to a sha: the branch it forked from keeps moving.
+    const baseRef = previous?.baseRef || git(repoPath, 'rev-parse', 'HEAD')
+    let baseBranch = previous?.baseBranch || 'HEAD (detached)'
+    if (!previous?.baseBranch) {
+      try { baseBranch = git(repoPath, 'symbolic-ref', '--short', 'HEAD') } catch {}
+    }
+
+    let hasBranch = false
+    try { git(repoPath, 'rev-parse', '--verify', branch); hasBranch = true } catch {}
+
+    // A retry can land on a half-built set: some worktrees already there from
+    // the attempt that failed, and branches left behind by a dropped checkout.
+    if (!fs.existsSync(worktree)) {
+      if (hasBranch) git(repoPath, 'worktree', 'add', worktree, branch)
+      else git(repoPath, 'worktree', 'add', '-b', branch, worktree, baseRef)
+    }
+    return { repo, repoPath, worktree, branch, baseRef, baseBranch }
+  })
 
   const dir = artifactDir(task.id)
   fs.mkdirSync(dir, { recursive: true })
 
-  update(task.id, { branch, worktree, baseRef, baseBranch, artifactDir: dir })
+  // With one repo, run inside it, so the CLI finds its CLAUDE.md the usual way.
+  // With several, run one level up and let the prompt name each worktree.
+  update(task.id, { trees, root: trees.length === 1 ? trees[0].worktree : base, artifactDir: dir })
 }
 
 async function runTask(task) {
   try {
-    if (!task.worktree) setupWorktree(task)
+    if (!task.root) setupWorktrees(task)
   } catch (err) {
     log(task.id, { kind: 'error', text: `worktree setup failed: ${err.message}` })
     return fail(task, err.message)
@@ -144,12 +164,7 @@ async function runTask(task) {
     task.phases[phase] = { status: 'running', startedAt: Date.now() }
     emit(task)
 
-    const prompt = buildPrompt(phase, {
-      ...task,
-      repo: path.join(REPO_ROOT, task.repo),
-      askScript: ASK_SCRIPT,
-      feedback,
-    })
+    const prompt = buildPrompt(phase, { ...task, askScript: ASK_SCRIPT, feedback })
     feedback = null
 
     let result
@@ -177,7 +192,7 @@ async function runTask(task) {
   }
 
   update(task.id, { status: 'done', phase: null })
-  notify(`Done: ${task.title}`, `${task.repo} · ${task.branch} · $${task.cost.toFixed(2)}`)
+  notify(`Done: ${task.title}`, `${task.repos.join(' + ')} · $${task.cost.toFixed(2)}`)
 }
 
 function fail(task, message) {
@@ -270,12 +285,17 @@ export function retry(id) {
   return task
 }
 
-export function removeWorktree(id) {
+export function removeWorktrees(id) {
   const task = tasks[id]
-  if (!task?.worktree) throw new Error('nothing to remove')
+  if (!task?.root) throw new Error('nothing to remove')
   if (task.status === 'running') throw new Error('task is still running')
-  execFileSync('git', ['-C', path.join(REPO_ROOT, task.repo), 'worktree', 'remove', '--force', task.worktree])
-  update(id, { worktree: null })
+  for (const tree of task.trees) {
+    git(tree.repoPath, 'worktree', 'remove', '--force', tree.worktree)
+  }
+  fs.rmSync(path.join(DATA, 'worktrees', task.id), { recursive: true, force: true })
+  // The branches stay. Dropping the checkout is not the same as throwing the
+  // work away, and setupWorktrees knows how to pick them back up.
+  update(id, { root: null, droppedAt: Date.now() })
   return task
 }
 
@@ -314,7 +334,7 @@ function runClaude(task, prompt) {
     // goes through the shell. Nothing with a space reaches the command line
     // unquoted, and the prompt itself never touches it at all.
     const child = spawn(CLAUDE_BIN, WIN ? args.map(winQuote) : args, {
-      cwd: task.worktree,
+      cwd: task.root,
       shell: WIN,
       env: {
         ...process.env,

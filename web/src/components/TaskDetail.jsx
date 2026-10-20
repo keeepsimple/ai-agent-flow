@@ -50,9 +50,9 @@ export default function TaskDetail({ task, onError }) {
                 <IconRefresh size={13} /> Retry
               </Button>
             )}
-            {task.worktree && !ACTIVE.has(task.status) && (
+            {task.root && !ACTIVE.has(task.status) && (
               <Button onClick={() => act(() => api.dropWorktree(task.id))}>
-                <IconFolderOff size={13} /> Drop worktree
+                <IconFolderOff size={13} /> Drop worktree{task.repos.length > 1 ? 's' : ''}
               </Button>
             )}
           </div>
@@ -64,29 +64,40 @@ export default function TaskDetail({ task, onError }) {
           </p>
         )}
 
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 xl:grid-cols-6">
-          <Meta label="Repo">{task.repo}</Meta>
-          <Meta label="Branch">{task.branch || 'not created yet'}</Meta>
-          <Meta label="Base">{task.baseBranch ? `${task.baseBranch} @ ${task.baseRef?.slice(0, 7)}` : '-'}</Meta>
+        <div className="mt-3 flex flex-wrap gap-x-10 gap-y-2">
           <Meta label="Cost">${(task.cost || 0).toFixed(3)} · {task.turns || 0} turns</Meta>
           <Meta label="Model">{task.model || 'default'} · {task.effort || 'default'}</Meta>
           <Meta label="Permissions">{task.permissionMode}</Meta>
         </div>
 
-        {task.worktree && (
-          <button
-            type="button"
-            onClick={() => navigator.clipboard?.writeText(task.worktree)}
-            title="Copy worktree path"
-            className="mt-2 flex w-full cursor-pointer items-center gap-2 rounded-md border border-line
-                       bg-surface-2 px-2.5 py-1.5 text-left font-mono text-[11px] text-ink-dim
-                       transition-colors duration-150 hover:border-line-strong hover:text-ink"
-          >
-            <IconSitemap size={13} className="shrink-0" />
-            <span className="truncate">{task.worktree}</span>
-            <IconCopy size={13} className="ml-auto shrink-0" />
-          </button>
-        )}
+        <ul className="mt-2 divide-y divide-line/60 rounded-md border border-line bg-surface-2">
+          {(task.trees || task.repos.map((repo) => ({ repo }))).map((tree) => (
+            <li key={tree.repo} className="grid grid-cols-[1fr_auto] items-center gap-3 px-2.5 py-1.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <IconSitemap size={13} className="shrink-0 text-ink-faint" />
+                <span className="shrink-0 font-mono text-[12px] text-ink">{tree.repo}</span>
+                <span className="truncate font-mono text-[11px] text-ink-dim">
+                  {tree.branch
+                    ? `${tree.branch}  ·  from ${tree.baseBranch} @ ${tree.baseRef.slice(0, 7)}`
+                    : 'worktree not created yet'}
+                </span>
+              </div>
+              {tree.worktree && (
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard?.writeText(tree.worktree)}
+                  title={task.root ? tree.worktree : 'Worktree dropped. The branch is still there.'}
+                  disabled={!task.root}
+                  className="flex cursor-pointer items-center gap-1.5 font-mono text-[10px] text-ink-faint
+                             transition-colors duration-150 hover:text-ink disabled:cursor-default
+                             disabled:hover:text-ink-faint"
+                >
+                  {task.root ? <><IconCopy size={12} /> path</> : 'dropped'}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
       </header>
 
       <div className="border-b border-line px-4 py-3">

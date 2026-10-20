@@ -46,7 +46,9 @@ export default function TaskList({ tasks, selectedId, onSelect }) {
                 <span className="truncate text-[13px] font-medium text-ink">{task.title}</span>
               </div>
               <div className="mt-1 flex items-center gap-2 pl-4 font-mono text-[10px] text-ink-faint">
-                <span className="truncate">{task.repo}</span>
+                <span className="truncate">
+                  {task.repos.length > 2 ? `${task.repos.length} repos` : task.repos.join(' + ')}
+                </span>
                 <span className={statusOf(task.status).color}>
                   {task.phase || statusOf(task.status).label.toLowerCase()}
                 </span>

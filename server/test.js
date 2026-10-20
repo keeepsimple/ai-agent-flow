@@ -17,16 +17,21 @@ const bin = path.join(root, 'bin')
 const PORT = 7893
 const base = `http://127.0.0.1:${PORT}`
 
-fs.mkdirSync(path.join(repos, 'demo'), { recursive: true })
 fs.mkdirSync(bin)
 
-const git = (...args) => execFileSync('git', ['-C', path.join(repos, 'demo'), ...args], { encoding: 'utf8' })
-git('init', '-q', '-b', 'main')
-git('config', 'user.email', 'test@example.com')
-git('config', 'user.name', 'Test')
-fs.writeFileSync(path.join(repos, 'demo', 'README.md'), '# demo\n')
-git('add', '.')
-git('commit', '-qm', 'init')
+// Two repos, so the check covers a feature that spans more than one.
+const REPOS = ['api', 'web']
+const git = (repo, ...args) =>
+  execFileSync('git', ['-C', path.join(repos, repo), ...args], { encoding: 'utf8' })
+for (const repo of REPOS) {
+  fs.mkdirSync(path.join(repos, repo), { recursive: true })
+  git(repo, 'init', '-q', '-b', 'main')
+  git(repo, 'config', 'user.email', 'test@example.com')
+  git(repo, 'config', 'user.name', 'Test')
+  fs.writeFileSync(path.join(repos, repo, 'README.md'), `# ${repo}\n`)
+  git(repo, 'add', '.')
+  git(repo, 'commit', '-qm', 'init')
+}
 
 // The stub reads the prompt from stdin exactly as the real CLI does, writes the
 // artifact its phase is supposed to write, and blocks on `ask` once so the
@@ -59,9 +64,14 @@ if (prompt.includes('Phase: write the spec')) {
     encoding: 'utf8',
   }).trim()
   say('human said: ' + answer)
-  fs.writeFileSync('impl.txt', 'stubbed')
-  execFileSync('git', ['add', '-A'])
-  execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'impl'])
+  for (const line of prompt.split('\\n')) {
+    const match = line.match(/^\\s+worktree\\s+(\\S+)$/)
+    if (!match) continue
+    const tree = match[1]
+    fs.writeFileSync(path.join(tree, 'impl.txt'), 'stubbed')
+    execFileSync('git', ['-C', tree, 'add', '-A'])
+    execFileSync('git', ['-C', tree, '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'impl'])
+  }
 } else {
   say('review phase')
   fs.writeFileSync(path.join(art, 'review.md'), '# review')
@@ -111,7 +121,9 @@ async function waitFor(id, predicate, what) {
     if (predicate(task)) return task
     await sleep(100)
   }
-  throw new Error(`timed out waiting for ${what}`)
+  const last = await (await fetch(`${base}/api/tasks/${id}`)).json()
+  throw new Error(`timed out waiting for ${what}\nstatus=${last.status} error=${last.error}\n` +
+    last.log.slice(-6).map((l) => `  [${l.kind}] ${l.text}`).join('\n'))
 }
 
 let failure = null
@@ -124,21 +136,28 @@ try {
   }
 
   const state = await (await fetch(`${base}/api/state`)).json()
-  assert.deepEqual(state.repos, ['demo'], 'should discover the demo repo')
+  assert.deepEqual(state.repos, REPOS, 'should discover both demo repos')
+
+  const noRepo = await fetch(`${base}/api/tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: 'x', repos: [], prompt: 'x' }),
+  })
+  assert.equal(noRepo.status, 400, 'a task with no repo should be refused')
 
   // A rejected model must never reach a command line, especially on Windows
   // where the child goes through cmd.exe.
   const rejected = await fetch(`${base}/api/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: 'bad', repo: 'demo', prompt: 'x', model: 'opus" & calc' }),
+    body: JSON.stringify({ title: 'bad', repos: REPOS, prompt: 'x', model: 'opus" & calc' }),
   })
   assert.equal(rejected.status, 400, 'an unknown model should be refused')
   assert.match((await rejected.json()).error, /model must be one of/)
 
   const created = await post('/api/tasks', {
     title: 'Add a thing',
-    repo: 'demo',
+    repos: REPOS,
     prompt: 'add a thing',
     model: 'sonnet',
     effort: 'high',
@@ -147,8 +166,13 @@ try {
   let task = await waitFor(created.id, (t) => t.status === 'awaiting_approval', 'the spec gate')
   assert.equal(task.awaitingPhase, 'spec')
   assert.equal(task.docs['spec.md']?.trim(), '# spec', 'spec.md should be readable at the gate')
-  assert.ok(fs.existsSync(task.worktree), 'worktree should exist on disk')
-  assert.match(task.branch, /^flow\/add-a-thing-/)
+  assert.equal(task.trees.length, 2, 'one worktree per repo')
+  for (const tree of task.trees) {
+    assert.ok(fs.existsSync(tree.worktree), `${tree.repo} worktree should exist on disk`)
+    assert.match(tree.branch, /^flow\/add-a-thing-/)
+    assert.equal(tree.baseBranch, 'main')
+  }
+  assert.notEqual(task.trees[0].worktree, task.trees[1].worktree, 'the repos must not share a checkout')
 
   const argv = JSON.parse(fs.readFileSync(path.join(root, 'data', 'tasks', created.id, 'argv.json'), 'utf8'))
   const flag = (name) => argv[argv.indexOf(name) + 1]
@@ -177,9 +201,24 @@ try {
   assert.equal(task.docs['review.md']?.trim(), '# review')
   assert.ok(task.log.some((l) => l.text?.includes('human said: narrow')), 'the answer should reach the agent')
   assert.ok(task.cost > 0, 'cost should accumulate across phases')
-  assert.match(git('log', '--oneline', task.branch), /impl/, 'the branch should carry the commit')
+  for (const tree of task.trees) {
+    assert.match(
+      git(tree.repo, 'log', '--oneline', tree.branch),
+      /impl/,
+      `${tree.repo} should carry its own commit`,
+    )
+  }
 
-  console.log('ok  spec gate, plan gate, blocking ask, 4 phases, commit on branch, model/effort/mode flags')
+  // Dropping the checkouts must leave the work on the branches.
+  await fetch(`${base}/api/tasks/${created.id}/worktree`, { method: 'DELETE' })
+  task = await (await fetch(`${base}/api/tasks/${created.id}`)).json()
+  assert.equal(task.root, null, 'the worktrees should be gone')
+  for (const tree of task.trees) {
+    assert.ok(!fs.existsSync(tree.worktree), `${tree.repo} checkout should be removed`)
+    assert.match(git(tree.repo, 'log', '--oneline', tree.branch), /impl/, `${tree.repo} branch should survive`)
+  }
+
+  console.log('ok  2 repos, 2 worktrees, both gates, blocking ask, 4 phases, per-repo commits, drop keeps branches')
 } catch (err) {
   failure = err
 } finally {

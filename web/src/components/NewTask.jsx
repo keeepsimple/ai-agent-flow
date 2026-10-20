@@ -5,7 +5,7 @@ const named = (v) => v || 'default'
 
 export default function NewTask({ repos, options, defaults, onCreate, onClose }) {
   const [title, setTitle] = useState('')
-  const [repo, setRepo] = useState(repos[0] || '')
+  const [picked, setPicked] = useState(repos.slice(0, 1))
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState(defaults.model)
   const [effort, setEffort] = useState(defaults.effort)
@@ -19,7 +19,7 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
     setBusy(true)
     setError(null)
     try {
-      await onCreate({ title, repo, prompt, model, effort, permissionMode, autoApprove })
+      await onCreate({ title, repos: picked, prompt, model, effort, permissionMode, autoApprove })
       onClose()
     } catch (err) {
       setError(err.message)
@@ -36,11 +36,42 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
           placeholder="Mirror discount target names into the mobile payload" />
       </Field>
 
-      <Field label="Repo" hint="One repo per task. Work that spans two needs two tasks.">
-        <select className={inputClass} value={repo} onChange={(e) => setRepo(e.target.value)} required>
-          {repos.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
+      <Field
+        label={`Repos · ${picked.length} of ${repos.length}`}
+        hint={
+          picked.length > 1
+            ? 'Each one gets its own worktree, branch and commits. The spec will have to say which deploys first.'
+            : 'Tick more than one when a feature genuinely spans repos.'
+        }
+      >
+        <div className="max-h-44 overflow-y-auto rounded-md border border-line bg-surface">
+          {repos.map((r) => (
+            <label
+              key={r}
+              className="flex cursor-pointer items-center gap-2 px-2.5 py-1 text-[12px]
+                         transition-colors duration-150 hover:bg-surface-3"
+            >
+              <input
+                type="checkbox"
+                className="accent-accent"
+                checked={picked.includes(r)}
+                onChange={(e) =>
+                  setPicked((prev) => (e.target.checked ? [...prev, r] : prev.filter((x) => x !== r)))
+                }
+              />
+              <span className="font-mono text-ink-dim">{r}</span>
+            </label>
+          ))}
+        </div>
       </Field>
+      <div className="-mt-2 flex gap-3 text-[11px]">
+        <button type="button" onClick={() => setPicked(repos)} className="cursor-pointer text-ink-faint hover:text-ink">
+          Whole directory
+        </button>
+        <button type="button" onClick={() => setPicked([])} className="cursor-pointer text-ink-faint hover:text-ink">
+          Clear
+        </button>
+      </div>
 
       <Field label="What to do" hint="Write it as you would to a colleague. The spec phase turns this into a real spec.">
         <textarea className={`${inputClass} min-h-[110px] resize-y`} value={prompt} required

@@ -65,17 +65,25 @@ That call blocks until you answer in the UI, and the answer comes back on stdout
 The prompt tells the agent to use it for decisions only you can make, not for
 things it could find by reading the code.
 
-## One repo per task
+## Repos: one, several, or all of them
 
 `FLOW_REPO_ROOT` defaults to the folder above this one, and every sibling with a
-`.git` shows up in the repo picker. A task names exactly one repo, which is the
-rule the parent folder's `CLAUDE.md` already sets. Work that genuinely spans two
-repos needs two tasks.
+`.git` shows up in the picker. Tick one for an ordinary change, or tick several
+when a feature genuinely spans repos. **Whole directory** ticks all of them.
 
-Worktrees land in `data/worktrees/`, on a branch named `flow/<slug>-<id>`, forked
-from the repo's HEAD at the moment the task starts. Nothing merges on its own:
-when a task finishes, the branch is there for you to review and merge yourself.
-**Drop worktree** removes the checkout and leaves the branch alone.
+Every ticked repo gets its own worktree, under `data/worktrees/<task-id>/<repo>`,
+on a branch named `flow/<slug>-<id>`, forked from that repo's HEAD at the moment
+the task starts. Same branch name across repos, so a cross-repo feature is easy
+to find later.
+
+With one repo the agent runs inside its worktree, so the CLI picks up that repo's
+`CLAUDE.md` the usual way. With several it runs one level up, the prompt names
+every worktree, and it is told to read each repo's `CLAUDE.md`, commit per repo,
+and say which repo has to deploy first.
+
+Nothing merges on its own. When a task finishes the branches are there for you to
+review and merge yourself, one repo at a time. **Drop worktrees** removes the
+checkouts and leaves every branch alone.
 
 ## Settings
 
