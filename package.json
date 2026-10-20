@@ -1,0 +1,24 @@
+{
+  "name": "agent-flow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "vite build && node server/index.js",
+    "serve": "node server/index.js",
+    "dev": "node server/index.js & vite",
+    "build": "vite build",
+    "test": "node server/test.js"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "tailwindcss": "^4.1.14",
+    "vite": "^7.1.9"
+  },
+  "dependencies": {
+    "@tabler/icons-react": "^3.35.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}
