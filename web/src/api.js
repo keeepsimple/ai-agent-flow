@@ -50,6 +50,9 @@ export function useFlow() {
   const [selectedId, setSelectedId] = useState(() => taskIdFromHash())
   const [detail, setDetail] = useState(null)
   const [live, setLive] = useState(false)
+  const [notifications, setNotifications] = useState(
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
+  )
   const selectedRef = useRef(null)
   selectedRef.current = selectedId
 
@@ -91,6 +94,19 @@ export function useFlow() {
       })
       if (task.id === selectedRef.current) setDetail((d) => (d ? { ...d, ...task } : d))
     })
+    // Raised by the tab rather than the server, because a notification the tab
+    // owns can focus this window and open the task when it is clicked. The
+    // server only falls back to a desktop one when no tab is listening.
+    es.addEventListener('notify', (e) => {
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+      const { taskId, title, body } = JSON.parse(e.data)
+      const note = new Notification(title, { body, tag: taskId, icon: '/icon.svg' })
+      note.onclick = () => {
+        window.focus()
+        setSelectedId(taskId)
+        note.close()
+      }
+    })
     es.addEventListener('log', (e) => {
       const { id, entry } = JSON.parse(e.data)
       if (id !== selectedRef.current) return
@@ -106,9 +122,15 @@ export function useFlow() {
     if (selectedId) loadDetail(selectedId)
   }, [phaseKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const askForNotifications = useCallback(async () => {
+    if (typeof Notification === 'undefined') return
+    setNotifications(await Notification.requestPermission())
+  }, [])
+
   return {
     tasks, repos, repoRoot, options, defaults, error, live, detail,
     selectedId, select: setSelectedId,
+    notifications, askForNotifications,
     reload: loadState,
     setError,
   }

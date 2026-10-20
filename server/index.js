@@ -1,7 +1,7 @@
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
-import { bus, tasks, readLog, artifact } from './store.js'
+import { bus, sse, tasks, readLog, artifact } from './store.js'
 import * as runner from './runner.js'
 import * as uploads from './uploads.js'
 
@@ -67,6 +67,7 @@ async function api(req, res, url) {
       repoRoot: runner.REPO_ROOT,
       options: { models: runner.MODELS, efforts: runner.EFFORTS, modes: runner.MODE_CHOICES },
       defaults: runner.DEFAULTS,
+      watching: sse.clients,
     })
   }
 
@@ -80,13 +81,18 @@ async function api(req, res, url) {
     const send = (event) => (payload) => res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
     const onTask = send('task')
     const onLog = send('log')
+    const onNotify = send('notify')
     bus.on('task', onTask)
     bus.on('log', onLog)
+    bus.on('notify', onNotify)
+    sse.clients++
     const beat = setInterval(() => res.write(': beat\n\n'), 25_000)
     req.on('close', () => {
       clearInterval(beat)
+      sse.clients--
       bus.off('task', onTask)
       bus.off('log', onLog)
+      bus.off('notify', onNotify)
     })
     return
   }

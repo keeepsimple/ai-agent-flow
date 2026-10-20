@@ -127,11 +127,24 @@ works unattended. The server listens on `127.0.0.1` only, for exactly that
 reason. Pick *Edits only* on a task you would rather keep away from a shell, and
 expect its verification commands to be denied.
 
+## Notifications
+
+With the tab open, the notification comes from the browser, and clicking it
+focuses this window and opens the task it is about. Turn it on with **Notify me**
+in the header the first time.
+
+With no tab open, the server raises a desktop notification instead, so closing
+the browser does not mean missing the end of a run. On macOS that goes through
+`terminal-notifier` when it is installed (`brew install terminal-notifier`),
+because clicking that one opens the web app. Without it the fallback is
+`osascript`, whose notifications belong to Script Editor, so clicking one opens
+Script Editor rather than anything useful.
+
 ## Platform notes
 
-Notifications use `osascript` on macOS, `notify-send` on Linux, and a PowerShell
-toast on Windows. A machine without a notification daemon just gets no popup;
-nothing else changes.
+The desktop fallback uses `terminal-notifier` or `osascript` on macOS,
+`notify-send` on Linux, and a PowerShell toast on Windows. A machine without a
+notification daemon just gets no popup; nothing else changes.
 
 On Windows the `claude` CLI is a `.cmd`, which Node will not spawn directly, so
 the child goes through `cmd.exe`. The prompt is piped in on stdin rather than

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { DATA, tasks, artifactDir, emit, update, log } from './store.js'
+import { DATA, bus, sse, tasks, artifactDir, emit, update, log } from './store.js'
 import { PHASES, GATES, PHASE_LABEL, buildPrompt } from './prompts.js'
 import { UPLOADS, verify as verifyUpload } from './uploads.js'
 import { notify } from './notify.js'
@@ -40,6 +40,16 @@ export const DEFAULTS = {
   model: pick(process.env.FLOW_MODEL, MODELS, ''),
   effort: pick(process.env.FLOW_EFFORT, EFFORTS, ''),
   permissionMode: pick(process.env.FLOW_PERMISSION_MODE, MODES, 'bypassPermissions'),
+}
+
+/**
+ * Tell the human. A watching tab gets it over SSE and raises a notification that
+ * opens the task when clicked; with no tab open the server raises the desktop
+ * one itself, so closing the browser does not mean missing the end of a run.
+ */
+function tell(task, title, body, urgent = false) {
+  bus.emit('notify', { taskId: task.id, title, body, urgent })
+  if (!sse.clients) notify(title, body, { urgent, url: `http://127.0.0.1:${PORT}/#${task.id}` })
 }
 
 const children = new Map() // taskId -> ChildProcess
@@ -195,17 +205,17 @@ async function runTask(task) {
   }
 
   update(task.id, { status: 'done', phase: null })
-  notify(`Done: ${task.title}`, `${task.repos.join(' + ')} · $${task.cost.toFixed(2)}`)
+  tell(task, `Done: ${task.title}`, `${task.repos.join(' + ')} · $${task.cost.toFixed(2)}`)
 }
 
 function fail(task, message) {
   update(task.id, { status: 'failed', error: message })
-  notify(`Failed: ${task.title}`, message.slice(0, 180), { urgent: true })
+  tell(task, `Failed: ${task.title}`, message.slice(0, 180), true)
 }
 
 function waitForApproval(task, phase) {
   update(task.id, { status: 'awaiting_approval', awaitingPhase: phase })
-  notify(`Needs your call: ${task.title}`, `${PHASE_LABEL[phase]} is ready to review`, { urgent: true })
+  tell(task, `Needs your call: ${task.title}`, `${PHASE_LABEL[phase]} is ready to review`, true)
   return new Promise((resolve) => gateWaiters.set(task.id, resolve))
 }
 
@@ -244,7 +254,7 @@ export function askQuestion(id, text) {
   task.questions.push(question)
   update(id, { status: 'awaiting_answer' })
   log(id, { kind: 'question', text })
-  notify(`Question: ${task.title}`, text.slice(0, 180), { urgent: true })
+  tell(task, `Question: ${task.title}`, text.slice(0, 180), true)
   return new Promise((resolve) => questionWaiters.set(question.id, resolve))
 }
 

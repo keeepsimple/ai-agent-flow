@@ -12,6 +12,10 @@ fs.mkdirSync(path.join(DATA, 'worktrees'), { recursive: true })
 export const bus = new EventEmitter()
 bus.setMaxListeners(0)
 
+// How many browser tabs are watching. A connected tab raises its own clickable
+// notification, so the server only falls back to a desktop one when nobody is.
+export const sse = { clients: 0 }
+
 /** @type {Record<string, any>} */
 export const tasks = fs.existsSync(TASKS_FILE)
   ? JSON.parse(fs.readFileSync(TASKS_FILE, 'utf8'))

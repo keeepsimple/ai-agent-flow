@@ -22,30 +22,45 @@ $nodes.Item(1).AppendChild($xml.CreateTextNode($env:FLOW_N_BODY)) > $null
 ).Show([Windows.UI.Notifications.ToastNotification]::new($xml))
 `
 
-/**
- * Desktop notification, best effort. A machine without a notification daemon
- * (a headless Linux box, say) is a normal way to run this, so a failure here
- * is swallowed rather than surfaced.
- */
-export function notify(title, message, { urgent = false } = {}) {
-  if (process.env.FLOW_NOTIFY === 'off') return
-  const done = () => {}
+const ignore = () => {}
 
-  if (process.platform === 'darwin') {
-    const script = OSASCRIPT.flatMap((line) => ['-e', line])
-    const sound = urgent ? 'Basso' : 'Glass'
-    return void execFile('osascript', [...script, '--', message, title, sound], done)
-  }
+function osascript(title, message, urgent) {
+  const script = OSASCRIPT.flatMap((line) => ['-e', line])
+  execFile('osascript', [...script, '--', message, title, urgent ? 'Basso' : 'Glass'], ignore)
+}
+
+function mac(title, message, urgent, url) {
+  // An osascript notification belongs to Script Editor, so clicking it opens
+  // Script Editor. terminal-notifier can point the click at a URL instead, so
+  // it is tried first and osascript is the fallback when it is not installed.
+  const args = ['-title', title, '-message', message, '-group', 'agent-flow']
+  if (url) args.push('-open', url)
+  if (urgent) args.push('-sound', 'Basso')
+  execFile('terminal-notifier', args, (err) => {
+    if (err) osascript(title, message, urgent)
+  })
+}
+
+/**
+ * Desktop notification, best effort. This is the fallback for when no browser
+ * tab is connected; a connected tab raises its own, which focuses the right
+ * task when clicked. A machine with no notification daemon is a normal way to
+ * run this, so failures here are swallowed.
+ */
+export function notify(title, message, { urgent = false, url = '' } = {}) {
+  if (process.env.FLOW_NOTIFY === 'off') return
+
+  if (process.platform === 'darwin') return mac(title, message, urgent, url)
 
   if (process.platform === 'win32') {
     return void execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', POWERSHELL],
       { env: { ...process.env, FLOW_N_TITLE: title, FLOW_N_BODY: message } },
-      done,
+      ignore,
     )
   }
 
   // Linux and the other unixes: libnotify, which every desktop session ships.
-  execFile('notify-send', ['-u', urgent ? 'critical' : 'normal', title, message], done)
+  execFile('notify-send', ['-u', urgent ? 'critical' : 'normal', title, message], ignore)
 }

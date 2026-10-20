@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IconPlus, IconX } from '@tabler/icons-react'
+import { IconBellOff, IconPlus, IconX } from '@tabler/icons-react'
 import { api, useFlow } from './api.js'
 import { Button } from './components/bits.jsx'
 import TaskList from './components/TaskList.jsx'
@@ -22,9 +22,30 @@ export default function App() {
           <span className="font-mono text-[10px] text-ink-faint">
             {active} running · {waiting} waiting
           </span>
+          {flow.notifications === 'default' && (
+            <button
+              type="button"
+              onClick={flow.askForNotifications}
+              title="Let this tab notify you. Clicking a notification opens the task."
+              className="ml-auto flex cursor-pointer items-center gap-1 text-[11px] text-ink-faint
+                         transition-colors duration-150 hover:text-ink"
+            >
+              <IconBellOff size={13} /> Notify me
+            </button>
+          )}
+          {flow.notifications === 'denied' && (
+            <span
+              title="Notifications are blocked for this site. Allow them in your browser settings."
+              className="ml-auto text-ink-faint"
+            >
+              <IconBellOff size={13} />
+            </span>
+          )}
           <span
             title={flow.live ? 'Connected to the server' : 'Disconnected from the server'}
-            className={`ml-auto inline-block size-1.5 rounded-full ${flow.live ? 'bg-accent' : 'bg-danger'}`}
+            className={`inline-block size-1.5 shrink-0 rounded-full
+                        ${flow.notifications === 'granted' || flow.notifications === 'unsupported' ? 'ml-auto' : ''}
+                        ${flow.live ? 'bg-accent' : 'bg-danger'}`}
           />
           <Button variant="primary" onClick={() => setComposing((v) => !v)} className="ml-1">
             <IconPlus size={13} /> New

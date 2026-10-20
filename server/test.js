@@ -144,6 +144,24 @@ try {
   const state = await (await fetch(`${base}/api/state`)).json()
   assert.deepEqual(state.repos, REPOS, 'should discover both demo repos')
 
+  // The watcher count decides who raises notifications. If it leaks, the server
+  // stops raising desktop ones and a closed tab means never hearing about a run.
+  assert.equal(state.watching, 0, 'nobody is watching yet')
+  const watcher = new AbortController()
+  const stream = await fetch(`${base}/api/events`, { signal: watcher.signal })
+  for (let i = 0; i < 30; i++) {
+    if ((await (await fetch(`${base}/api/state`)).json()).watching === 1) break
+    await sleep(50)
+  }
+  assert.equal((await (await fetch(`${base}/api/state`)).json()).watching, 1, 'the stream should register')
+  watcher.abort()
+  await stream.body?.cancel().catch(() => {})
+  for (let i = 0; i < 40; i++) {
+    if ((await (await fetch(`${base}/api/state`)).json()).watching === 0) break
+    await sleep(50)
+  }
+  assert.equal((await (await fetch(`${base}/api/state`)).json()).watching, 0, 'closing must release it')
+
   const noRepo = await fetch(`${base}/api/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
