@@ -95,9 +95,18 @@ With one repo the agent runs inside its worktree, so the CLI picks up that repo'
 every worktree, and it is told to read each repo's `CLAUDE.md`, commit per repo,
 and say which repo has to deploy first.
 
-Nothing merges on its own. When a task finishes the branches are there for you to
-review and merge yourself, one repo at a time. **Drop worktrees** removes the
-checkouts and leaves every branch alone.
+Nothing merges on its own. When a task finishes, each repo's row shows how many
+commits the base branch is missing and offers two buttons:
+
+- **Push** runs `git push -u <remote> <branch>` so the branch exists on the
+  remote and can be turned into an MR.
+- **Merge into \<base\>** merges the branch into the branch it forked from, in
+  your own checkout. It is refused, with the reason shown next to it, unless that
+  checkout is on the base branch and has nothing uncommitted. Neither button
+  deletes the branch, and neither one is automatic.
+
+Both read the branch through the repo rather than the worktree, so **Drop
+worktrees** frees the disk without taking the work out of reach.
 
 ## Settings
 

@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { IconCopy, IconFolderOff, IconPlayerStop, IconRefresh, IconSitemap } from '@tabler/icons-react'
+import { IconFolderOff, IconPlayerStop, IconRefresh } from '@tabler/icons-react'
 import { Button, ImageStrip, StatusDot, ago, statusOf } from './bits.jsx'
 import Markdown from './Markdown.jsx'
+import RepoRows from './RepoRows.jsx'
 import PhaseRail from './PhaseRail.jsx'
 import Decision from './Decision.jsx'
 import LogStream from './LogStream.jsx'
@@ -76,34 +77,7 @@ export default function TaskDetail({ task, onError }) {
           <Meta label="Permissions">{task.permissionMode}</Meta>
         </div>
 
-        <ul className="mt-2 divide-y divide-line/60 rounded-md border border-line bg-surface-2">
-          {(task.trees || task.repos.map((repo) => ({ repo }))).map((tree) => (
-            <li key={tree.repo} className="grid grid-cols-[1fr_auto] items-center gap-3 px-2.5 py-1.5">
-              <div className="flex min-w-0 items-center gap-2">
-                <IconSitemap size={13} className="shrink-0 text-ink-faint" />
-                <span className="shrink-0 font-mono text-[12px] text-ink">{tree.repo}</span>
-                <span className="truncate font-mono text-[11px] text-ink-dim">
-                  {tree.branch
-                    ? `${tree.branch}  ·  from ${tree.baseBranch} @ ${tree.baseRef.slice(0, 7)}`
-                    : 'worktree not created yet'}
-                </span>
-              </div>
-              {tree.worktree && (
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard?.writeText(tree.worktree)}
-                  title={task.root ? tree.worktree : 'Worktree dropped. The branch is still there.'}
-                  disabled={!task.root}
-                  className="flex cursor-pointer items-center gap-1.5 font-mono text-[10px] text-ink-faint
-                             transition-colors duration-150 hover:text-ink disabled:cursor-default
-                             disabled:hover:text-ink-faint"
-                >
-                  {task.root ? <><IconCopy size={12} /> path</> : 'dropped'}
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <RepoRows task={task} onError={onError} />
       </header>
 
       {task.images?.length > 0 && (

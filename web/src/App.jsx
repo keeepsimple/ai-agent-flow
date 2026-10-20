@@ -19,18 +19,21 @@ export default function App() {
       <aside className="flex min-h-0 flex-col border-r border-line">
         <header className="flex items-center gap-2 border-b border-line px-3 py-2.5">
           <h1 className="text-[13px] font-semibold tracking-tight text-ink">Agent Flow</h1>
-          <span className="font-mono text-[10px] text-ink-faint">
-            {active} running · {waiting} waiting
-          </span>
+          {(active > 0 || waiting > 0) && (
+            <span className="font-mono text-[10px] text-ink-faint">
+              {active > 0 && `${active} running`}
+              {active > 0 && waiting > 0 && ' · '}
+              {waiting > 0 && <span className="text-warn">{waiting} waiting</span>}
+            </span>
+          )}
           {flow.notifications === 'default' && (
             <button
               type="button"
               onClick={flow.askForNotifications}
               title="Let this tab notify you. Clicking a notification opens the task."
-              className="ml-auto flex cursor-pointer items-center gap-1 text-[11px] text-ink-faint
-                         transition-colors duration-150 hover:text-ink"
+              className="ml-auto cursor-pointer text-ink-faint transition-colors duration-150 hover:text-ink"
             >
-              <IconBellOff size={13} /> Notify me
+              <IconBellOff size={14} />
             </button>
           )}
           {flow.notifications === 'denied' && (
@@ -52,18 +55,6 @@ export default function App() {
           </Button>
         </header>
 
-        {composing && flow.options && (
-          <NewTask
-            repos={flow.repos}
-            options={flow.options}
-            defaults={flow.defaults}
-            onClose={() => setComposing(false)}
-            onCreate={async (payload) => {
-              const task = await api.create(payload)
-              flow.select(task.id)
-            }}
-          />
-        )}
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <TaskList tasks={flow.tasks} selectedId={flow.selectedId} onSelect={flow.select} />
@@ -87,6 +78,19 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {composing && flow.options && (
+        <NewTask
+          repos={flow.repos}
+          options={flow.options}
+          defaults={flow.defaults}
+          onClose={() => setComposing(false)}
+          onCreate={async (payload) => {
+            const task = await api.create(payload)
+            flow.select(task.id)
+          }}
+        />
+      )}
 
       {flow.error && (
         <div

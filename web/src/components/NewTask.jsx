@@ -1,7 +1,78 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { IconChevronDown, IconSearch, IconX } from '@tabler/icons-react'
 import { Button, Field, ImageStrip, inputClass, usePastedImages } from './bits.jsx'
 
 const named = (v) => v || 'default'
+
+function RepoPicker({ all, picked, setPicked }) {
+  const [query, setQuery] = useState('')
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return q ? all.filter((r) => r.toLowerCase().includes(q)) : all
+  }, [all, query])
+
+  const toggle = (repo) =>
+    setPicked((prev) => (prev.includes(repo) ? prev.filter((r) => r !== repo) : [...prev, repo]))
+
+  return (
+    <div className="flex flex-col gap-2">
+      {picked.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5">
+          {picked.map((repo) => (
+            <li key={repo}>
+              <button
+                type="button"
+                onClick={() => toggle(repo)}
+                className="flex cursor-pointer items-center gap-1 rounded-md border border-accent/40 bg-accent/10
+                           py-1 pr-1.5 pl-2 font-mono text-[11px] text-accent transition-colors duration-150
+                           hover:border-accent/70"
+              >
+                {repo}
+                <IconX size={11} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="relative">
+        <IconSearch size={13} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-faint" />
+        <input
+          className={`${inputClass} pl-7`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={`Filter ${all.length} repos`}
+        />
+      </div>
+
+      <ul className="grid max-h-40 grid-cols-2 gap-x-2 overflow-y-auto">
+        {shown.map((repo) => {
+          const on = picked.includes(repo)
+          return (
+            <li key={repo}>
+              <button
+                type="button"
+                onClick={() => toggle(repo)}
+                className={`flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1 text-left
+                            font-mono text-[11.5px] transition-colors duration-150
+                            ${on ? 'text-accent' : 'text-ink-dim hover:bg-surface-3 hover:text-ink'}`}
+              >
+                <span
+                  className={`flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border
+                              ${on ? 'border-accent bg-accent text-surface' : 'border-line-strong'}`}
+                >
+                  {on && <span className="text-[9px] leading-none">✓</span>}
+                </span>
+                <span className="truncate">{repo}</span>
+              </button>
+            </li>
+          )
+        })}
+        {!shown.length && <li className="px-2 py-1 text-[11.5px] text-ink-faint">Nothing matches.</li>}
+      </ul>
+    </div>
+  )
+}
 
 export default function NewTask({ repos, options, defaults, onCreate, onClose }) {
   const [title, setTitle] = useState('')
@@ -11,12 +82,24 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
   const [effort, setEffort] = useState(defaults.effort)
   const [permissionMode, setPermissionMode] = useState(defaults.permissionMode)
   const [autoApprove, setAutoApprove] = useState(false)
+  const [showOptions, setShowOptions] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const shots = usePastedImages()
+  const first = useRef(null)
+
+  useEffect(() => {
+    first.current?.focus()
+    const onKey = (e) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const ready = title.trim() && prompt.trim() && picked.length
 
   const submit = async (e) => {
-    e.preventDefault()
+    e?.preventDefault()
+    if (!ready || busy) return
     setBusy(true)
     setError(null)
     try {
@@ -33,94 +116,138 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
   const mode = options.modes.find((m) => m.value === permissionMode)
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3 border-b border-line bg-surface-2 p-3">
-      <Field label="Title">
-        <input className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} required
-          placeholder="Mirror discount target names into the mobile payload" />
-      </Field>
-
-      <Field
-        label={`Repos · ${picked.length} of ${repos.length}`}
-        hint={
-          picked.length > 1
-            ? 'Each one gets its own worktree, branch and commits. The spec will have to say which deploys first.'
-            : 'Tick more than one when a feature genuinely spans repos.'
-        }
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-surface/80 p-6 backdrop-blur-sm"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <form
+        onSubmit={submit}
+        onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && submit(e)}
+        className="my-auto w-full max-w-2xl rounded-lg border border-line bg-surface-2 shadow-2xl"
       >
-        <div className="max-h-44 overflow-y-auto rounded-md border border-line bg-surface">
-          {repos.map((r) => (
-            <label
-              key={r}
-              className="flex cursor-pointer items-center gap-2 px-2.5 py-1 text-[12px]
-                         transition-colors duration-150 hover:bg-surface-3"
+        <header className="flex items-center justify-between border-b border-line px-5 py-3">
+          <h2 className="text-[14px] font-semibold text-ink">New task</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="cursor-pointer text-ink-faint transition-colors duration-150 hover:text-ink"
+          >
+            <IconX size={16} />
+          </button>
+        </header>
+
+        <div className="flex flex-col gap-4 px-5 py-4">
+          <Field label="Title">
+            <input
+              ref={first}
+              className={inputClass}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Mirror discount target names into the mobile payload"
+            />
+          </Field>
+
+          <Field
+            label="What to do"
+            hint="Write it as you would to a colleague. Paste a screenshot or a Figma frame straight in."
+            error={shots.error}
+          >
+            <textarea
+              className={`${inputClass} min-h-[140px] resize-y leading-relaxed`}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onPaste={shots.onPaste}
+              placeholder="get-discounts should return the targeted product and collection names, capped at 5, fail-soft if Shopify is down."
+            />
+          </Field>
+          <ImageStrip images={shots.images} onRemove={shots.remove} />
+
+          <Field
+            label={`Repos · ${picked.length} selected`}
+            hint={
+              picked.length > 1
+                ? 'Each gets its own worktree, branch and commits. The spec will have to say which deploys first.'
+                : 'Tick more than one when a feature genuinely spans repos.'
+            }
+          >
+            <RepoPicker all={repos} picked={picked} setPicked={setPicked} />
+          </Field>
+
+          <div className="border-t border-line pt-3">
+            <button
+              type="button"
+              onClick={() => setShowOptions((v) => !v)}
+              className="flex w-full cursor-pointer items-center gap-2 text-left text-[11px]
+                         tracking-wide text-ink-dim uppercase transition-colors duration-150 hover:text-ink"
             >
-              <input
-                type="checkbox"
-                className="accent-accent"
-                checked={picked.includes(r)}
-                onChange={(e) =>
-                  setPicked((prev) => (e.target.checked ? [...prev, r] : prev.filter((x) => x !== r)))
-                }
+              <IconChevronDown
+                size={13}
+                className={`transition-transform duration-200 ${showOptions ? '' : '-rotate-90'}`}
               />
-              <span className="font-mono text-ink-dim">{r}</span>
-            </label>
-          ))}
+              How it runs
+              {!showOptions && (
+                <span className="font-mono text-[10px] normal-case text-ink-faint">
+                  {named(model)} · {named(effort)} · {mode?.label.toLowerCase()}
+                  {autoApprove ? ' · unattended' : ''}
+                </span>
+              )}
+            </button>
+
+            {showOptions && (
+              <div className="mt-3 flex flex-col gap-3">
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Model">
+                    <select className={inputClass} value={model} onChange={(e) => setModel(e.target.value)}>
+                      {options.models.map((m) => <option key={m} value={m}>{named(m)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Effort">
+                    <select className={inputClass} value={effort} onChange={(e) => setEffort(e.target.value)}>
+                      {options.efforts.map((v) => <option key={v} value={v}>{named(v)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Permissions">
+                    <select
+                      className={inputClass}
+                      value={permissionMode}
+                      onChange={(e) => setPermissionMode(e.target.value)}
+                    >
+                      {options.modes.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <p className="text-[11px] text-ink-faint">{mode?.hint}</p>
+
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 accent-accent"
+                    checked={autoApprove}
+                    onChange={(e) => setAutoApprove(e.target.checked)}
+                  />
+                  <span>
+                    <span className="block text-[12px] text-ink">Run unattended</span>
+                    <span className="block text-[11px] text-ink-faint">
+                      Skip the spec and plan gates and go straight through.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            )}
+          </div>
+
+          {error && <p className="text-[11px] text-danger">{error}</p>}
         </div>
-      </Field>
-      <div className="-mt-2 flex gap-3 text-[11px]">
-        <button type="button" onClick={() => setPicked(repos)} className="cursor-pointer text-ink-faint hover:text-ink">
-          Whole directory
-        </button>
-        <button type="button" onClick={() => setPicked([])} className="cursor-pointer text-ink-faint hover:text-ink">
-          Clear
-        </button>
-      </div>
 
-      <Field
-        label="What to do"
-        hint="Write it as you would to a colleague. Paste a screenshot or a Figma frame straight in."
-        error={shots.error}
-      >
-        <textarea className={`${inputClass} min-h-[110px] resize-y`} value={prompt} required
-          onChange={(e) => setPrompt(e.target.value)} onPaste={shots.onPaste}
-          placeholder="get-discounts should return the targeted product and collection names, capped at 5, fail-soft if Shopify is down." />
-      </Field>
-      <ImageStrip images={shots.images} onRemove={shots.remove} />
-
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Model">
-          <select className={inputClass} value={model} onChange={(e) => setModel(e.target.value)}>
-            {options.models.map((m) => <option key={m} value={m}>{named(m)}</option>)}
-          </select>
-        </Field>
-        <Field label="Effort" hint="How hard it thinks per turn.">
-          <select className={inputClass} value={effort} onChange={(e) => setEffort(e.target.value)}>
-            {options.efforts.map((v) => <option key={v} value={v}>{named(v)}</option>)}
-          </select>
-        </Field>
-      </div>
-
-      <Field label="Permissions" hint={mode?.hint}>
-        <select className={inputClass} value={permissionMode} onChange={(e) => setPermissionMode(e.target.value)}>
-          {options.modes.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-        </select>
-      </Field>
-
-      <label className="flex cursor-pointer items-start gap-2">
-        <input type="checkbox" className="mt-0.5 accent-accent" checked={autoApprove}
-          onChange={(e) => setAutoApprove(e.target.checked)} />
-        <span>
-          <span className="block text-[12px] text-ink">Run unattended</span>
-          <span className="block text-[11px] text-ink-faint">Skip the spec and plan gates and go straight through.</span>
-        </span>
-      </label>
-
-      {error && <p className="text-[11px] text-danger">{error}</p>}
-
-      <div className="flex gap-2">
-        <Button variant="primary" type="submit" disabled={busy}>{busy ? 'Starting' : 'Start task'}</Button>
-        <Button onClick={onClose}>Cancel</Button>
-      </div>
-    </form>
+        <footer className="flex items-center gap-3 border-t border-line px-5 py-3">
+          <Button variant="primary" type="submit" disabled={!ready || busy}>
+            {busy ? 'Starting' : 'Start task'}
+          </Button>
+          <Button onClick={onClose}>Cancel</Button>
+          <span className="ml-auto font-mono text-[10px] text-ink-faint">⌘↵ to start · esc to close</span>
+        </footer>
+      </form>
+    </div>
   )
 }

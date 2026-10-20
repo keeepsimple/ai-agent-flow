@@ -252,7 +252,9 @@ export function askQuestion(id, text) {
   }
   const question = { id: randomUUID().slice(0, 8), text, askedAt: Date.now(), answer: null }
   task.questions.push(question)
-  update(id, { status: 'awaiting_answer' })
+  // Name the live one. A question left behind by a run that died keeps
+  // answer === null for ever, and the UI used to offer the oldest of those.
+  update(id, { status: 'awaiting_answer', openQuestionId: question.id })
   log(id, { kind: 'question', text })
   tell(task, `Question: ${task.title}`, text.slice(0, 180), true)
   return new Promise((resolve) => questionWaiters.set(question.id, resolve))
@@ -277,7 +279,7 @@ export function answerQuestion(id, questionId, answer) {
   question.answer = answer
   question.answeredAt = Date.now()
   log(id, { kind: 'answer', text: answer })
-  update(id, { status: 'running' })
+  update(id, { status: 'running', openQuestionId: null })
   resolve(answer)
   return task
 }
@@ -285,7 +287,7 @@ export function answerQuestion(id, questionId, answer) {
 export function cancel(id) {
   const task = tasks[id]
   if (!task) throw new Error('unknown task')
-  update(id, { status: 'cancelled', phase: null, awaitingPhase: null })
+  update(id, { status: 'cancelled', phase: null, awaitingPhase: null, openQuestionId: null })
   killTree(children.get(id))
   // Anything blocked on this task has to be let go, or the HTTP request that is
   // holding a question open never gets a response.
@@ -309,7 +311,7 @@ export function retry(id) {
   for (const p of PHASES) {
     if (task.phases[p].status === 'failed') task.phases[p] = { status: 'pending' }
   }
-  update(id, { status: 'queued', error: null })
+  update(id, { status: 'queued', error: null, openQuestionId: null })
   queue.push(id)
   pump()
   return task

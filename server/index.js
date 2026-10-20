@@ -4,6 +4,7 @@ import path from 'node:path'
 import { bus, sse, tasks, readLog, artifact } from './store.js'
 import * as runner from './runner.js'
 import * as uploads from './uploads.js'
+import * as repoGit from './git.js'
 
 const DIST = path.join(import.meta.dirname, '..', 'web', 'dist')
 const MIME = {
@@ -54,7 +55,7 @@ function taskView(id) {
     const text = artifact(id, name)
     if (text) docs[name] = text
   }
-  return { ...task, log: readLog(id), docs }
+  return { ...task, log: readLog(id), docs, git: repoGit.status(id) }
 }
 
 async function api(req, res, url) {
@@ -145,6 +146,15 @@ async function api(req, res, url) {
     return json(res, 200, runner.answerQuestion(id, questionId, answer.trim()))
   }
 
+  if (req.method === 'GET' && action === 'git') return json(res, 200, repoGit.status(id))
+  if (req.method === 'POST' && action === 'push') {
+    const { repo } = JSON.parse((await body(req)) || '{}')
+    return json(res, 200, { done: repoGit.push(id, repo), git: repoGit.status(id) })
+  }
+  if (req.method === 'POST' && action === 'merge') {
+    const { repo } = JSON.parse((await body(req)) || '{}')
+    return json(res, 200, { done: repoGit.merge(id, repo), git: repoGit.status(id) })
+  }
   if (req.method === 'POST' && action === 'cancel') return json(res, 200, runner.cancel(id))
   if (req.method === 'POST' && action === 'retry') return json(res, 200, runner.retry(id))
   if (req.method === 'DELETE' && action === 'worktree') return json(res, 200, runner.removeWorktrees(id))

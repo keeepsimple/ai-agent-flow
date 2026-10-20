@@ -67,7 +67,14 @@ export default function Decision({ task, onApprove, onAnswer }) {
     )
   }
 
-  const open = task.questions?.find((q) => q.answer === null)
+  // Only one question can have anything waiting on it. Ones left behind by a
+  // run that died stay unanswered for ever, so the oldest unanswered is usually
+  // the wrong one. The id comes from the server; newest is the fallback for a
+  // task that predates it.
+  const unanswered = (task.questions || []).filter((q) => q.answer === null)
+  const open = task.openQuestionId
+    ? unanswered.find((q) => q.id === task.openQuestionId)
+    : unanswered.at(-1)
   if (task.status === 'awaiting_answer' && open) {
     return (
       <section className="rounded-md border border-warn/40 bg-warn/5 p-3">

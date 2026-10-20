@@ -241,10 +241,12 @@ try {
   task = await waitFor(created.id, (t) => t.status === 'awaiting_answer', 'the agent to ask something')
   const question = task.questions.find((q) => q.answer === null)
   assert.match(question.text, /narrow version/)
+  assert.equal(task.openQuestionId, question.id, 'the server should name the live question')
   await post(`/api/tasks/${created.id}/answer`, { questionId: question.id, answer: 'narrow' })
 
   task = await waitFor(created.id, (t) => t.status === 'done' || t.status === 'failed', 'the task to finish')
   assert.equal(task.status, 'done', `task failed: ${task.error}`)
+  assert.equal(task.openQuestionId, null, 'answering should clear the live question')
   assert.deepEqual(
     Object.fromEntries(Object.entries(task.phases).map(([k, v]) => [k, v.status])),
     { spec: 'done', plan: 'done', implement: 'done', review: 'done' },
@@ -260,6 +262,36 @@ try {
     )
   }
 
+  // Shipping. The demo repos have no remote, so push must say so rather than
+  // throw something from git, and merge must only touch a clean base branch.
+  const gitState = await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()
+  assert.equal(gitState.length, 2)
+  for (const repo of gitState) {
+    assert.equal(repo.ahead, 1, `${repo.repo} should be one commit ahead`)
+    assert.equal(repo.unpushed, null, 'never pushed, so there is no upstream to compare with')
+    assert.equal(repo.mergeBlockedBy, null, `${repo.repo} base should be mergeable: ${repo.mergeBlockedBy}`)
+  }
+
+  const noRemote = await fetch(`${base}/api/tasks/${created.id}/push`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo: 'api' }),
+  })
+  assert.equal(noRemote.status, 400)
+  assert.match((await noRemote.json()).error, /no remote/)
+
+  // A dirty base branch must stop the merge rather than drag the human's
+  // uncommitted work into it.
+  fs.writeFileSync(path.join(repos, 'web', 'scratch.txt'), 'in progress')
+  const dirty = await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()
+  assert.match(dirty.find((r) => r.repo === 'web').mergeBlockedBy, /uncommitted changes/)
+  fs.rmSync(path.join(repos, 'web', 'scratch.txt'))
+
+  await post(`/api/tasks/${created.id}/merge`, {})
+  for (const repo of REPOS) {
+    assert.match(git(repo, 'log', '--oneline', 'main'), /impl/, `${repo} main should have the work`)
+  }
+
   // Dropping the checkouts must leave the work on the branches.
   await fetch(`${base}/api/tasks/${created.id}/worktree`, { method: 'DELETE' })
   task = await (await fetch(`${base}/api/tasks/${created.id}`)).json()
@@ -268,6 +300,10 @@ try {
     assert.ok(!fs.existsSync(tree.worktree), `${tree.repo} checkout should be removed`)
     assert.match(git(tree.repo, 'log', '--oneline', tree.branch), /impl/, `${tree.repo} branch should survive`)
   }
+  // The branch is still readable without its checkout, so it is still shippable.
+  const afterDrop = await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()
+  assert.equal(afterDrop[0].ahead, 0, 'merged into the base, so there is nothing left to merge')
+  assert.equal(afterDrop[0].branch, task.trees[0].branch, 'the branch is still reported')
 
   // Cancel has to actually stop the agent. It used to send SIGTERM to one pid,
   // leave the tree running, and the survivor could revive the task by asking.
@@ -296,7 +332,8 @@ try {
   console.log(
     'ok  2 repos, 2 worktrees, both gates, blocking ask, 4 phases, per-repo commits,\n' +
     '    drop keeps branches, pasted image reaches the prompt, bad uploads refused,\n' +
-    '    cancel kills a SIGTERM-ignoring tree, late ask cannot revive a dead task',
+    '    cancel kills a SIGTERM-ignoring tree, late ask cannot revive a dead task,\n' +
+    '    push needs a remote, merge refuses a dirty base and lands on a clean one',
   )
 } catch (err) {
   failure = err
