@@ -52,6 +52,8 @@ async function api(req, res, url) {
       tasks: Object.values(tasks).sort((a, b) => b.createdAt - a.createdAt),
       repos: runner.listRepos(),
       repoRoot: runner.REPO_ROOT,
+      options: { models: runner.MODELS, efforts: runner.EFFORTS, modes: runner.MODE_CHOICES },
+      defaults: runner.DEFAULTS,
     })
   }
 

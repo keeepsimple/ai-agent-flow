@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+export const taskIdFromHash = () => {
+  const hash = location.hash.slice(1)
+  return hash && hash !== 'new' ? hash : null
+}
+
 async function call(method, url, payload) {
   const res = await fetch(url, {
     method,
@@ -27,8 +32,10 @@ export function useFlow() {
   const [tasks, setTasks] = useState(null)
   const [repos, setRepos] = useState([])
   const [repoRoot, setRepoRoot] = useState('')
+  const [options, setOptions] = useState(null)
+  const [defaults, setDefaults] = useState(null)
   const [error, setError] = useState(null)
-  const [selectedId, setSelectedId] = useState(() => location.hash.slice(1) || null)
+  const [selectedId, setSelectedId] = useState(() => taskIdFromHash())
   const [detail, setDetail] = useState(null)
   const [live, setLive] = useState(false)
   const selectedRef = useRef(null)
@@ -40,6 +47,8 @@ export function useFlow() {
         setTasks(s.tasks)
         setRepos(s.repos)
         setRepoRoot(s.repoRoot)
+        setOptions(s.options)
+        setDefaults(s.defaults)
         setError(null)
       })
       .catch((e) => setError(e.message))
@@ -54,7 +63,7 @@ export function useFlow() {
   useEffect(() => {
     loadDetail(selectedId)
     // Deep link, so a task survives a reload and can be shared as a URL.
-    location.hash = selectedId || ''
+    if (selectedId) location.hash = selectedId
   }, [selectedId, loadDetail])
 
   useEffect(() => {
@@ -86,7 +95,7 @@ export function useFlow() {
   }, [phaseKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
-    tasks, repos, repoRoot, error, live, detail,
+    tasks, repos, repoRoot, options, defaults, error, live, detail,
     selectedId, select: setSelectedId,
     reload: loadState,
     setError,

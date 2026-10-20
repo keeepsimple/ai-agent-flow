@@ -10,7 +10,7 @@ const NEEDS_YOU = new Set(['awaiting_approval', 'awaiting_answer'])
 
 export default function App() {
   const flow = useFlow()
-  const [composing, setComposing] = useState(false)
+  const [composing, setComposing] = useState(() => location.hash === '#new')
   const waiting = (flow.tasks || []).filter((t) => NEEDS_YOU.has(t.status)).length
   const active = (flow.tasks || []).filter((t) => t.status === 'running').length
 
@@ -31,9 +31,11 @@ export default function App() {
           </Button>
         </header>
 
-        {composing && (
+        {composing && flow.options && (
           <NewTask
             repos={flow.repos}
+            options={flow.options}
+            defaults={flow.defaults}
             onClose={() => setComposing(false)}
             onCreate={async (payload) => {
               const task = await api.create(payload)

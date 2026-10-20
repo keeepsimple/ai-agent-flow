@@ -9,10 +9,37 @@ import { notify } from './notify.js'
 export const PORT = Number(process.env.FLOW_PORT || 7777)
 export const REPO_ROOT = process.env.FLOW_REPO_ROOT || path.resolve(import.meta.dirname, '..', '..')
 const MAX_CONCURRENT = Number(process.env.FLOW_MAX_CONCURRENT || 3)
-const PERMISSION_MODE = process.env.FLOW_PERMISSION_MODE || 'bypassPermissions'
 const CLAUDE_BIN = process.env.FLOW_CLAUDE_BIN || 'claude'
 const WIN = process.platform === 'win32'
 const ASK_SCRIPT = path.join(import.meta.dirname, 'ask.mjs')
+
+// These three end up on a command line, which on Windows goes through cmd.exe,
+// so they are allowlisted rather than trusted. Each list is the CLI's own enum;
+// '' means "leave the flag off and let the CLI's own default stand".
+export const MODELS = ['', 'fable', 'opus', 'sonnet', 'haiku']
+export const EFFORTS = ['', 'low', 'medium', 'high', 'xhigh', 'max']
+export const MODES = ['bypassPermissions', 'acceptEdits', 'auto', 'dontAsk', 'plan', 'manual']
+
+// MODES is the security allowlist. These are the two that make sense with
+// nobody at a keyboard, so they are what the form offers; the rest stay
+// reachable through FLOW_PERMISSION_MODE.
+export const MODE_CHOICES = [
+  { value: 'bypassPermissions', label: 'Full access', hint: 'Runs anything inside its worktree without asking.' },
+  { value: 'acceptEdits', label: 'Edits only', hint: 'Can write files. Anything needing a shell is denied, so tests will not run.' },
+]
+
+function pick(value, allowed, fallback, what) {
+  const v = (value ?? '').trim()
+  if (v === '' && fallback !== undefined) return fallback
+  if (!allowed.includes(v)) throw new Error(`${what} must be one of: ${allowed.filter(Boolean).join(', ')}`)
+  return v
+}
+
+export const DEFAULTS = {
+  model: pick(process.env.FLOW_MODEL, MODELS, ''),
+  effort: pick(process.env.FLOW_EFFORT, EFFORTS, ''),
+  permissionMode: pick(process.env.FLOW_PERMISSION_MODE, MODES, 'bypassPermissions'),
+}
 
 const children = new Map() // taskId -> ChildProcess
 const gateWaiters = new Map() // taskId -> resolve(feedbackOrNull)
@@ -34,7 +61,7 @@ export function listRepos() {
 const slugify = (s) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task'
 
-export function createTask({ title, prompt, repo, autoApprove = false, model = '' }) {
+export function createTask({ title, prompt, repo, autoApprove = false, model, effort, permissionMode }) {
   if (!title?.trim()) throw new Error('title is required')
   if (!prompt?.trim()) throw new Error('prompt is required')
   if (!listRepos().includes(repo)) throw new Error(`unknown repo: ${repo}`)
@@ -45,7 +72,9 @@ export function createTask({ title, prompt, repo, autoApprove = false, model = '
     title: title.trim(),
     prompt: prompt.trim(),
     repo,
-    model,
+    model: pick(model, MODELS, DEFAULTS.model, 'model'),
+    effort: pick(effort, EFFORTS, DEFAULTS.effort, 'effort'),
+    permissionMode: pick(permissionMode, MODES, DEFAULTS.permissionMode, 'permission mode'),
     autoApprove,
     status: 'queued',
     phase: null,
@@ -270,10 +299,14 @@ function runClaude(task, prompt) {
     '-p',
     '--output-format', 'stream-json',
     '--verbose',
-    '--permission-mode', PERMISSION_MODE,
+    '--permission-mode', task.permissionMode,
     '--add-dir', task.artifactDir,
   ]
   if (task.model) args.push('--model', task.model)
+  if (task.effort) args.push('--effort', task.effort)
+  // Nobody is at a keyboard to answer a permission prompt. Without this, a mode
+  // that wants to ask would stall the phase instead of getting on with it.
+  if (task.permissionMode !== 'bypassPermissions') args.push('--permission-prompts', 'none')
   if (process.env.FLOW_MAX_BUDGET_USD) args.push('--max-budget-usd', process.env.FLOW_MAX_BUDGET_USD)
 
   return new Promise((resolve, reject) => {

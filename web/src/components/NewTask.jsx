@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { Button, Field, inputClass } from './bits.jsx'
 
-export default function NewTask({ repos, onCreate, onClose }) {
+const named = (v) => v || 'default'
+
+export default function NewTask({ repos, options, defaults, onCreate, onClose }) {
   const [title, setTitle] = useState('')
   const [repo, setRepo] = useState(repos[0] || '')
   const [prompt, setPrompt] = useState('')
-  const [model, setModel] = useState('')
+  const [model, setModel] = useState(defaults.model)
+  const [effort, setEffort] = useState(defaults.effort)
+  const [permissionMode, setPermissionMode] = useState(defaults.permissionMode)
   const [autoApprove, setAutoApprove] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -15,13 +19,15 @@ export default function NewTask({ repos, onCreate, onClose }) {
     setBusy(true)
     setError(null)
     try {
-      await onCreate({ title, repo, prompt, model, autoApprove })
+      await onCreate({ title, repo, prompt, model, effort, permissionMode, autoApprove })
       onClose()
     } catch (err) {
       setError(err.message)
       setBusy(false)
     }
   }
+
+  const mode = options.modes.find((m) => m.value === permissionMode)
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3 border-b border-line bg-surface-2 p-3">
@@ -43,23 +49,32 @@ export default function NewTask({ repos, onCreate, onClose }) {
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Model" hint="Blank uses your default.">
+        <Field label="Model">
           <select className={inputClass} value={model} onChange={(e) => setModel(e.target.value)}>
-            <option value="">default</option>
-            <option value="opus">opus</option>
-            <option value="sonnet">sonnet</option>
-            <option value="haiku">haiku</option>
+            {options.models.map((m) => <option key={m} value={m}>{named(m)}</option>)}
           </select>
         </Field>
-        <label className="flex cursor-pointer items-start gap-2 self-end pb-1">
-          <input type="checkbox" className="mt-0.5 accent-accent" checked={autoApprove}
-            onChange={(e) => setAutoApprove(e.target.checked)} />
-          <span>
-            <span className="block text-[12px] text-ink">Run unattended</span>
-            <span className="block text-[11px] text-ink-faint">Skip the spec and plan gates.</span>
-          </span>
-        </label>
+        <Field label="Effort" hint="How hard it thinks per turn.">
+          <select className={inputClass} value={effort} onChange={(e) => setEffort(e.target.value)}>
+            {options.efforts.map((v) => <option key={v} value={v}>{named(v)}</option>)}
+          </select>
+        </Field>
       </div>
+
+      <Field label="Permissions" hint={mode?.hint}>
+        <select className={inputClass} value={permissionMode} onChange={(e) => setPermissionMode(e.target.value)}>
+          {options.modes.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
+      </Field>
+
+      <label className="flex cursor-pointer items-start gap-2">
+        <input type="checkbox" className="mt-0.5 accent-accent" checked={autoApprove}
+          onChange={(e) => setAutoApprove(e.target.checked)} />
+        <span>
+          <span className="block text-[12px] text-ink">Run unattended</span>
+          <span className="block text-[11px] text-ink-faint">Skip the spec and plan gates and go straight through.</span>
+        </span>
+      </label>
 
       {error && <p className="text-[11px] text-danger">{error}</p>}
 

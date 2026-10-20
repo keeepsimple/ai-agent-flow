@@ -32,6 +32,24 @@ security, fixes what it finds, and writes `review.md`.
 
 Tick **Run unattended** on a task to skip both approval gates.
 
+## Per task: model, effort, permissions
+
+Every task carries its own three settings, defaulted from the environment and
+changeable on the form:
+
+- **Model**: `fable`, `opus`, `sonnet`, `haiku`, or the CLI's own default.
+- **Effort**: `low` through `max`, or the CLI's default. How hard it thinks per turn.
+- **Permissions**: *Full access* (`bypassPermissions`) runs anything inside the
+  worktree without asking. *Edits only* (`acceptEdits`) can write files but is
+  denied a shell, so the plan's test commands will not run.
+
+All three are validated against a fixed list before they go anywhere near a
+command line. They apply to all four phases of that task.
+
+Anything with no shell has nobody to answer a permission prompt, so modes other
+than Full access also get `--permission-prompts none`: a tool call that would
+have asked is denied straight away instead of stalling the phase.
+
 ## When the agent needs you mid-phase
 
 The agent gets a script it can run to ask you something:
@@ -67,19 +85,20 @@ when a task finishes, the branch is there for you to review and merge yourself.
 | `FLOW_REPO_ROOT` | parent folder | Where repos are discovered |
 | `FLOW_DATA` | `./data` | Tasks, logs, artifacts, worktrees |
 | `FLOW_MAX_CONCURRENT` | `3` | Tasks running at the same time |
-| `FLOW_PERMISSION_MODE` | `bypassPermissions` | Passed to `claude --permission-mode` |
+| `FLOW_MODEL` | CLI default | Default model for new tasks |
+| `FLOW_EFFORT` | CLI default | Default effort for new tasks |
+| `FLOW_PERMISSION_MODE` | `bypassPermissions` | Default permissions for new tasks. Accepts the CLI's full set, including the ones the form does not offer |
 | `FLOW_MAX_BUDGET_USD` | unset | Per-phase spend cap |
 | `FLOW_NOTIFY` | on | `off` silences desktop notifications |
 | `FLOW_CLAUDE_BIN` | `claude` | Path to the CLI, if it is not on your PATH |
 
 ## The risk worth knowing about
 
-The default permission mode is `bypassPermissions`. An agent running under it can
-run any command in its worktree without asking, which is the only way the
-implement phase works unattended. The server listens on `127.0.0.1` only, for
-exactly that reason. Set `FLOW_PERMISSION_MODE=acceptEdits` if you would rather
-it could edit files but not run commands, and expect phases that need a shell to
-stall.
+Permissions default to `bypassPermissions`. An agent running under it can run any
+command in its worktree without asking, which is the only way the implement phase
+works unattended. The server listens on `127.0.0.1` only, for exactly that
+reason. Pick *Edits only* on a task you would rather keep away from a shell, and
+expect its verification commands to be denied.
 
 ## Platform notes
 

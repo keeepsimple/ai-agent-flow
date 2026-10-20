@@ -48,6 +48,7 @@ const say = (text) =>
 
 if (prompt.includes('Phase: write the spec')) {
   say('spec phase')
+  fs.writeFileSync(path.join(art, 'argv.json'), JSON.stringify(args))
   fs.writeFileSync(path.join(art, 'spec.md'), '# spec')
 } else if (prompt.includes('Phase: write the implementation plan')) {
   say('plan phase')
@@ -125,10 +126,22 @@ try {
   const state = await (await fetch(`${base}/api/state`)).json()
   assert.deepEqual(state.repos, ['demo'], 'should discover the demo repo')
 
+  // A rejected model must never reach a command line, especially on Windows
+  // where the child goes through cmd.exe.
+  const rejected = await fetch(`${base}/api/tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: 'bad', repo: 'demo', prompt: 'x', model: 'opus" & calc' }),
+  })
+  assert.equal(rejected.status, 400, 'an unknown model should be refused')
+  assert.match((await rejected.json()).error, /model must be one of/)
+
   const created = await post('/api/tasks', {
     title: 'Add a thing',
     repo: 'demo',
     prompt: 'add a thing',
+    model: 'sonnet',
+    effort: 'high',
   })
 
   let task = await waitFor(created.id, (t) => t.status === 'awaiting_approval', 'the spec gate')
@@ -136,6 +149,14 @@ try {
   assert.equal(task.docs['spec.md']?.trim(), '# spec', 'spec.md should be readable at the gate')
   assert.ok(fs.existsSync(task.worktree), 'worktree should exist on disk')
   assert.match(task.branch, /^flow\/add-a-thing-/)
+
+  const argv = JSON.parse(fs.readFileSync(path.join(root, 'data', 'tasks', created.id, 'argv.json'), 'utf8'))
+  const flag = (name) => argv[argv.indexOf(name) + 1]
+  assert.equal(flag('--model'), 'sonnet', 'the chosen model should reach the CLI')
+  assert.equal(flag('--effort'), 'high', 'the chosen effort should reach the CLI')
+  assert.equal(flag('--permission-mode'), 'bypassPermissions', 'the default mode should reach the CLI')
+  assert.ok(!argv.includes('--permission-prompts'), 'bypassPermissions has nothing to prompt about')
+
   await post(`/api/tasks/${created.id}/approve`, { approved: true, feedback: 'keep it narrow' })
 
   task = await waitFor(created.id, (t) => t.awaitingPhase === 'plan', 'the plan gate')
@@ -158,7 +179,7 @@ try {
   assert.ok(task.cost > 0, 'cost should accumulate across phases')
   assert.match(git('log', '--oneline', task.branch), /impl/, 'the branch should carry the commit')
 
-  console.log('ok  spec gate, plan gate, blocking ask, 4 phases, commit on branch')
+  console.log('ok  spec gate, plan gate, blocking ask, 4 phases, commit on branch, model/effort/mode flags')
 } catch (err) {
   failure = err
 } finally {

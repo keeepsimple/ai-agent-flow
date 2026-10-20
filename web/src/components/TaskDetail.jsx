@@ -64,12 +64,13 @@ export default function TaskDetail({ task, onError }) {
           </p>
         )}
 
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-5">
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 xl:grid-cols-6">
           <Meta label="Repo">{task.repo}</Meta>
           <Meta label="Branch">{task.branch || 'not created yet'}</Meta>
           <Meta label="Base">{task.baseBranch ? `${task.baseBranch} @ ${task.baseRef?.slice(0, 7)}` : '-'}</Meta>
           <Meta label="Cost">${(task.cost || 0).toFixed(3)} · {task.turns || 0} turns</Meta>
-          <Meta label="Model" mono={false}>{task.model || 'default'}</Meta>
+          <Meta label="Model">{task.model || 'default'} · {task.effort || 'default'}</Meta>
+          <Meta label="Permissions">{task.permissionMode}</Meta>
         </div>
 
         {task.worktree && (
