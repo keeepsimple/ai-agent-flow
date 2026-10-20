@@ -95,6 +95,24 @@ That call blocks until you answer in the UI, and the answer comes back on stdout
 The prompt tells the agent to use it for decisions only you can make, not for
 things it could find by reading the code.
 
+## When it is not quite right
+
+A finished task keeps a box at the bottom. Say what is wrong and it picks the
+work back up on the same branches, in the same worktrees, with the spec and the
+review it already wrote: no new task, nothing to re-explain.
+
+```
+the build is broken, pnpm typecheck fails in orders.service.ts
+```
+
+Paste the error, or a screenshot of it. The prompt tells it to reproduce the
+failure before touching anything, because a fix for a failure nobody has seen is
+a guess. A task that is done stays done when the follow-up ends; one that failed
+comes back as whatever it is then.
+
+This is also what **Catch up with \<base\>** runs on, so both are the same thing:
+one agent run on a task that already happened.
+
 ## Repos: one, several, or all of them
 
 `FLOW_REPO_ROOT` defaults to the folder above this one, and every sibling with a

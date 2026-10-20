@@ -4,7 +4,9 @@ import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { DATA, bus, sse, tasks, artifactDir, emit, update, log } from './store.js'
-import { RUNS, GATES, PHASE_LABEL, phasesFor, buildPrompt, buildCatchUpPrompt } from './prompts.js'
+import {
+  RUNS, GATES, PHASE_LABEL, phasesFor, buildPrompt, buildCatchUpPrompt, buildFollowUpPrompt,
+} from './prompts.js'
 import { UPLOADS, verify as verifyUpload } from './uploads.js'
 import { notify } from './notify.js'
 
@@ -341,34 +343,73 @@ export function answerQuestion(id, questionId, answer) {
 }
 
 /**
+ * One agent run outside the four phases, on a task that has already finished.
+ * The task goes back to whatever it was when the run ends, so a follow-up on a
+ * done task leaves it done rather than inventing a state for it.
+ */
+function sideRun(task, label, prompt, cwd, finished) {
+  const previous = task.status
+  update(task.id, { status: 'running', phase: label, error: null })
+
+  runClaude(task, prompt, cwd)
+    .then(() => {
+      if (tasks[task.id].status === 'cancelled') return
+      update(task.id, { status: previous, phase: null })
+      tell(task, finished, task.repos.join(' + '))
+    })
+    .catch((err) => {
+      if (tasks[task.id].status === 'cancelled') return
+      fail(task, `${label}: ${err.message}`)
+    })
+
+  return task
+}
+
+function readyForSideRun(id) {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  if (task.status === 'running' || task.status === 'queued') throw new Error('this task is already running')
+  if (!task.root) throw new Error('the worktree was dropped, so there is nothing to work on')
+  return task
+}
+
+/**
  * Pull the base branch into the task's branch and let an agent resolve whatever
  * that turns up. It runs in the worktree, never in the human's own checkout, so
  * a resolution they dislike costs them a branch and nothing else. Afterwards the
  * merge into the base is a fast-forward, which cannot conflict.
  */
 export function catchUp(id, repo) {
-  const task = tasks[id]
-  if (!task) throw new Error('unknown task')
-  if (task.status === 'running' || task.status === 'queued') throw new Error('this task is already running')
-  if (!task.root) throw new Error('the worktree was dropped, so there is nothing to merge into')
+  const task = readyForSideRun(id)
   const tree = task.trees?.find((t) => t.repo === repo)
   if (!tree) throw new Error(`unknown repo: ${repo}`)
 
-  const previous = task.status
-  update(id, { status: 'running', phase: `catching up with ${tree.baseBranch}`, error: null })
+  return sideRun(
+    task,
+    `catching up with ${tree.baseBranch}`,
+    buildCatchUpPrompt(tree, task),
+    tree.worktree,
+    `Caught up: ${task.title}`,
+  )
+}
 
-  runClaude(task, buildCatchUpPrompt(tree, task), tree.worktree)
-    .then(() => {
-      if (tasks[id].status === 'cancelled') return
-      update(id, { status: previous, phase: null })
-      tell(task, `Caught up: ${task.title}`, `${tree.repo} merged ${tree.baseBranch} into its branch`)
-    })
-    .catch((err) => {
-      if (tasks[id].status === 'cancelled') return
-      fail(task, `catching up with ${tree.baseBranch}: ${err.message}`)
-    })
+/**
+ * Keep working on a finished task: the build broke, the fix was not quite it,
+ * one more thing. Same worktrees, same branches, no new task to lose the
+ * context of what this already is.
+ */
+export function followUp(id, request) {
+  const task = readyForSideRun(id)
+  if (!request?.trim()) throw new Error('say what you want changed')
 
-  return task
+  log(id, { kind: 'decision', text: `Follow-up: ${request.trim()}` })
+  return sideRun(
+    task,
+    'follow-up',
+    buildFollowUpPrompt({ ...task, askScript: ASK_SCRIPT, request: request.trim() }),
+    task.root,
+    `Follow-up done: ${task.title}`,
+  )
 }
 
 export function cancel(id) {

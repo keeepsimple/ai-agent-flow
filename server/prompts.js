@@ -231,3 +231,34 @@ the merge broke. Never report a check as passing without having run it.
 End with: which files conflicted, how you resolved each one, and the real output
 of the checks you ran.`
 }
+
+/**
+ * A follow-up: the task already ran, and the human came back with something
+ * else to do on the same branches. Usually "the build is broken".
+ */
+export function buildFollowUpPrompt(ctx) {
+  return `${preamble(ctx)}
+
+## Follow-up
+
+This task has already run. Its branches, worktrees and commits are above, and
+whatever it produced is in ${ctx.artifactDir}.
+
+What the human came back with:
+
+${ctx.request
+  .split('\n')
+  .map((line) => `    ${line}`)
+  .join('\n')}
+
+- Read ${ctx.artifactDir}/review.md and spec.md where they exist. They say what
+  this was for and what was already known to be wrong with it.
+- If they are reporting something broken, reproduce it before you touch
+  anything. A fix for a failure you have not seen is a guess.
+- Work on the existing branches. Do not start new ones.
+- Run the repo's own checks, and commit what you change.
+- If what they are asking for is larger than it sounds, say so plainly and do
+  the narrow version rather than quietly growing the task.
+
+End with what you changed, what you ran, and the real output.`
+}

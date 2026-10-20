@@ -42,6 +42,7 @@ export const api = {
   push: (id, repo, base = false) => call('POST', `/api/tasks/${id}/push`, { repo, base }),
   merge: (id, repo) => call('POST', `/api/tasks/${id}/merge`, { repo }),
   catchUp: (id, repo) => call('POST', `/api/tasks/${id}/catch-up`, { repo }),
+  followUp: (id, request) => call('POST', `/api/tasks/${id}/follow-up`, { request }),
 }
 
 export function useFlow() {

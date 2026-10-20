@@ -71,6 +71,16 @@ if (prompt.includes('SLEEPY')) {
 } else if (prompt.includes('Phase: write the implementation plan')) {
   say('plan phase')
   fs.writeFileSync(path.join(art, 'plan.md'), '# plan')
+} else if (prompt.includes('## Follow-up')) {
+  for (const line of prompt.split('\\n')) {
+    const match = line.match(/^\\s+worktree\\s+(\\S+)$/)
+    if (!match) continue
+    const where = match[1]
+    fs.writeFileSync(path.join(where, 'fix.txt'), 'fixed the build')
+    execFileSync('git', ['-C', where, 'add', '-A'])
+    execFileSync('git', ['-C', where, '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'fix build'])
+  }
+  say('reproduced it, fixed it, checks pass')
 } else if (prompt.includes('into this branch')) {
   // Catch-up run: do the merge for real, in the worktree we were started in.
   execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'merge', 'main'])
@@ -323,6 +333,27 @@ try {
     assert.equal(repo.mergeBlockedBy, null, `${repo.repo} base should be mergeable: ${repo.mergeBlockedBy}`)
   }
 
+  // A finished task can be worked on again without losing what it already is:
+  // same branches, same worktrees, no new task.
+  await post(`/api/tasks/${created.id}/follow-up`, { request: 'the build is broken, fix it' })
+  const followed = await waitFor(created.id, (t) => t.status === 'done' || t.status === 'failed', 'the follow-up')
+  assert.equal(followed.status, 'done', `follow-up failed: ${followed.error}`)
+  assert.equal(followed.phase, null, 'and the task goes back to what it was, not a phase that does not exist')
+  for (const tree of followed.trees) {
+    assert.match(git(tree.repo, 'log', '--oneline', tree.branch), /fix build/, `${tree.repo} kept its branch`)
+  }
+  assert.ok(
+    followed.log.some((l) => l.kind === 'decision' && l.text.includes('the build is broken')),
+    'the request should be in the history, not just its effect',
+  )
+
+  const empty = await fetch(`${base}/api/tasks/${created.id}/follow-up`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ request: '   ' }),
+  })
+  assert.equal(empty.status, 400, 'an empty follow-up should be refused')
+
   // The base moving on makes the merge something other than a fast-forward.
   // Catching up is an agent run in the worktree; the human's checkout is
   // untouched until they press merge themselves.
@@ -337,7 +368,8 @@ try {
   await waitFor(created.id, (t) => t.status === 'done', 'the catch-up to finish')
   moved = (await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()).find((r) => r.repo === 'api')
   assert.equal(moved.behind, 0, 'catching up should leave nothing behind')
-  assert.equal(moved.ahead, 2, 'the branch now carries its own work plus the merge')
+  // impl + the follow-up fix + the merge it just made.
+  assert.equal(moved.ahead, 3, 'the branch carries its own work plus the merge it just took')
   assert.equal(
     git('api', 'status', '--porcelain'),
     '',
@@ -442,7 +474,8 @@ try {
     '    catch-up merges the base in from the worktree without touching the checkout,\n' +
     '    push covers the task branch and the base branch after it is merged,\n' +
     '    unattended answers its own questions and the agent names an untitled task,\n' +
-    '    a quick run skips spec and plan but still reviews itself',
+    '    a quick run skips spec and plan but still reviews itself,\n' +
+    '    a finished task takes a follow-up on the same branches',
   )
 } catch (err) {
   failure = err

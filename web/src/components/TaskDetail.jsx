@@ -5,6 +5,7 @@ import Markdown from './Markdown.jsx'
 import RepoRows from './RepoRows.jsx'
 import PhaseRail from './PhaseRail.jsx'
 import Decision from './Decision.jsx'
+import FollowUp from './FollowUp.jsx'
 import LogStream from './LogStream.jsx'
 import { api } from '../api.js'
 
@@ -126,6 +127,8 @@ export default function TaskDetail({ task, onError }) {
           </div>
         )}
       </div>
+
+      {!ACTIVE.has(task.status) && <FollowUp task={task} onError={onError} />}
     </div>
   )
 }
