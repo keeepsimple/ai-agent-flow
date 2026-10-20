@@ -77,7 +77,9 @@ export default function Review({ task, flow }) {
 
       <div className="flex flex-wrap items-center gap-4 border-b border-line px-6 py-4">
         <div className="min-w-0 flex-[1_1_420px]">
-          <h1 className="m-0 truncate text-[22px] font-semibold tracking-[-0.01em]">{task.title}</h1>
+          <h1 className="m-0 line-clamp-2 text-[22px] font-semibold tracking-[-0.01em] break-words">
+            {task.title}
+          </h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[13px] text-muted">
             {task.trees?.map((tree) => (
               <span key={tree.repo} className="flex items-center gap-2">

@@ -21,7 +21,7 @@ const HEADING = ['text-[15px]', 'text-[14px]', 'text-[13px]', 'text-[12.5px]']
 
 export default function Markdown({ source, className = '' }) {
   return (
-    <div className={`text-[12.5px] leading-[1.65] text-ink-dim ${className}`}>
+    <div className={`text-[12.5px] leading-[1.65] break-words text-ink-dim ${className}`}>
       {blocks(source).map((block, i) => {
         if (block.type === 'h') {
           return (

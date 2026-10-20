@@ -45,7 +45,7 @@ export default function Decision({ task, onError }) {
         {gate ? `Your call: ${task.awaitingPhase}` : 'Tern needs an answer'}
       </div>
 
-      <div className="text-[13px] whitespace-pre-wrap text-ink-2">
+      <div className="text-[13px] break-words whitespace-pre-wrap text-ink-2">
         {gate ? GATE[task.awaitingPhase] : question.text}
       </div>
 

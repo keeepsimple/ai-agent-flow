@@ -86,6 +86,7 @@ if (prompt.includes('SLEEPY')) {
   execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'merge', 'main'])
   say('merged main in')
 } else if (prompt.includes('Phase: implement')) {
+  if (prompt.includes('title.txt')) fs.writeFileSync(path.join(art, 'title.txt'), 'Named from the build')
   const ask = ${JSON.stringify(path.join(here, 'ask.mjs'))}
   const answer = execFileSync(process.execPath, [ask, 'ship the narrow version or the full one?'], {
     encoding: 'utf8',
@@ -237,6 +238,7 @@ try {
   fastTask = await waitFor(fast.id, (t) => t.status === 'done' || t.status === 'failed', 'the quick run')
   assert.equal(fastTask.status, 'done', `quick run failed: ${fastTask.error}`)
   assert.ok(!fastTask.docs['spec.md'], 'no spec should have been written')
+  assert.equal(fastTask.title, 'Named from the build', 'a run with no spec still names itself')
   assert.ok(fastTask.docs['review.md'], 'but the review still happens')
   assert.ok(
     !fastTask.log.some((l) => l.kind === 'decision'),

@@ -203,7 +203,12 @@ async function runTask(task) {
     task.phases[phase] = { status: 'running', startedAt: Date.now() }
     emit(task)
 
-    const prompt = buildPrompt(phase, { ...task, askScript: ASK_SCRIPT, feedback })
+    const prompt = buildPrompt(phase, {
+      ...task,
+      askScript: ASK_SCRIPT,
+      needsTitle: phase === phasesFor(task.run)[0],
+      feedback,
+    })
     feedback = null
 
     let result
@@ -221,7 +226,7 @@ async function runTask(task) {
       endedAt: Date.now(),
       summary: result.summary,
     }
-    if (phase === 'spec' && !task.namedByHuman) {
+    if (phase === phasesFor(task.run)[0] && !task.namedByHuman) {
       const written = fs.existsSync(path.join(task.artifactDir, 'title.txt'))
         ? fs.readFileSync(path.join(task.artifactDir, 'title.txt'), 'utf8').trim()
         : ''

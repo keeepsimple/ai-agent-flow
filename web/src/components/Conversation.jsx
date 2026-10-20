@@ -95,7 +95,7 @@ export default function Conversation({ task, children }) {
       }}
     >
       <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4 px-6 py-5">
-        <div className="max-w-[85%] self-end rounded-xl border border-line-strong bg-selected px-3.5 py-3">
+        <div className="max-w-[85%] self-end rounded-xl border border-line-strong bg-selected px-3.5 py-3 break-words">
           {task.prompt}
         </div>
 
@@ -144,6 +144,7 @@ export default function Conversation({ task, children }) {
               <div
                 key={i}
                 className={`rounded-xl border px-3.5 py-3 text-[13px]
+                            break-words
                             ${mine ? 'border-line-strong bg-selected self-end max-w-[85%]' : 'border-warn-line bg-warn-bg'}`}
               >
                 <div className={`mb-1 text-xs ${mine ? 'text-muted' : 'text-warn'}`}>

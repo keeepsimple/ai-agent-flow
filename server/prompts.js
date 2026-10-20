@@ -42,6 +42,20 @@ const treeTable = (ctx) =>
     )
     .join('\n')
 
+/**
+ * Naming the task is asked for in whichever phase runs first, so a quick run
+ * with no spec still ends up with something better than the first line of the
+ * request, which is often a pasted URL.
+ */
+function titleAsk(ctx) {
+  if (ctx.namedByHuman || !ctx.needsTitle) return ''
+  return `
+This task has no title yet: it is showing the first line of the request. Write
+one short line naming what this actually turns out to be into
+${ctx.artifactDir}/title.txt. Under 70 characters, no trailing full stop.
+`
+}
+
 function preamble(ctx) {
   const many = ctx.trees.length > 1
   return `You are running one phase of an automated workflow on ${
@@ -110,15 +124,7 @@ ${ctx.artifactDir}/spec.md with:
 - Acceptance criteria: how someone checks this is done, as concrete checks
 - Open questions: anything you had to assume, marked as your assumption
 
-${
-    ctx.namedByHuman
-      ? ''
-      : `
-This task has no title yet: it is showing the first line of the request. Write
-one short line naming what this actually turns out to be into
-${ctx.artifactDir}/title.txt. Under 70 characters, no trailing full stop.
-`
-  }
+${titleAsk(ctx)}
 Write no product code in this phase. Do not commit.
 End your output with a 5 line summary of the spec.`,
 
@@ -157,6 +163,7 @@ Read ${ctx.artifactDir}/spec.md and ${ctx.artifactDir}/plan.md and build it.`
 - Match the surrounding code: its naming, its idiom, its comment density.
 - Do not invent abstractions the plan did not call for.
 
+${titleAsk(ctx)}
 Never claim a step passes without having run the command and read the output.
 End your output with: what you built, what you ran, and what the output was.`,
 

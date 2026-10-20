@@ -242,10 +242,12 @@ function Card({ task }) {
               ? 'border-accent/35 bg-input text-ink hover:border-accent/60'
               : 'border-line bg-input text-ink hover:border-line-strong'}`}
     >
-      <div className="font-medium">{task.title}</div>
+      <div className="line-clamp-2 font-medium break-words">{task.title}</div>
 
       {!merged && task.trees?.[0] && (
-        <div className="truncate font-mono text-xs text-muted">{task.trees[0].branch}</div>
+        <div className="truncate font-mono text-xs text-muted" title={task.trees[0].branch}>
+          {task.trees[0].branch}
+        </div>
       )}
 
       {asking ? (
