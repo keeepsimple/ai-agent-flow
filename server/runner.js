@@ -10,6 +10,8 @@ import {
 import { UPLOADS, verify as verifyUpload } from './uploads.js'
 import { notify } from './notify.js'
 import { listRepos, resolveRepo } from './roots.js'
+import * as devServer from './preview.js'
+import * as browser from './browser.js'
 
 export const PORT = Number(process.env.FLOW_PORT || 7777)
 export { listRepos, roots, addRoot, removeRoot, browse, DEFAULT_ROOT } from './roots.js'
@@ -17,6 +19,7 @@ const MAX_CONCURRENT = Number(process.env.FLOW_MAX_CONCURRENT || 3)
 const CLAUDE_BIN = process.env.FLOW_CLAUDE_BIN || 'claude'
 const WIN = process.platform === 'win32'
 const ASK_SCRIPT = path.join(import.meta.dirname, 'ask.mjs')
+const PREVIEW_SCRIPT = path.join(import.meta.dirname, 'preview.mjs')
 
 // These three end up on a command line, which on Windows goes through cmd.exe,
 // so they are allowlisted rather than trusted. Each list is the CLI's own enum;
@@ -208,6 +211,7 @@ async function runTask(task) {
     const prompt = buildPrompt(phase, {
       ...task,
       askScript: ASK_SCRIPT,
+      previewScript: task.trees?.some((t) => devServer.isShopifyApp(t.worktree)) ? PREVIEW_SCRIPT : null,
       needsTitle: phase === phasesFor(task.run)[0],
       feedback,
     })
@@ -415,10 +419,33 @@ export function followUp(id, request) {
   )
 }
 
+/**
+ * Start the app for this task and, when asked for a path, look at it.
+ * The dev server belongs to the worktree, so a second call reuses it.
+ */
+export async function preview(id, where = '') {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  if (!task.root) throw new Error('the worktree was dropped, so there is nothing to run')
+
+  const tree = task.trees?.find((t) => devServer.isShopifyApp(t.worktree)) || task.trees?.[0]
+  if (!tree) throw new Error('this task has no worktree')
+
+  const { url, reused } = await devServer.start(id, tree.worktree)
+  if (!reused) update(id, { previewUrl: url })
+  if (!where) return { url }
+
+  const shot = path.join(task.artifactDir, 'shots', `${Date.now()}.png`)
+  const full = where.startsWith('http') ? where : new URL(where, url).toString()
+  log(id, { kind: 'tool', tool: 'Preview', text: full })
+  return browser.visit(full, shot)
+}
+
 export function cancel(id) {
   const task = tasks[id]
   if (!task) throw new Error('unknown task')
   update(id, { status: 'cancelled', phase: null, awaitingPhase: null, openQuestionId: null })
+  for (const tree of task.trees || []) devServer.stop(tree.worktree)
   killTree(children.get(id))
   // Anything blocked on this task has to be let go, or the HTTP request that is
   // holding a question open never gets a response.

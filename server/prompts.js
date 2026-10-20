@@ -95,7 +95,25 @@ ${
     ? `This task runs unattended: nobody will answer a question. Where you would
 have asked, decide, and write the assumption and your reasoning into the
 document for the phase so it can be checked later.`
-    : `If you hit a decision only the human can make, run:
+    : `${
+  ctx.previewScript
+    ? `This is a Shopify app, so you can look at it running rather than reasoning
+about the screen. Start it and get its URL:
+
+    node "${ctx.previewScript}"
+
+Then open a path in a browser that is already signed in to the dev store:
+
+    node "${ctx.previewScript}" /app/pricing
+
+That prints the page's visible text and saves a screenshot; open the screenshot
+with the Read tool. Starting the app takes a couple of minutes the first time.
+Use this to check a change you made to a screen. Do not use it to go hunting
+around the admin.
+
+`
+    : ''
+}If you hit a decision only the human can make, run:
     node "${ctx.askScript}" "your question"
 It blocks and prints their answer on stdout. Use it instead of guessing on
 anything that would be expensive to get wrong. Do not use it for questions you

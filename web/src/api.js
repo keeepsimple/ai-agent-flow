@@ -32,6 +32,7 @@ export const api = {
   disk: () => call('GET', '/api/disk'),
   addRoot: (path) => call('POST', '/api/roots', { path }),
   browseRoot: () => call('POST', '/api/roots/browse'),
+  openBrowser: () => call('POST', '/api/browser'),
   removeRoot: (path) => call('DELETE', '/api/roots', { path }),
   prune: () => call('POST', '/api/disk/prune'),
   create: (payload) => call('POST', '/api/tasks', payload),

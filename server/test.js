@@ -533,6 +533,32 @@ try {
   assert.ok(afterDrop[0].produced > 0, 'but the task did produce commits: that is a merged branch, not an empty one')
   assert.equal(afterDrop[0].branch, task.trees[0].branch, 'the branch is still reported')
 
+  // Running the app rewrites an app's URLs on the Partner dashboard, so which
+  // app it points at must never be guessed.
+  const shopTree = path.join(root, 'data', 'worktrees', fast.id, 'api')
+  fs.writeFileSync(path.join(shopTree, 'shopify.app.toml'), 'name = "Live App"\nclient_id = "live123"\n')
+  fs.writeFileSync(
+    path.join(shopTree, 'shopify.app.demo.toml'),
+    'name = "Demo App"\nclient_id = "demo456"\napplication_url = "https://demo.example.com/"\n',
+  )
+
+  const { isShopifyApp, target } = await import('./preview.js')
+  assert.ok(isShopifyApp(shopTree), 'a shopify.app.toml marks the repo')
+  assert.deepEqual(
+    { ...target(shopTree, 'demo'), file: undefined },
+    { file: undefined, name: 'Demo App', clientId: 'demo456', appUrl: 'https://demo.example.com/' },
+    'the named config is what gets reported, not the default one',
+  )
+  assert.equal(target(shopTree, 'nope'), null)
+
+  const ungated = await fetch(`${base}/api/tasks/${fast.id}/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+  assert.equal(ungated.status, 400, 'with no config named, it must refuse to start')
+  assert.match((await ungated.json()).error, /FLOW_SHOPIFY_CONFIG/)
+
   // Disk: a worktree is a full checkout, and the one thing that must stay true
   // is that reclaiming the space never reclaims the work.
   const before = await (await fetch(`${base}/api/disk`)).json()
@@ -589,7 +615,8 @@ try {
     '    an attached log reaches the prompt and a binary in a .log is refused,\n' +
     '    the diff is readable from the app and an enormous file is only described,\n' +
     '    reclaiming worktree space never reclaims the work,\n' +
-    '    a second folder can be added and an ambiguous repo name is refused',
+    '    a second folder can be added and an ambiguous repo name is refused,\n' +
+    '    running the app refuses until the config it may repoint is named',
   )
 } catch (err) {
   failure = err

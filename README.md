@@ -166,6 +166,38 @@ Neither button deletes the branch, and none of this is automatic.
 Both read the branch through the repo rather than the worktree, so **Drop
 worktrees** frees the disk without taking the work out of reach.
 
+## Looking at the running app
+
+A Shopify app cannot be checked by reading the diff: the screen is the thing.
+Where a worktree has a `shopify.app.toml`, the agent gets a second script:
+
+```sh
+node /path/to/agent-flow/server/preview.mjs            # start it, print its URL
+node /path/to/agent-flow/server/preview.mjs /app/plans # open that path
+```
+
+The second form returns the page's visible text and saves a screenshot the
+agent opens with its Read tool.
+
+**`shopify app dev` rewrites an app's URLs on the Partner dashboard**, so which
+app it points at is the whole safety question, and this never guesses it:
+
+```sh
+FLOW_SHOPIFY_CONFIG=ego-mobile-builder-dev   # required; it refuses without one
+FLOW_SHOPIFY_STORE=your-store.myshopify.com  # optional, if the CLI has not remembered one
+```
+
+It runs with `--no-input`, so anything it would have asked fails the run rather
+than hanging on a prompt nobody can answer, and it logs the app name, client id
+and the URL being repointed before it starts. The dev server stops when the
+task finishes or is cancelled.
+
+The browser is a Chrome the tool owns, with its own profile under `data/chrome`.
+It cannot be the browser you already have open: that one was started without a
+debugging port, and Chrome ignores the flag on the default profile anyway. Press
+**Test browser** in the header once and sign in to your dev store there; the
+session stays.
+
 ## Pipeline status
 
 Once a branch is pushed, its row shows what CI made of it, linked to the

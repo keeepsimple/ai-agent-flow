@@ -6,6 +6,8 @@ import * as runner from './runner.js'
 import * as uploads from './uploads.js'
 import * as repoGit from './git.js'
 import * as disk from './disk.js'
+import * as preview from './preview.js'
+import * as browser from './browser.js'
 
 const DIST = path.join(import.meta.dirname, '..', 'web', 'dist')
 const MIME = {
@@ -104,6 +106,11 @@ async function api(req, res, url) {
     return
   }
 
+  if (section === 'browser' && req.method === 'POST') {
+    // Opens the tool's own Chrome so a human can sign in to it once.
+    return json(res, 200, { ...(await browser.ensure()), profile: browser.profile() })
+  }
+
   if (section === 'roots') {
     if (req.method === 'POST' && id === 'browse') {
       const chosen = await runner.browse()
@@ -180,6 +187,10 @@ async function api(req, res, url) {
   if (req.method === 'POST' && action === 'push') {
     const { repo, base } = JSON.parse((await body(req)) || '{}')
     return json(res, 200, { done: repoGit.push(id, repo, { base }), git: repoGit.status(id) })
+  }
+  if (req.method === 'POST' && action === 'preview') {
+    const { path: where } = JSON.parse((await body(req)) || '{}')
+    return json(res, 200, await runner.preview(id, where))
   }
   if (req.method === 'POST' && action === 'follow-up') {
     const { request } = JSON.parse(await body(req))
