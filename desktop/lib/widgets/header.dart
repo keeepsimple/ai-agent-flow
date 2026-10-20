@@ -148,6 +148,15 @@ class Header extends StatelessWidget {
                   final out = await flow.api.openBrowser();
                   if (out['blocked'] == true) {
                     flow.fail(ApiError(out['why'] as String));
+                  } else if (out['yourChrome'] == false) {
+                    // The window opens either way. This is about whether it
+                    // could start from the session you already have.
+                    flow.fail(ApiError(
+                      'The window is open, but signed out: macOS will not let '
+                      'this app read your own Chrome. Grant it Full Disk Access '
+                      'in System Settings, delete the browser profile, and press '
+                      'this again.',
+                    ));
                   }
                 } catch (err) {
                   flow.fail(err);

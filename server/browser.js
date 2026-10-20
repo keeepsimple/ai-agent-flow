@@ -109,9 +109,50 @@ async function alive() {
   }
 }
 
+/**
+ * Is the Chrome you actually use readable from here? That is the whole of the
+ * Full Disk Access question, and the only way to answer it is to try.
+ */
+function canReadYourChrome() {
+  const source = process.env.FLOW_CHROME_USER_DATA || USER_DATA[process.platform]
+  const name = process.env.FLOW_CHROME_PROFILE || 'Default'
+  if (!source) return null
+  try {
+    fs.readdirSync(path.join(source, name))
+    return true
+  } catch (err) {
+    return err.code === 'EPERM' || err.code === 'EACCES' ? false : null
+  }
+}
+
+/**
+ * Bring the window back. A Chrome whose last window was closed is still
+ * running, so starting it again does nothing and the button looks dead.
+ */
+async function raise() {
+  try {
+    const targets = await (await fetch(`${BASE}/json/list`)).json()
+    const page = targets.find((t) => t.type === 'page')
+    if (page) {
+      await fetch(`${BASE}/json/activate/${page.id}`)
+      return 'raised'
+    }
+  } catch {
+    // Fall through: opening a tab is the other way to get a window back.
+  }
+  try {
+    await fetch(`${BASE}/json/new?about:blank`, { method: 'PUT' })
+    return 'opened a tab'
+  } catch {
+    return null
+  }
+}
+
 /** Start the tool's Chrome if it is not already up. Visible, so you can log in. */
 export async function ensure({ headless = false } = {}) {
-  if (await alive()) return { url: BASE, started: false, ...seeding }
+  if (await alive()) {
+    return { url: BASE, started: false, did: await raise(), yourChrome: canReadYourChrome(), ...seeding }
+  }
 
   const bin = binary()
   if (!bin) throw new Error('no Chrome found; set FLOW_CHROME_BIN to its path')
@@ -133,7 +174,7 @@ export async function ensure({ headless = false } = {}) {
   child.unref()
 
   for (let i = 0; i < 40; i++) {
-    if (await alive()) return { url: BASE, started: true, ...from }
+    if (await alive()) return { url: BASE, started: true, yourChrome: canReadYourChrome(), ...from }
     await sleep(250)
   }
   throw new Error('Chrome started but never opened its debugging port')
