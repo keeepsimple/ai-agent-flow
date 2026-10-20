@@ -26,7 +26,7 @@ export default function Composer({ task, onError }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[720px] px-6 pt-3 pb-5">
+    <div className="mx-auto w-full max-w-[720px] shrink-0 px-6 pt-3 pb-5">
       <div
         onDrop={attach.onDrop}
         onDragOver={attach.onDragOver}
@@ -51,7 +51,7 @@ export default function Composer({ task, onError }) {
                 ? 'Tern is working. This box opens when it stops.'
                 : 'Ask for a change. Paste a screenshot or an error straight in.'
           }
-          className="field-bare w-full resize-none border-0 bg-transparent outline-none placeholder:text-faint"
+          className="field-bare w-full resize-none field-sizing-content min-h-[2lh] max-h-[40vh] border-0 bg-transparent outline-none placeholder:text-faint"
         />
         <AttachStrip files={attach.files} onRemove={attach.remove} size="h-12 w-16" />
         {attach.error && <p className="mt-1 text-[11px] text-bad">{attach.error}</p>}

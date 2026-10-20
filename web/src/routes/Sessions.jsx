@@ -145,7 +145,7 @@ function NewTask({ flow, onError }) {
         onPaste={attach.onPaste}
         onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && start()}
         placeholder="e.g. get-discounts should return targeted product and collection names, capped at 5"
-        className="field-bare w-full resize-none border-0 bg-transparent text-[15px] outline-none placeholder:text-faint"
+        className="field-bare w-full resize-none field-sizing-content min-h-[2lh] max-h-[40vh] border-0 bg-transparent text-[15px] outline-none placeholder:text-faint"
       />
       <AttachStrip files={attach.files} onRemove={attach.remove} size="h-12 w-16" />
       {attach.error && <span className="text-[11px] text-bad">{attach.error}</span>}

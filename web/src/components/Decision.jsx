@@ -55,7 +55,7 @@ export default function Decision({ task, onError }) {
         onChange={(e) => setText(e.target.value)}
         onPaste={attach.onPaste}
         placeholder={gate ? 'Optional. Anything here overrides the document.' : 'Your answer. Screenshots can be pasted in.'}
-        className={`${inputClass} resize-y bg-page font-mono`}
+        className={`${inputClass} resize-y field-sizing-content min-h-[calc(2lh+1.125rem)] max-h-[40vh] bg-page font-mono`}
       />
       <AttachStrip files={attach.files} onRemove={attach.remove} size="h-12 w-16" />
       {attach.picker}
