@@ -66,6 +66,7 @@ if (prompt.includes('SLEEPY')) {
   say('spec phase')
   fs.writeFileSync(path.join(art, 'argv.json'), JSON.stringify(args))
   fs.writeFileSync(path.join(art, 'prompt.txt'), prompt)
+  if (prompt.includes('title.txt')) fs.writeFileSync(path.join(art, 'title.txt'), 'Named by the agent')
   fs.writeFileSync(path.join(art, 'spec.md'), '# spec')
 } else if (prompt.includes('Phase: write the implementation plan')) {
   say('plan phase')
@@ -171,6 +172,23 @@ try {
     await sleep(50)
   }
   assert.equal((await (await fetch(`${base}/api/state`)).json()).watching, 0, 'closing must release it')
+
+  // Unattended has to mean unattended: a run nobody is watching must not sit
+  // blocked on a question, and a task with no title gets named by the agent.
+  const quiet = await post('/api/tasks', { repos: ['api'], prompt: 'just do it, nobody is watching', autoApprove: true })
+  assert.equal(quiet.title, 'just do it, nobody is watching', 'the prompt stands in until the agent names it')
+  assert.equal(quiet.namedByHuman, false)
+  let quietTask = await waitFor(quiet.id, (t) => t.status === 'done' || t.status === 'failed', 'the quiet run')
+  assert.equal(quietTask.status, 'done', `unattended run stalled: ${quietTask.error}`)
+  assert.equal(quietTask.title, 'Named by the agent', 'the spec phase should have renamed it')
+  assert.ok(
+    quietTask.questions.every((q) => q.answer),
+    'an unattended run must not leave a question hanging',
+  )
+  assert.ok(
+    quietTask.log.some((l) => l.kind === 'answer' && l.text.includes('Nobody is available')),
+    'and the agent must be told why, rather than silently blocked',
+  )
 
   const noRepo = await fetch(`${base}/api/tasks`, {
     method: 'POST',
@@ -399,7 +417,8 @@ try {
     '    cancel kills a SIGTERM-ignoring tree, late ask cannot revive a dead task,\n' +
     '    push needs a remote, merge refuses a clashing edit and lands on a clean base,\n' +
     '    catch-up merges the base in from the worktree without touching the checkout,\n' +
-    '    push covers the task branch and the base branch after it is merged',
+    '    push covers the task branch and the base branch after it is merged,\n' +
+    '    unattended answers its own questions and the agent names an untitled task',
   )
 } catch (err) {
   failure = err

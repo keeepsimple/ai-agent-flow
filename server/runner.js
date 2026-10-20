@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -36,10 +37,22 @@ function pick(value, allowed, fallback, what) {
   return v
 }
 
+/** What the CLI will pick when we pass no --model, so "default" can say so. */
+function cliDefaultModel() {
+  if (process.env.ANTHROPIC_MODEL) return process.env.ANTHROPIC_MODEL
+  const settings = path.join(os.homedir(), '.claude', 'settings.json')
+  try {
+    return JSON.parse(fs.readFileSync(settings, 'utf8')).model || ''
+  } catch {
+    return ''
+  }
+}
+
 export const DEFAULTS = {
   model: pick(process.env.FLOW_MODEL, MODELS, ''),
   effort: pick(process.env.FLOW_EFFORT, EFFORTS, ''),
   permissionMode: pick(process.env.FLOW_PERMISSION_MODE, MODES, 'bypassPermissions'),
+  cliModel: cliDefaultModel(),
 }
 
 /**
@@ -69,11 +82,15 @@ export function listRepos() {
     .sort()
 }
 
+const firstLine = (text) => {
+  const line = text.trim().split('\n')[0].trim()
+  return line.length > 72 ? `${line.slice(0, 69)}...` : line
+}
+
 const slugify = (s) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task'
 
 export function createTask({ title, prompt, repos, images = [], autoApprove = false, model, effort, permissionMode }) {
-  if (!title?.trim()) throw new Error('title is required')
   if (!prompt?.trim()) throw new Error('prompt is required')
   const known = listRepos()
   const picked = [...new Set(Array.isArray(repos) ? repos : [repos])].filter(Boolean)
@@ -82,9 +99,13 @@ export function createTask({ title, prompt, repos, images = [], autoApprove = fa
   const attached = images.map(verifyUpload)
 
   const id = randomUUID().slice(0, 8)
+  // A title is optional: with none, the first line of the prompt stands in
+  // until the spec phase has read the code and can name the work properly.
+  const named = Boolean(title?.trim())
   const task = {
     id,
-    title: title.trim(),
+    title: named ? title.trim() : firstLine(prompt),
+    namedByHuman: named,
     prompt: prompt.trim(),
     repos: picked,
     images: attached,
@@ -195,6 +216,13 @@ async function runTask(task) {
       endedAt: Date.now(),
       summary: result.summary,
     }
+    if (phase === 'spec' && !task.namedByHuman) {
+      const written = fs.existsSync(path.join(task.artifactDir, 'title.txt'))
+        ? fs.readFileSync(path.join(task.artifactDir, 'title.txt'), 'utf8').trim()
+        : ''
+      // The branch keeps the name it was created with; only the label changes.
+      if (written) task.title = firstLine(written)
+    }
     emit(task)
 
     if (GATES[phase] && !task.autoApprove) {
@@ -242,9 +270,30 @@ export function approve(id, { approved, feedback = '' }) {
 
 const ALIVE = new Set(['running', 'awaiting_approval', 'awaiting_answer'])
 
+const NOBODY_HOME =
+  'Nobody is available: this task was started to run unattended. Do not ask again. ' +
+  'Make the call you judge best, and write down what you assumed and why in the ' +
+  'document for this phase so it can be checked later.'
+
 export function askQuestion(id, text) {
   const task = tasks[id]
   if (!task) throw new Error('unknown task')
+  // Unattended means nobody is watching. Blocking on a question there is not
+  // caution, it is a run that sits dead until someone happens to look.
+  if (task.autoApprove) {
+    log(id, { kind: 'question', text })
+    log(id, { kind: 'answer', text: NOBODY_HOME })
+    task.questions.push({
+      id: randomUUID().slice(0, 8),
+      text,
+      askedAt: Date.now(),
+      answer: NOBODY_HOME,
+      answeredAt: Date.now(),
+      unattended: true,
+    })
+    emit(task)
+    return Promise.resolve(NOBODY_HOME)
+  }
   // An agent that outlived its cancellation must not be able to revive the task
   // by asking something. Tell it to stop instead.
   if (!ALIVE.has(task.status)) {

@@ -53,11 +53,17 @@ its own checkout, so each one can be reviewed and rolled back on its own.
     : `Read the repo's own CLAUDE.md and follow it. Stay inside this one repo.`
 }
 
-If you hit a decision only the human can make, run:
+${
+  ctx.autoApprove
+    ? `This task runs unattended: nobody will answer a question. Where you would
+have asked, decide, and write the assumption and your reasoning into the
+document for the phase so it can be checked later.`
+    : `If you hit a decision only the human can make, run:
     node "${ctx.askScript}" "your question"
 It blocks and prints their answer on stdout. Use it instead of guessing on
 anything that would be expensive to get wrong. Do not use it for questions you
 can answer by reading the code.`
+}`
 }
 
 const BODY = {
@@ -82,6 +88,15 @@ ${ctx.artifactDir}/spec.md with:
 - Acceptance criteria: how someone checks this is done, as concrete checks
 - Open questions: anything you had to assume, marked as your assumption
 
+${
+    ctx.namedByHuman
+      ? ''
+      : `
+This task has no title yet: it is showing the first line of the request. Write
+one short line naming what this actually turns out to be into
+${ctx.artifactDir}/title.txt. Under 70 characters, no trailing full stop.
+`
+  }
 Write no product code in this phase. Do not commit.
 End your output with a 5 line summary of the spec.`,
 

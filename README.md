@@ -30,7 +30,14 @@ The review phase is not a rubber stamp: it diffs against the pinned base commit
 and goes through correctness, code quality, over-engineering, performance and
 security, fixes what it finds, and writes `review.md`.
 
-Tick **Run unattended** on a task to skip both approval gates.
+**Run unattended** means nobody is watching: both gates are skipped, and where
+the agent would have asked you something it decides instead and writes the
+assumption into that phase's document. The prompt tells it so up front, rather
+than letting it waste a turn on a question that will never be answered.
+
+A **title is optional**. Leave it blank and the first line of the request stands
+in until the spec phase has read the code and can name the work; the branch keeps
+the name it was created with either way.
 
 ## Per task: model, effort, permissions
 

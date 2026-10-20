@@ -95,7 +95,7 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const ready = title.trim() && prompt.trim() && picked.length
+  const ready = prompt.trim() && picked.length
 
   const submit = async (e) => {
     e?.preventDefault()
@@ -138,7 +138,7 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
         </header>
 
         <div className="flex flex-col gap-4 px-5 py-4">
-          <Field label="Title">
+          <Field label="Title" hint="Optional. Leave it blank and the agent names the task once it has read the code.">
             <input
               ref={first}
               className={inputClass}
@@ -188,7 +188,7 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
               How it runs
               {!showOptions && (
                 <span className="font-mono text-[10px] normal-case text-ink-faint">
-                  {named(model)} · {named(effort)} · {mode?.label.toLowerCase()}
+                  {model || defaults.cliModel || 'default'} · {named(effort)} · {mode?.label.toLowerCase()}
                   {autoApprove ? ' · unattended' : ''}
                 </span>
               )}
@@ -199,7 +199,11 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
                 <div className="grid grid-cols-3 gap-3">
                   <Field label="Model">
                     <select className={inputClass} value={model} onChange={(e) => setModel(e.target.value)}>
-                      {options.models.map((m) => <option key={m} value={m}>{named(m)}</option>)}
+                      {options.models.map((m) => (
+                        <option key={m} value={m}>
+                          {m || (defaults.cliModel ? `default (${defaults.cliModel})` : 'default')}
+                        </option>
+                      ))}
                     </select>
                   </Field>
                   <Field label="Effort">
@@ -219,20 +223,27 @@ export default function NewTask({ repos, options, defaults, onCreate, onClose })
                 </div>
                 <p className="text-[11px] text-ink-faint">{mode?.hint}</p>
 
-                <label className="flex cursor-pointer items-start gap-2">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 accent-accent"
-                    checked={autoApprove}
-                    onChange={(e) => setAutoApprove(e.target.checked)}
-                  />
+                <button
+                  type="button"
+                  onClick={() => setAutoApprove((v) => !v)}
+                  className="flex cursor-pointer items-start gap-2 text-left"
+                >
+                  <span
+                    className={`mt-0.5 flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border
+                                ${autoApprove ? 'border-accent bg-accent text-surface' : 'border-line-strong'}`}
+                  >
+                    {autoApprove && <span className="text-[9px] leading-none">✓</span>}
+                  </span>
                   <span>
-                    <span className="block text-[12px] text-ink">Run unattended</span>
+                    <span className={`block text-[12px] ${autoApprove ? 'text-accent' : 'text-ink'}`}>
+                      Run unattended
+                    </span>
                     <span className="block text-[11px] text-ink-faint">
-                      Skip the spec and plan gates and go straight through.
+                      No gates and no questions: where it would have asked you, it decides and writes
+                      down the assumption.
                     </span>
                   </span>
-                </label>
+                </button>
               </div>
             )}
           </div>
