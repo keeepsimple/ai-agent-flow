@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
-import { IconArrowRight, IconFolderPlus, IconPaperclip, IconSearch, IconX } from '@tabler/icons-react'
+import {
+  IconArrowRight, IconFolderOpen, IconFolderPlus, IconPaperclip, IconSearch, IconX,
+} from '@tabler/icons-react'
 import {
   AttachStrip, Button, Chip, GROUPS, Stat, ago, inputClass, selectChip, useAttachments,
 } from '../components/bits.jsx'
@@ -37,14 +39,30 @@ function NewTask({ flow, onError }) {
     return [...groups.entries()]
   }, [repos, filter])
 
-  const addFolder = async () => {
-    if (!folder.trim() || adding) return
+  const addFolder = async (given) => {
+    const path = (given ?? folder).trim()
+    if (!path || adding) return
     setAdding(true)
     try {
-      const result = await api.addRoot(folder)
+      const result = await api.addRoot(path)
       flow.setRoots(result.roots)
       flow.setRepos(result.repos)
       setFolder('')
+    } catch (err) {
+      onError(err.message)
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  // The browser cannot hand over a folder path, so the server opens the OS
+  // picker; it is the same machine.
+  const browseFolder = async () => {
+    if (adding) return
+    setAdding(true)
+    try {
+      const { path, cancelled } = await api.browseRoot()
+      if (!cancelled) await addFolder(path)
     } catch (err) {
       onError(err.message)
     } finally {
@@ -215,20 +233,22 @@ function NewTask({ flow, onError }) {
             {!byRoot.length && <p className="px-2 text-xs text-muted">Nothing matches.</p>}
           </div>
 
-          <div className="flex gap-2 border-t border-line pt-3">
-            <div className="relative flex-1">
-              <IconFolderPlus size={13} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-muted" />
+          <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+            <Button disabled={adding} onClick={browseFolder}>
+              <IconFolderOpen size={14} /> {adding ? 'Adding' : 'Choose a folder'}
+            </Button>
+            <span className="text-xs text-muted">or type a path</span>
+            <div className="relative min-w-48 flex-1">
+              <IconFolderPlus size={13} className="absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
               <input
-                className={`${inputClass} pl-7`}
+                className={`${inputClass} pl-8`}
                 value={folder}
                 onChange={(e) => setFolder(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && addFolder()}
-                placeholder="~/Documents/something — a repo, or a folder of them"
+                placeholder="~/Documents/something"
               />
             </div>
-            <Button disabled={adding || !folder.trim()} onClick={addFolder}>
-              {adding ? 'Adding' : 'Add folder'}
-            </Button>
+            <Button disabled={adding || !folder.trim()} onClick={() => addFolder()}>Add</Button>
           </div>
         </div>
       )}

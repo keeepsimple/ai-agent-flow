@@ -12,7 +12,7 @@ import { notify } from './notify.js'
 import { listRepos, resolveRepo } from './roots.js'
 
 export const PORT = Number(process.env.FLOW_PORT || 7777)
-export { listRepos, roots, addRoot, removeRoot, DEFAULT_ROOT } from './roots.js'
+export { listRepos, roots, addRoot, removeRoot, browse, DEFAULT_ROOT } from './roots.js'
 const MAX_CONCURRENT = Number(process.env.FLOW_MAX_CONCURRENT || 3)
 const CLAUDE_BIN = process.env.FLOW_CLAUDE_BIN || 'claude'
 const WIN = process.platform === 'win32'

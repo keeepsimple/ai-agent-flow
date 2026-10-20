@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { execFile } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 import { DATA } from './store.js'
@@ -98,4 +99,47 @@ export function removeRoot(given) {
   if (!next.length) throw new Error('keep at least one folder')
   write(next)
   return next
+}
+
+// A browser cannot hand over a real folder path: webkitdirectory only exposes
+// the names inside, and the File System Access API hands back a handle. The
+// server runs on the same machine as the browser, so it asks the OS instead.
+const PICKERS = {
+  darwin: ['osascript', ['-e', 'POSIX path of (choose folder with prompt "Pick a repo, or a folder of repos")']],
+  linux: ['zenity', ['--file-selection', '--directory', '--title=Pick a repo, or a folder of repos']],
+  win32: [
+    'powershell.exe',
+    [
+      '-NoProfile', '-STA', '-Command',
+      'Add-Type -AssemblyName System.Windows.Forms;' +
+        '$d = New-Object System.Windows.Forms.FolderBrowserDialog;' +
+        'if ($d.ShowDialog() -eq "OK") { $d.SelectedPath }',
+    ],
+  ],
+}
+
+/** Open the OS folder chooser. Resolves to null when the human cancels. */
+export function browse() {
+  const picker = PICKERS[process.platform]
+  if (!picker) throw new Error(`no folder picker on ${process.platform}; type the path instead`)
+
+  return new Promise((resolve, reject) => {
+    execFile(picker[0], picker[1], { timeout: 180_000 }, (err, stdout, stderr) => {
+      const chosen = String(stdout || '').trim()
+      if (chosen) return resolve(expand(chosen))
+      if (!err) return resolve(null)
+
+      if (err.code === 'ENOENT') {
+        return reject(new Error(`${picker[0]} is not installed, so type the path instead`))
+      }
+
+      // Walking away from the dialog is not a failure. AppleScript says -128,
+      // zenity exits 1, and a dialog that gets killed says nothing at all.
+      const said = String(stderr || '').trim()
+      if (err.killed || err.signal || /cancel|-128/i.test(said)) return resolve(null)
+
+      // Never echo the command: it is a page of AppleScript nobody asked for.
+      reject(new Error(said.split('\n')[0] || `the folder picker exited with ${err.code}`))
+    })
+  })
 }

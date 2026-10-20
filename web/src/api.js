@@ -31,6 +31,7 @@ export const api = {
   diff: (id) => call('GET', `/api/tasks/${id}/diff`),
   disk: () => call('GET', '/api/disk'),
   addRoot: (path) => call('POST', '/api/roots', { path }),
+  browseRoot: () => call('POST', '/api/roots/browse'),
   removeRoot: (path) => call('DELETE', '/api/roots', { path }),
   prune: () => call('POST', '/api/disk/prune'),
   create: (payload) => call('POST', '/api/tasks', payload),

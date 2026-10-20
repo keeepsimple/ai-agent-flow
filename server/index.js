@@ -105,6 +105,10 @@ async function api(req, res, url) {
   }
 
   if (section === 'roots') {
+    if (req.method === 'POST' && id === 'browse') {
+      const chosen = await runner.browse()
+      return json(res, 200, chosen ? { path: chosen } : { cancelled: true })
+    }
     if (req.method === 'GET') return json(res, 200, { roots: runner.roots(), repos: runner.listRepos() })
     if (req.method === 'POST') {
       const { path: dir } = JSON.parse(await body(req))
