@@ -14,6 +14,7 @@ import 'package:agent_flow/screens/review.dart';
 import 'package:agent_flow/screens/sessions.dart';
 import 'package:agent_flow/screens/workspace.dart';
 import 'package:agent_flow/theme.dart';
+import 'package:agent_flow/widgets/bits.dart';
 import 'package:agent_flow/widgets/header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -229,6 +230,42 @@ void main() {
       ),
       const Size(1340, 110),
     );
+  });
+
+  testWidgets('the bar lines up with the traffic lights', (tester) async {
+    // Not eyeballed: AppKit reports the lights at x 9..69 with their centres
+    // 16 from the top of the window. Centring the row in the bar instead put
+    // everything 8pt low, which is what was visible.
+    final flow = _flow();
+    tester.view.physicalSize = const Size(1340, 110);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        backgroundColor: Tern.page,
+        body: Header(
+          flow: flow,
+          task: null,
+          tab: 'workspace',
+          onTab: (_) {},
+          onBack: () {},
+          accent: Accent.sky,
+          onAccent: (_) {},
+          onDropped: () {},
+          onDeleted: () {},
+        ),
+      ),
+    ));
+
+    final mark = find.byType(Mark);
+    expect(tester.getCenter(mark).dy, closeTo(16, 1.5),
+        reason: 'level with the middle of the traffic lights');
+    expect(tester.getTopLeft(mark).dx, closeTo(80, 0.5),
+        reason: 'clear of the lights, which end at 69');
+    expect(tester.getTopLeft(mark).dy, greaterThan(4),
+        reason: 'and not running off the top of the window');
   });
 
   testWidgets('the header carries what the screen can do', (tester) async {

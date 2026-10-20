@@ -36,10 +36,17 @@ class Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // The window has no title bar of its own any more, so this row sits where
-    // one would be: level with the traffic lights, and clear of them.
+    // one would be. AppKit puts the traffic lights at x 9..69 with their
+    // centres 16 from the top of the window, so the content is laid out in a
+    // 32-high band from the top rather than down the middle of the bar:
+    // centred in the bar it sat 8pt below the lights, which is what showed.
     return Container(
-      height: 48,
-      padding: EdgeInsets.only(left: Platform.isMacOS ? 82 : 14, right: 14),
+      height: 44,
+      padding: EdgeInsets.only(
+        left: Platform.isMacOS ? 80 : 14,
+        right: 14,
+        bottom: Platform.isMacOS ? 12 : 0,
+      ),
       decoration: const BoxDecoration(
         // A shade above the page, not level with it. At panel colour the bar
         // and the body were the same dark, and the hairline between them read
@@ -56,7 +63,7 @@ class Header extends StatelessWidget {
               onTap: onBack,
             )
           else ...[
-            const Mark(),
+            const Mark(size: 20),
             const SizedBox(width: 9),
             Padding(
               padding: const EdgeInsets.only(right: 10),
@@ -91,6 +98,7 @@ class Header extends StatelessWidget {
           if (task != null) ...[
             if (task!.active)
               FlowButton(
+                dense: true,
                 label: 'Stop',
                 tone: Tone.danger,
                 icon: Icons.stop_circle_outlined,
@@ -99,6 +107,7 @@ class Header extends StatelessWidget {
               ),
             if (task!.status == 'failed')
               FlowButton(
+                dense: true,
                 label: 'Retry',
                 icon: Icons.refresh,
                 onPressed: () => flow.run(() => flow.api.retry(task!.id)),
@@ -107,6 +116,7 @@ class Header extends StatelessWidget {
               const SizedBox(width: 7),
               if (task!.root != null)
                 FlowButton(
+                  dense: true,
                   label: 'Drop worktree',
                   icon: Icons.folder_off_outlined,
                   tooltip: 'Frees the checkout. The conversation and the branches stay.',
@@ -118,6 +128,7 @@ class Header extends StatelessWidget {
                 ),
               const SizedBox(width: 7),
               FlowButton(
+                dense: true,
                 label: 'Delete',
                 tone: Tone.danger,
                 icon: Icons.delete_outline,
@@ -127,6 +138,7 @@ class Header extends StatelessWidget {
             ],
           ] else ...[
             FlowButton(
+              dense: true,
               label: 'Test browser',
               icon: Icons.travel_explore,
               tooltip:

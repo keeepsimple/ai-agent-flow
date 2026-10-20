@@ -14,6 +14,7 @@ class FlowButton extends StatefulWidget {
     this.icon,
     this.busy = false,
     this.tooltip,
+    this.dense = false,
   });
 
   final String label;
@@ -22,6 +23,10 @@ class FlowButton extends StatefulWidget {
   final IconData? icon;
   final bool busy;
   final String? tooltip;
+
+  /// For the top bar, where anything taller than the traffic lights' own band
+  /// cannot sit level with them without running off the top of the window.
+  final bool dense;
 
   @override
   State<FlowButton> createState() => _FlowButtonState();
@@ -54,12 +59,12 @@ class _FlowButtonState extends State<FlowButton> {
     final child = Opacity(
       opacity: off ? 0.4 : 1,
       child: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 13),
+        height: widget.dense ? 28 : 32,
+        padding: EdgeInsets.symmetric(horizontal: widget.dense ? 11 : 13),
         decoration: BoxDecoration(
           color: bg,
           border: Border.all(color: border),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(widget.dense ? 14 : 16),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
