@@ -83,8 +83,15 @@ export function useFlow() {
 
   useEffect(() => {
     const es = new EventSource('/api/events')
-    es.onopen = () => setLive(true)
     es.onerror = () => setLive(false)
+    es.onopen = () => {
+      setLive(true)
+      // The stream drops when the server restarts, and everything that happened
+      // in between is missed. Without this the tab keeps showing a question
+      // nobody is waiting on any more, and you type an answer into nothing.
+      loadState()
+      if (selectedRef.current) loadDetail(selectedRef.current)
+    }
     es.addEventListener('task', (e) => {
       const task = JSON.parse(e.data)
       setTasks((prev) => {
@@ -113,7 +120,7 @@ export function useFlow() {
       setDetail((d) => (d ? { ...d, log: [...d.log, entry] } : d))
     })
     return () => es.close()
-  }, [])
+  }, [loadState, loadDetail])
 
   // Artifacts arrive as files, not events, so re-read the detail when a phase
   // boundary moves. Cheap: it is one local read.

@@ -260,7 +260,17 @@ export function askQuestion(id, text) {
 
 export function answerQuestion(id, questionId, answer) {
   const resolve = questionWaiters.get(questionId)
-  if (!resolve) throw new Error('that question is no longer waiting')
+  if (!resolve) {
+    // Almost always the server restarted and took the waiting request with it.
+    // Say which, because "no longer waiting" on its own explains nothing.
+    const status = tasks[id]?.status
+    throw new Error(
+      status && status !== 'awaiting_answer'
+        ? `this task is ${status} now, so nobody is waiting for that answer` +
+          (tasks[id].error ? `: ${tasks[id].error}` : '')
+        : 'nobody is waiting for that answer any more',
+    )
+  }
   questionWaiters.delete(questionId)
   const task = tasks[id]
   const question = task.questions.find((q) => q.id === questionId)
