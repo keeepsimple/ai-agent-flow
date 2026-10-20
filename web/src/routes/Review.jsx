@@ -167,8 +167,9 @@ export default function Review({ task, flow }) {
           aria-label="Summary and checks"
           className="box-border flex min-h-0 flex-[1_1_320px] flex-col gap-5 overflow-y-auto border-l border-line bg-panel p-4"
         >
-          <section>
+          <section className="flex min-h-0 flex-col">
             <h2 className="m-0 mb-2 text-[13px] font-semibold">What the agent changed</h2>
+            <div className="max-h-[38vh] overflow-y-auto pr-1">
             {task.docs?.['review.md'] ? (
               <Markdown source={task.docs['review.md']} className="text-[13px] text-ink-3" />
             ) : task.docs?.['spec.md'] ? (
@@ -176,9 +177,10 @@ export default function Review({ task, flow }) {
             ) : (
               <p className="m-0 text-[13px] text-muted">No spec or review was written for this one.</p>
             )}
+            </div>
           </section>
 
-          <section>
+          <section className="shrink-0">
             <h2 className="m-0 mb-2 text-[13px] font-semibold">Checks</h2>
             <div className="flex flex-col gap-1.5">
               {git.map((repo) => {
@@ -226,7 +228,7 @@ export default function Review({ task, flow }) {
             </div>
           </section>
 
-          <section className="mt-auto">
+          <section className="shrink-0">
             <label htmlFor="followup" className="mb-1.5 block text-xs text-muted">
               Ask the agent for a follow-up
             </label>
