@@ -333,6 +333,26 @@ try {
     assert.equal(repo.mergeBlockedBy, null, `${repo.repo} base should be mergeable: ${repo.mergeBlockedBy}`)
   }
 
+  // The diff is the thing you are being asked to approve, so it has to be
+  // readable from here rather than from a terminal.
+  const changes = await (await fetch(`${base}/api/tasks/${created.id}/diff`)).json()
+  assert.equal(changes.length, 2, 'one entry per repo')
+  const impl = changes[0].files.find((f) => f.path === 'impl.txt')
+  assert.ok(impl, 'the file the task wrote should be in its diff')
+  assert.equal(impl.added, 1)
+  assert.equal(impl.removed, 0)
+  assert.match(impl.patch, /\+stubbed/, 'with the actual lines, not just a count')
+
+  // A generated file can be longer than anything worth reading.
+  const big = path.join(root, 'data', 'worktrees', created.id, 'api')
+  fs.writeFileSync(path.join(big, 'generated.txt'), 'x'.repeat(80_000))
+  execFileSync('git', ['-C', big, 'add', '-A'])
+  execFileSync('git', ['-C', big, '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'generated'])
+  const withBig = await (await fetch(`${base}/api/tasks/${created.id}/diff`)).json()
+  const huge = withBig.find((r) => r.repo === 'api').files.find((f) => f.path === 'generated.txt')
+  assert.equal(huge.patch, null, 'an enormous file is described, not shipped to the browser')
+  assert.ok(huge.bytes > 60_000)
+
   // A finished task can be worked on again without losing what it already is:
   // same branches, same worktrees, no new task.
   await post(`/api/tasks/${created.id}/follow-up`, { request: 'the build is broken, fix it' })
@@ -363,13 +383,15 @@ try {
 
   let moved = (await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()).find((r) => r.repo === 'api')
   assert.equal(moved.behind, 1, 'the branch should be a commit behind its base')
+  const aheadBefore = moved.ahead
 
   await post(`/api/tasks/${created.id}/catch-up`, { repo: 'api' })
   await waitFor(created.id, (t) => t.status === 'done', 'the catch-up to finish')
   moved = (await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()).find((r) => r.repo === 'api')
   assert.equal(moved.behind, 0, 'catching up should leave nothing behind')
-  // impl + the follow-up fix + the merge it just made.
-  assert.equal(moved.ahead, 3, 'the branch carries its own work plus the merge it just took')
+  // Counting absolute commits breaks every time the setup grows one; what
+  // matters is that catching up added exactly the merge and nothing else.
+  assert.equal(moved.ahead, aheadBefore + 1, 'catching up should add the merge commit and no more')
   assert.equal(
     git('api', 'status', '--porcelain'),
     '',
@@ -475,7 +497,8 @@ try {
     '    push covers the task branch and the base branch after it is merged,\n' +
     '    unattended answers its own questions and the agent names an untitled task,\n' +
     '    a quick run skips spec and plan but still reviews itself,\n' +
-    '    a finished task takes a follow-up on the same branches',
+    '    a finished task takes a follow-up on the same branches,\n' +
+    '    the diff is readable from the app and an enormous file is only described',
   )
 } catch (err) {
   failure = err

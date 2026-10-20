@@ -33,6 +33,7 @@ export const api = {
   state: () => call('GET', '/api/state'),
   task: (id) => call('GET', `/api/tasks/${id}`),
   gitState: (id) => call('GET', `/api/tasks/${id}/git`),
+  diff: (id) => call('GET', `/api/tasks/${id}/diff`),
   create: (payload) => call('POST', '/api/tasks', payload),
   approve: (id, approved, feedback) => call('POST', `/api/tasks/${id}/approve`, { approved, feedback }),
   answer: (id, questionId, answer) => call('POST', `/api/tasks/${id}/answer`, { questionId, answer }),

@@ -5,6 +5,7 @@ import Markdown from './Markdown.jsx'
 import RepoRows from './RepoRows.jsx'
 import PhaseRail from './PhaseRail.jsx'
 import Decision from './Decision.jsx'
+import Diff from './Diff.jsx'
 import FollowUp from './FollowUp.jsx'
 import LogStream from './LogStream.jsx'
 import { api } from '../api.js'
@@ -105,7 +106,7 @@ export default function TaskDetail({ task, onError }) {
       )}
 
       <nav className="flex items-center gap-1 border-b border-line px-3">
-        {['stream', ...DOCS.filter((d) => task.docs?.[d])].map((key) => (
+        {['stream', ...(task.trees ? ['diff'] : []), ...DOCS.filter((d) => task.docs?.[d])].map((key) => (
           <button
             key={key}
             type="button"
@@ -121,6 +122,8 @@ export default function TaskDetail({ task, onError }) {
       <div className="min-h-0 flex-1 overflow-hidden">
         {tab === 'stream' ? (
           <LogStream entries={task.log || []} live={task.status === 'running'} />
+        ) : tab === 'diff' ? (
+          <Diff taskId={task.id} />
         ) : (
           <div className="h-full overflow-auto px-4 py-4">
             <Markdown source={task.docs[tab]} className="mx-auto max-w-3xl" />

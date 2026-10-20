@@ -3,7 +3,13 @@ import { execFileSync } from 'node:child_process'
 import { tasks, update } from './store.js'
 
 const git = (cwd, ...args) =>
-  execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  execFileSync('git', ['-C', cwd, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    // A real diff is bigger than the 1 MB default, and hitting that throws
+    // rather than truncating.
+    maxBuffer: 64 * 1024 * 1024,
+  }).trim()
 
 const count = (cwd, range) => {
   try { return Number(git(cwd, 'rev-list', '--count', range)) } catch { return null }
@@ -72,6 +78,7 @@ function statusOf(tree) {
     unpushed: upstream ? count(tree.repoPath, `${upstream}..${tree.branch}`) ?? 0 : null,
     upstream,
     remote,
+    reviewUrl: reviewUrl(quiet(() => git(tree.repoPath, 'remote', 'get-url', remote)), tree.branch, tree.baseBranch),
     baseUpstream,
     baseUnpushed,
     uncommitted: uncommitted.length,
@@ -128,4 +135,60 @@ export function merge(id, repo) {
   }
   update(id, { mergedAt: Date.now() })
   return done
+}
+
+// One generated file can be longer than everything a human wants to read. Show
+// its shape and stop, rather than choking the page on a lockfile.
+const MAX_FILE_BYTES = 60_000
+
+/** Where to open a merge request for this branch, if the host is one we know. */
+export function reviewUrl(remoteUrl, branch, base) {
+  if (!remoteUrl) return null
+  // git@host:group/repo.git and https://host/group/repo.git both reduce to the
+  // same host plus path.
+  const match = remoteUrl.match(/^(?:git@([^:]+):|https?:\/\/(?:[^@]*@)?([^/]+)\/)(.+?)(?:\.git)?$/)
+  if (!match) return null
+  const host = match[1] || match[2]
+  const repoPath = match[3]
+  const query = `?merge_request%5Bsource_branch%5D=${encodeURIComponent(branch)}` +
+    `&merge_request%5Btarget_branch%5D=${encodeURIComponent(base)}`
+  const refPath = (ref) => ref.split('/').map(encodeURIComponent).join('/')
+  return host.includes('github')
+    ? `https://${host}/${repoPath}/compare/${refPath(base)}...${refPath(branch)}?expand=1`
+    : `https://${host}/${repoPath}/-/merge_requests/new${query}`
+}
+
+/** The actual change, per repo, split into files. */
+export function diff(id) {
+  const task = tasks[id]
+  if (!task?.trees) return []
+
+  return task.trees.map((tree) => {
+    const range = `${tree.baseRef}...${tree.branch}`
+    const numstat = lines(quiet(() => git(tree.repoPath, 'diff', '--numstat', range)))
+    const counts = new Map()
+    for (const row of numstat) {
+      const [added, removed, file] = row.split('\t')
+      counts.set(file, { added: Number(added) || 0, removed: Number(removed) || 0, binary: added === '-' })
+    }
+
+    const patch = quiet(() => git(tree.repoPath, 'diff', range)) || ''
+    const files = patch
+      .split(/^diff --git /m)
+      .filter(Boolean)
+      .map((chunk) => {
+        const body = `diff --git ${chunk}`
+        // b/<path> is the name after any rename, which is the one to show.
+        const path = body.match(/^diff --git a\/.* b\/(.*)$/m)?.[1] || 'unknown'
+        const count = counts.get(path) || { added: 0, removed: 0 }
+        return {
+          path,
+          ...count,
+          patch: body.length > MAX_FILE_BYTES ? null : body,
+          bytes: body.length,
+        }
+      })
+
+    return { repo: tree.repo, branch: tree.branch, base: tree.baseBranch, files }
+  })
 }

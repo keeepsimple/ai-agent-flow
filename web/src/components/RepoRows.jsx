@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { IconArrowMerge, IconCloudUpload, IconCopy, IconSitemap, IconSparkles } from '@tabler/icons-react'
+import {
+  IconArrowMerge, IconCloudUpload, IconCopy, IconExternalLink, IconSitemap, IconSparkles,
+} from '@tabler/icons-react'
 import { Button } from './bits.jsx'
 import { api } from '../api.js'
 
@@ -24,6 +26,20 @@ function Ship({ task, state, onChanged, onError }) {
   const stale = state.behind > 0
   const merged = state.ahead === 0 && state.produced > 0
   // The base branch carries the merge, so it is the thing left to publish.
+  const openMr = state.reviewUrl && state.upstream && (
+    <a
+      href={state.reviewUrl}
+      target="_blank"
+      rel="noreferrer"
+      title={state.reviewUrl}
+      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5
+                 text-xs font-medium text-ink-dim transition-colors duration-150
+                 hover:border-line-strong hover:text-ink"
+    >
+      <IconExternalLink size={13} /> Open MR
+    </a>
+  )
+
   const pushBase = state.baseUnpushed > 0 && (
     <Button
       disabled={!!busy}
@@ -42,6 +58,7 @@ function Ship({ task, state, onChanged, onError }) {
         <span className="font-mono text-[10px] text-ink-faint">
           {merged ? `${state.produced} commits · already in ${state.base}` : 'nothing to ship yet'}
         </span>
+        {openMr}
         {pushBase}
       </div>
     )
@@ -86,6 +103,7 @@ function Ship({ task, state, onChanged, onError }) {
       >
         <IconArrowMerge size={13} /> {busy === 'merge' ? 'Merging' : `Merge into ${state.base}`}
       </Button>
+      {openMr}
       {pushBase}
       {state.mergeBlockedBy ? (
         <span className="font-mono text-[10px] text-warn">{state.mergeBlockedBy}</span>
