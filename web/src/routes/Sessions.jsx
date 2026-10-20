@@ -404,7 +404,12 @@ export default function Sessions({ flow }) {
           <Chip onClick={flow.askForNotifications}>Notify me</Chip>
         )}
         <Chip
-          onClick={() => api.openBrowser().catch((e) => flow.setError(e.message))}
+          onClick={() =>
+            api
+              .openBrowser()
+              .then((r) => r.blocked && flow.setError(r.why))
+              .catch((e) => flow.setError(e.message))
+          }
           title="Opens the browser the agent drives. Sign in to your dev store there once."
         >
           Test browser

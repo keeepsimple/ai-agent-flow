@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 import { DATA } from './store.js'
@@ -8,15 +9,26 @@ import { DATA } from './store.js'
  * keeps working.
  *
  * It cannot be the browser you already have open: that one was started without
- * a debugging port, and the flag cannot be added to a running process. Chrome
- * also ignores the flag entirely on the default profile, which is the point of
- * that rule. So this is a second, dedicated profile you log into once.
+ * a debugging port, the flag cannot be added to a running process, and Chrome
+ * refuses the flag outright on its default directory. So this is a second
+ * profile — but it starts as a copy of the session in yours, so in practice
+ * there is nothing to log into.
  *
  * No automation dependency: Node speaks CDP over its own WebSocket.
  */
 const PROFILE = path.join(DATA, 'chrome')
 const PORT = Number(process.env.FLOW_BROWSER_PORT || 9344)
 const BASE = `http://127.0.0.1:${PORT}`
+
+const USER_DATA = {
+  darwin: path.join(os.homedir(), 'Library', 'Application Support', 'Google', 'Chrome'),
+  linux: path.join(os.homedir(), '.config', 'google-chrome'),
+  win32: path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'User Data'),
+}
+
+// Everything a signed-in session is made of, and nothing else: no history, no
+// cache, no extensions, no passwords beyond what a site already set.
+const SESSION_FILES = ['Cookies', 'Network/Cookies', 'Local Storage', 'Preferences']
 
 const CHROME = [
   process.env.FLOW_CHROME_BIN,
@@ -30,6 +42,61 @@ const CHROME = [
 const binary = () => CHROME.find((p) => fs.existsSync(p))
 
 let child = null
+let seeding = null // the last result, so ensure() can report it on a later call
+
+/**
+ * Copy the session out of the Chrome you already use, so the first page this
+ * opens is already signed in.
+ *
+ * It has to be a copy. Chrome refuses a debugging port on its own default
+ * directory, and the Chrome you have open is holding that directory anyway, so
+ * the tool's browser can never *be* yours — only start from where yours is.
+ *
+ * Done once, when the tool's profile is still empty. After that the copy has
+ * its own life: signing out here does not sign you out there, and a session
+ * you renew there does not come back across on its own.
+ */
+function seed() {
+  const target = path.join(PROFILE, 'Default')
+  const already = SESSION_FILES.some((f) => fs.existsSync(path.join(target, f)))
+  if (already) return (seeding = { seeded: false, why: 'the browser already has a profile' })
+
+  const source = process.env.FLOW_CHROME_USER_DATA || USER_DATA[process.platform]
+  const name = process.env.FLOW_CHROME_PROFILE || 'Default'
+  const from = source && path.join(source, name)
+  if (!from || !fs.existsSync(from)) {
+    return (seeding = { seeded: false, why: `no Chrome profile to copy at ${from || 'this platform'}` })
+  }
+
+  try {
+    fs.mkdirSync(target, { recursive: true })
+    const copied = []
+    for (const file of SESSION_FILES) {
+      const src = path.join(from, ...file.split('/'))
+      if (!fs.existsSync(src)) continue
+      fs.cpSync(src, path.join(target, ...file.split('/')), { recursive: true })
+      copied.push(file)
+    }
+    // Linux and Windows keep the cookie key here. macOS keeps it in the
+    // keychain, where this Chrome can reach it already.
+    const state = path.join(source, 'Local State')
+    if (fs.existsSync(state)) fs.cpSync(state, path.join(PROFILE, 'Local State'))
+    if (!copied.length) return (seeding = { seeded: false, why: `nothing to copy from ${from}` })
+    return (seeding = { seeded: true, from, copied })
+  } catch (err) {
+    // macOS keeps this folder behind Full Disk Access, and it is the terminal
+    // running this server that needs it, not Chrome.
+    const why =
+      err.code === 'EPERM' || err.code === 'EACCES'
+        ? `macOS blocks reading ${from}. Give Full Disk Access to the app running this server ` +
+          '(System Settings > Privacy & Security > Full Disk Access), then delete data/chrome and press it again.'
+        : `could not copy the Chrome profile: ${err.message}`
+    fs.rmSync(target, { recursive: true, force: true })
+    // Worth saying out loud: the human asked for their own session and did not
+    // get it. Having no Chrome to copy from is not in that class.
+    return (seeding = { seeded: false, blocked: true, why })
+  }
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -44,11 +111,12 @@ async function alive() {
 
 /** Start the tool's Chrome if it is not already up. Visible, so you can log in. */
 export async function ensure({ headless = false } = {}) {
-  if (await alive()) return { url: BASE, started: false }
+  if (await alive()) return { url: BASE, started: false, ...seeding }
 
   const bin = binary()
   if (!bin) throw new Error('no Chrome found; set FLOW_CHROME_BIN to its path')
   fs.mkdirSync(PROFILE, { recursive: true })
+  const from = seed()
 
   child = spawn(
     bin,
@@ -65,7 +133,7 @@ export async function ensure({ headless = false } = {}) {
   child.unref()
 
   for (let i = 0; i < 40; i++) {
-    if (await alive()) return { url: BASE, started: true }
+    if (await alive()) return { url: BASE, started: true, ...from }
     await sleep(250)
   }
   throw new Error('Chrome started but never opened its debugging port')
@@ -139,3 +207,13 @@ export async function visit(url, shotPath, { settleMs = 2500 } = {}) {
 }
 
 export const profile = () => PROFILE
+
+/** The copy step on its own, for the check that does not want a browser. */
+export const seedForTest = () => seed()
+
+/** Forget the copy, so the next start takes a fresh one. */
+export function reset() {
+  close()
+  fs.rmSync(PROFILE, { recursive: true, force: true })
+  seeding = null
+}

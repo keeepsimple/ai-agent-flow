@@ -204,9 +204,22 @@ the task finishes or is cancelled.
 
 The browser is a Chrome the tool owns, with its own profile under `data/chrome`.
 It cannot be the browser you already have open: that one was started without a
-debugging port, and Chrome ignores the flag on the default profile anyway. Press
-**Test browser** in the header once and sign in to your dev store there; the
-session stays.
+debugging port, the flag cannot be added to a running process, and Chrome
+refuses it outright on its default directory.
+
+So the first start copies the session out of the Chrome you already use, and
+you are signed in without doing anything. Cookies, local storage and
+preferences cross; history, cache and extensions do not. It happens once, while
+`data/chrome` is still empty — after that the copy has its own life, and
+signing out in one does not sign you out of the other. Delete `data/chrome` to
+take a fresh copy.
+
+**macOS keeps that folder behind Full Disk Access**, and it is the terminal
+running this server that needs it, not Chrome. Without it the copy is refused,
+**Test browser** says so, and you get a blank profile to sign into by hand.
+`FLOW_CHROME_PROFILE` picks which profile to copy when you have several
+(`Default`, `Profile 1`, …), and `FLOW_CHROME_USER_DATA` points at the folder
+holding them.
 
 ## Pipeline status
 
@@ -279,6 +292,8 @@ A machine with its own `~/.claude/settings.json` picks that up on its own.
 | `FLOW_NOTIFY` | on | `off` silences desktop notifications |
 | `FLOW_GITLAB_TOKEN` | unset | Read pipelines without `glab` being signed in |
 | `FLOW_CLAUDE_BIN` | `claude` | Path to the CLI, if it is not on your PATH |
+| `FLOW_CHROME_PROFILE` | `Default` | Which Chrome profile the browser copies its session from |
+| `FLOW_CHROME_USER_DATA` | per platform | Where that profile lives, if Chrome is not in the usual place |
 
 ## The risk worth knowing about
 
