@@ -73,7 +73,7 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Agent FlowState',
+      title: 'Agent Flow',
       debugShowCheckedModeBanner: false,
       theme: ternTheme(_accent),
       home: AnimatedBuilder(

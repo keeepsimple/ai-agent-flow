@@ -123,7 +123,7 @@ async function build() {
 
   fs.mkdirSync(OUT, { recursive: true })
   if (MAC) {
-    const built = path.join(DESKTOP, 'build/macos/Build/Products/Release/agent_flow.app')
+    const built = path.join(DESKTOP, 'build/macos/Build/Products/Release/Agent Flow.app')
     const app = path.join(OUT, 'Agent Flow.app')
     fs.rmSync(app, { recursive: true, force: true })
     // ditto, not a plain copy: a framework is held together by symlinks, and
@@ -143,7 +143,7 @@ async function build() {
     fs.rmSync(app, { recursive: true, force: true })
     fs.cpSync(built, app, { recursive: true })
     carry(path.join(app, 'flow'), binary)
-    console.log(`\n${app}\\agent_flow.exe`)
+    console.log(`\n${app}\\Agent Flow.exe`)
   }
 }
 

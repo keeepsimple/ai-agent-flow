@@ -149,6 +149,6 @@ class FlowServer {
       Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
 
   static String _dataDir() => Platform.isWindows
-      ? '${Platform.environment['APPDATA'] ?? _home()}\\Agent FlowState'
-      : '${_home()}/Library/Application Support/Agent FlowState';
+      ? '${Platform.environment['APPDATA'] ?? _home()}\\Agent Flow'
+      : '${_home()}/Library/Application Support/Agent Flow';
 }
