@@ -26,12 +26,15 @@ npm start          # builds the UI and serves http://127.0.0.1:7777
 npm run app        # dist/Agent Flow.app
 ```
 
-Same server, same UI, in its own window. No tab, no address bar, no browser:
-the window is a WKWebView and the app underneath it starts the server, waits
-for the port and shuts the server down when you quit. Links that leave the
-tool — a merge request, a pipeline — open in your real browser.
+Same server, same UI, in a real window. Not a web view: the interface is a
+Flutter app drawn by Skia, and one Dart source builds it for both macOS and
+Windows. It starts the server as a child, waits for the port, and takes the
+server down when you quit — which takes its agents down with it.
 
-Three things that buys, none of which the web mode can have:
+Links that leave the tool — a merge request, a pipeline — open in your own
+browser rather than taking over the window.
+
+Three things this buys that the web mode cannot have:
 
 - **It can be granted Full Disk Access itself.** In the web mode that
   permission is held against whichever terminal you started the server from,
@@ -41,22 +44,49 @@ Three things that buys, none of which the web mode can have:
   Homebrew `node` is not used for this: it links against a dozen Homebrew
   dylibs and would die on the first machine without them. The build refuses
   any runtime that borrows a library from outside `/usr/lib`.
-- **It is a window, not a tab**, so it has its own Dock icon and quits like an
-  application.
+- **It is an application**, with its own Dock icon, its own menu bar and its
+  own window position.
 
-A web view has no `Notification` API, so in the app the server raises the
-desktop notification itself. It decides that by counting the clients that can
-raise one rather than the clients that are connected — which also closes the
-same hole in the web mode, where a tab that was never granted permission
-silenced the server while raising nothing itself. `/api/state` reports both
-counts (`watching`, `notifying`) if you want to see which is which.
+A Flutter window has no `Notification` API, so the server raises the desktop
+notification itself. It decides that by counting the clients that can raise
+one rather than the clients that are connected — which also closes the same
+hole in the web mode, where a tab that was never granted permission silenced
+the server while raising nothing itself. `/api/state` reports both counts
+(`watching`, `notifying`).
 
-Building it needs `swiftc`, which comes with the Xcode command line tools
-(`xcode-select --install`). Only the machine doing the building needs it.
+The app is sandbox-free on purpose. A sandboxed process cannot spawn Node, let
+alone the `git` and `claude` it goes on to run, and cannot hold Full Disk
+Access either — which is half the reason the app exists.
+
+Building needs the Flutter SDK; running does not. Flutter desktop does not
+cross-compile, so build on the platform you want the app for:
+
+```
+npm run app        # macOS -> dist/Agent Flow.app
+                   # Windows -> dist/Agent Flow/agent_flow.exe
+```
+
+**The Windows build has never been run.** The source is one tree, the
+platform-specific paths are written and read as Windows paths, and the file
+picker and clipboard go through PowerShell there rather than osascript — but
+this was built on a Mac, and none of that has been executed. Treat the first
+Windows build as something to debug, not something to ship.
+
+```
+cd desktop && flutter test              # renders every screen to test/goldens
+cd desktop && flutter test --update-goldens
+```
+
+Those goldens are the only way to look at this UI without sitting at the
+machine, and they fail when a layout overflows or throws — which is the class
+of bug a desktop window hides until someone resizes it.
 
 It still needs `git` and `claude`. A GUI app inherits almost no `PATH`, so the
-launcher adds `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin` before
-starting; a `claude` installed somewhere else needs `FLOW_CLAUDE_BIN`.
+app adds `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin` before
+starting the server; a `claude` installed somewhere else needs
+`FLOW_CLAUDE_BIN`. Running from source rather than from a packaged app, it
+looks for Node in those same places and then asks a login shell, because
+`node` on its own resolves to nothing in a GUI process.
 
 Data goes to `~/Library/Application Support/Agent Flow`, not inside the bundle,
 and repos are looked for under your home folder until you add a folder in the
