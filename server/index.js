@@ -90,8 +90,8 @@ async function api(req, res, url) {
 
   if (!tasks[id]) return json(res, 404, { error: 'not found' })
 
-  // The agent's own `ask` script calls this and holds the connection open until
-  // a human answers in the UI. No timeout here on purpose: curl sets its own.
+  // ask.mjs calls this and holds the connection open until a human answers in
+  // the UI. No timeout here on purpose: a decision can take as long as it takes.
   if (req.method === 'POST' && action === 'ask') {
     const question = (await body(req)).trim()
     if (!question) return json(res, 400, { error: 'question is empty' })
