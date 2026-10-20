@@ -88,8 +88,47 @@ const firstLine = (text) => {
   return line.length > 72 ? `${line.slice(0, 69)}...` : line
 }
 
+// Dropping every letter outside a-z turns "thay doi nut" into "thay-i-n-t".
+// Splitting the accents off first leaves the letter behind; d-with-stroke is
+// one character with nothing to split, so it is spelled out.
 const slugify = (s) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task'
+  String(s)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u0111\u0110]/g, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40)
+    .replace(/-$/, '') || 'task'
+
+const hasRef = (repoPath, ref) => {
+  try { git(repoPath, 'rev-parse', '--verify', '--quiet', ref); return true } catch { return false }
+}
+
+/**
+ * The branch has to exist before anything has read the request, so its name is
+ * slugged from the request itself, in whatever language that was written in.
+ * Once the agent has named the task in English, move the branch to match.
+ *
+ * Nothing is pushed this early, so the old name has no life off this machine.
+ * If something did push it, leave it: a name is not worth breaking a remote
+ * over, and it is not worth failing a task over either.
+ */
+function renameBranches(task) {
+  const wanted = `flow/${slugify(task.title)}-${task.id}`
+  for (const tree of task.trees || []) {
+    if (tree.branch === wanted) continue
+    try {
+      if (hasRef(tree.repoPath, wanted)) continue
+      if (hasRef(tree.repoPath, `refs/remotes/origin/${tree.branch}`)) continue
+      git(tree.repoPath, 'branch', '-m', tree.branch, wanted)
+      tree.branch = wanted
+    } catch (err) {
+      log(task.id, { kind: 'stderr', text: `kept the branch name ${tree.branch}: ${err.message}` })
+    }
+  }
+}
 
 export function createTask({
   title, prompt, repos, attachments = [], images = [], autoApprove = false, run, model, effort,
@@ -239,8 +278,10 @@ async function runTask(task) {
       const written = fs.existsSync(path.join(task.artifactDir, 'title.txt'))
         ? fs.readFileSync(path.join(task.artifactDir, 'title.txt'), 'utf8').trim()
         : ''
-      // The branch keeps the name it was created with; only the label changes.
-      if (written) task.title = firstLine(written)
+      if (written) {
+        task.title = firstLine(written)
+        renameBranches(task)
+      }
     }
     emit(task)
 

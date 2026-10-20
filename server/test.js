@@ -258,6 +258,19 @@ try {
   let quietTask = await waitFor(quiet.id, (t) => t.status === 'done' || t.status === 'failed', 'the quiet run')
   assert.equal(quietTask.status, 'done', `unattended run stalled: ${quietTask.error}`)
   assert.equal(quietTask.title, 'Named by the agent', 'the spec phase should have renamed it')
+  assert.equal(
+    quietTask.trees[0].branch,
+    `flow/named-by-the-agent-${quiet.id}`,
+    'and the branch should follow the name the agent gave it',
+  )
+  assert.doesNotThrow(
+    () => git('api', 'rev-parse', '--verify', quietTask.trees[0].branch),
+    'the rename has to reach git, not only the record',
+  )
+  assert.throws(
+    () => git('api', 'rev-parse', '--verify', `flow/just-do-it-nobody-is-watching-${quiet.id}`),
+    'and the name cut from the request should be gone',
+  )
   assert.ok(
     quietTask.questions.every((q) => q.answer),
     'an unattended run must not leave a question hanging',
@@ -581,7 +594,13 @@ try {
   // touches a branch.
   // Its own task: the other checks count the ones above and this one ends by
   // deleting what it made.
-  const doomed = await post('/api/tasks', { repos: ['api'], prompt: 'throwaway', run: 'quick', autoApprove: true })
+  const doomed = await post('/api/tasks', {
+    repos: ['api'],
+    prompt: 'throwaway',
+    title: 'Đổi nút Create with AI',
+    run: 'quick',
+    autoApprove: true,
+  })
   await waitFor(doomed.id, (t) => t.status === 'done' || t.status === 'failed', 'the throwaway run')
 
   const born = await (await fetch(`${base}/api/tasks/${doomed.id}`)).json()
@@ -592,6 +611,13 @@ try {
       born.log.slice(-8).map((l) => `  [${l.kind}] ${(l.text || '').slice(0, 160)}`).join('\n'),
   )
   assert.deepEqual(Object.keys(born.phases), ['implement', 'review'])
+  // A title the human wrote is never rewritten, so this branch is slugify's own
+  // work on a request that is not in English.
+  assert.equal(
+    born.trees[0].branch,
+    `flow/doi-nut-create-with-ai-${doomed.id}`,
+    'the accents come off the letters instead of taking the letters with them',
+  )
   assert.ok(born.docs['review.md'], `no review.md; docs were ${Object.keys(born.docs)}`)
   const keptLog = born.log.length
   assert.ok(keptLog > 0, 'it has a conversation to lose')
@@ -673,6 +699,7 @@ try {
     '    catch-up merges the base in from the worktree without touching the checkout,\n' +
     '    push covers the task branch and the base branch after it is merged,\n' +
     '    unattended answers its own questions and the agent names an untitled task,\n' +
+    '    the branch follows that name and a request in Vietnamese still slugs readably,\n' +
     '    a quick run skips spec and plan but still reviews itself,\n' +
     '    a finished task takes a follow-up on the same branches,\n' +
     '    an attached log reaches the prompt and a binary in a .log is refused,\n' +
