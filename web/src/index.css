@@ -67,12 +67,19 @@ input, select, textarea, button { font: inherit; color: inherit; }
 }
 
 /* A field already shows focus by changing its own border, so the offset box on
-   top of it reads as damage rather than as feedback. Hug the edge instead. */
+   top of it reads as damage rather than as feedback. Hug the edge instead.
+   An outline follows the element's own radius, so a borderless textarea inside
+   a rounded card drew a sharp rectangle: those opt out and let the card show
+   focus for them. */
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
   outline: 1px solid color-mix(in srgb, var(--color-accent) 70%, transparent);
   outline-offset: -1px;
+}
+
+.field-bare:focus-visible {
+  outline: none;
 }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }

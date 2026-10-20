@@ -88,7 +88,9 @@ function NewTask({ flow, onError }) {
   )
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-[14px] border border-line-strong bg-input p-3.5">
+    <div className="flex flex-col gap-2.5 rounded-2xl border border-line-strong bg-input p-4
+                    transition-colors duration-150
+                      focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15">
       <label htmlFor="task" className="text-xs text-muted">New task</label>
       <textarea
         id="task"
@@ -98,7 +100,7 @@ function NewTask({ flow, onError }) {
         onPaste={shots.onPaste}
         onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && start()}
         placeholder="e.g. get-discounts should return targeted product and collection names, capped at 5"
-        className="w-full resize-none border-0 bg-transparent text-[15px] outline-none placeholder:text-faint"
+        className="field-bare w-full resize-none border-0 bg-transparent text-[15px] outline-none placeholder:text-faint"
       />
       <ImageStrip images={shots.images} onRemove={shots.remove} size="h-12 w-16" />
 

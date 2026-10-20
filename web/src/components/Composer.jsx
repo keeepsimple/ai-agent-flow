@@ -27,7 +27,9 @@ export default function Composer({ task, onError }) {
 
   return (
     <div className="mx-auto w-full max-w-[720px] px-6 pt-3 pb-5">
-      <div className="rounded-[14px] border border-line-strong bg-input p-3">
+      <div className="rounded-2xl border border-line-strong bg-input p-3.5
+                      transition-colors duration-150
+                      focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15">
         <label htmlFor="prompt" className="sr-only">Message Tern</label>
         <textarea
           id="prompt"
@@ -44,7 +46,7 @@ export default function Composer({ task, onError }) {
                 ? 'Tern is working. This box opens when it stops.'
                 : 'Ask for a change. Paste a screenshot or an error straight in.'
           }
-          className="w-full resize-none border-0 bg-transparent outline-none placeholder:text-faint"
+          className="field-bare w-full resize-none border-0 bg-transparent outline-none placeholder:text-faint"
         />
         <ImageStrip images={shots.images} onRemove={shots.remove} size="h-12 w-16" />
         <div className="mt-2 flex flex-wrap items-center gap-1.5">

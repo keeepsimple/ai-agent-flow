@@ -142,7 +142,7 @@ export const selectChip =
   "appearance-none bg-no-repeat bg-[right_0.55rem_center] bg-[length:10px] bg-[image:var(--chevron)]"
 
 export const inputClass =
-  'w-full rounded-lg border border-line-strong bg-input px-3 py-2 text-[13px] text-ink ' +
+  'w-full rounded-xl border border-line-strong bg-input px-3.5 py-2 text-[13px] text-ink ' +
   'placeholder:text-faint transition-colors duration-150 hover:border-ghost ' +
   'focus:border-accent/60 focus:outline-none appearance-none ' +
   "bg-no-repeat bg-[right_0.65rem_center] bg-[length:10px] " +
