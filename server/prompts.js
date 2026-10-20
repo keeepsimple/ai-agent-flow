@@ -146,3 +146,37 @@ End your output with the count of issues found and fixed.`,
 export function buildPrompt(phase, ctx) {
   return `${preamble(ctx)}\n\n${BODY[phase](ctx)}\n`
 }
+
+/**
+ * A one-off run, outside the four phases: bring the base branch into the task's
+ * branch and resolve whatever that turns up. It happens in the worktree, never
+ * in the human's own checkout, so a bad resolution costs them nothing.
+ */
+export function buildCatchUpPrompt(tree, ctx) {
+  return `You are in ${tree.worktree}, on ${tree.branch}, in the ${tree.repo} repo.
+Read this repo's CLAUDE.md and follow it.
+
+Bring ${tree.baseBranch} into this branch:
+
+    git merge ${tree.baseBranch}
+
+If it merges cleanly, say so, run the repo's checks, and stop.
+
+If it conflicts, resolve it:
+
+- Read ${ctx.artifactDir}/spec.md first. It says what this branch was for, which
+  is what tells you which side of a conflict carries intent.
+- For each conflicted file, read both sides in full. Where the two changes are
+  about different things, keep both. Never take one side wholesale because it is
+  shorter or because it resolves faster.
+- A conflict where both sides changed the same behaviour on purpose is a product
+  decision, not a mechanical one. Do not guess. Ask:
+      node "${ctx.askScript}" "your question"
+- Stage each file with git add as you finish it, then commit the merge.
+
+Then run the verification commands from ${ctx.artifactDir}/plan.md and fix what
+the merge broke. Never report a check as passing without having run it.
+
+End with: which files conflicted, how you resolved each one, and the real output
+of the checks you ran.`
+}

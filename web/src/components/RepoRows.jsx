@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IconArrowMerge, IconCloudUpload, IconCopy, IconSitemap } from '@tabler/icons-react'
+import { IconArrowMerge, IconCloudUpload, IconCopy, IconSitemap, IconSparkles } from '@tabler/icons-react'
 import { Button } from './bits.jsx'
 import { api } from '../api.js'
 
@@ -9,7 +9,8 @@ function Ship({ task, state, onDone, onError }) {
   const run = async (what, call) => {
     setBusy(what)
     try {
-      onDone(await call())
+      const result = await call()
+      if (result?.git) onDone(result)
     } catch (err) {
       onError(err.message)
     } finally {
@@ -18,16 +19,35 @@ function Ship({ task, state, onDone, onError }) {
   }
 
   if (!state || state.ahead === 0) {
-    return <span className="font-mono text-[10px] text-ink-faint">nothing to ship yet</span>
+    return (
+      <span className="font-mono text-[10px] text-ink-faint">
+        {state?.produced ? `${state.produced} commits · already in ${state.base}` : 'nothing to ship yet'}
+      </span>
+    )
   }
 
   const pushed = state.unpushed === 0
+  const stale = state.behind > 0
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="font-mono text-[10px] text-ink-faint">
         {state.ahead} commit{state.ahead === 1 ? '' : 's'}
         {state.upstream ? (pushed ? ' · pushed' : ` · ${state.unpushed} unpushed`) : ' · never pushed'}
+        {stale && <span className="text-warn"> · {state.behind} behind {state.base}</span>}
       </span>
+      {stale && (
+        <Button
+          disabled={!!busy || !task.root}
+          title={
+            task.root
+              ? `Merge ${state.base} into ${state.branch} in the worktree and let an agent resolve the conflicts. Your own checkout is not touched.`
+              : 'The worktree was dropped, so there is nowhere to do the merge'
+          }
+          onClick={() => run('catch-up', () => api.catchUp(task.id, state.repo))}
+        >
+          <IconSparkles size={13} /> {busy === 'catch-up' ? 'Catching up' : `Catch up with ${state.base}`}
+        </Button>
+      )}
       <Button
         disabled={!!busy || !state.remote || pushed}
         title={state.remote ? `git push -u ${state.remote} ${state.branch}` : 'This repo has no remote'}
@@ -36,14 +56,21 @@ function Ship({ task, state, onDone, onError }) {
         <IconCloudUpload size={13} /> {busy === 'push' ? 'Pushing' : 'Push'}
       </Button>
       <Button
-        disabled={!!busy || !!state.mergeBlockedBy}
-        title={state.mergeBlockedBy || `git merge ${state.branch} into ${state.base}`}
+        disabled={!!busy || !!state.mergeBlockedBy || stale}
+        title={
+          state.mergeBlockedBy ||
+          (stale
+            ? `${state.base} has moved on. Catch up first so this is a fast-forward.`
+            : `git merge ${state.branch} into ${state.base}`)
+        }
         onClick={() => run('merge', () => api.merge(task.id, state.repo))}
       >
         <IconArrowMerge size={13} /> {busy === 'merge' ? 'Merging' : `Merge into ${state.base}`}
       </Button>
       {state.mergeBlockedBy ? (
         <span className="font-mono text-[10px] text-warn">{state.mergeBlockedBy}</span>
+      ) : stale ? (
+        <span className="font-mono text-[10px] text-ink-faint">catch up first, then it fast-forwards</span>
       ) : state.uncommitted > 0 ? (
         <span className="font-mono text-[10px] text-ink-faint">
           {state.uncommitted} uncommitted, none in this merge

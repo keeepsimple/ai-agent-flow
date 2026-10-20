@@ -51,6 +51,13 @@ function statusOf(tree) {
       count(tree.repoPath, `${tree.baseBranch}..${tree.branch}`) ??
       count(tree.repoPath, `${tree.baseRef}..${tree.branch}`) ??
       0,
+    // What the base has that this branch does not. While this is above zero the
+    // merge is not a fast-forward and can still conflict.
+    behind: count(tree.repoPath, `${tree.branch}..${tree.baseBranch}`) ?? 0,
+    // Commits the task produced, counted from where it forked. Unlike `ahead`
+    // this never falls back to zero, so it tells a merged branch apart from one
+    // that never committed anything.
+    produced: count(tree.repoPath, `${tree.baseRef}..${tree.branch}`) ?? 0,
     unpushed: upstream ? count(tree.repoPath, `${upstream}..${tree.branch}`) ?? 0 : null,
     upstream,
     remote,

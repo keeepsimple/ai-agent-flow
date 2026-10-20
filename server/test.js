@@ -64,6 +64,10 @@ if (prompt.includes('SLEEPY')) {
 } else if (prompt.includes('Phase: write the implementation plan')) {
   say('plan phase')
   fs.writeFileSync(path.join(art, 'plan.md'), '# plan')
+} else if (prompt.includes('into this branch')) {
+  // Catch-up run: do the merge for real, in the worktree we were started in.
+  execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'merge', 'main'])
+  say('merged main in')
 } else if (prompt.includes('Phase: implement')) {
   const ask = ${JSON.stringify(path.join(here, 'ask.mjs'))}
   const answer = execFileSync(process.execPath, [ask, 'ship the narrow version or the full one?'], {
@@ -272,6 +276,27 @@ try {
     assert.equal(repo.mergeBlockedBy, null, `${repo.repo} base should be mergeable: ${repo.mergeBlockedBy}`)
   }
 
+  // The base moving on makes the merge something other than a fast-forward.
+  // Catching up is an agent run in the worktree; the human's checkout is
+  // untouched until they press merge themselves.
+  fs.writeFileSync(path.join(repos, 'api', 'moved-on.txt'), 'someone else shipped')
+  git('api', 'add', '-A')
+  git('api', 'commit', '-qm', 'moved on')
+
+  let moved = (await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()).find((r) => r.repo === 'api')
+  assert.equal(moved.behind, 1, 'the branch should be a commit behind its base')
+
+  await post(`/api/tasks/${created.id}/catch-up`, { repo: 'api' })
+  await waitFor(created.id, (t) => t.status === 'done', 'the catch-up to finish')
+  moved = (await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()).find((r) => r.repo === 'api')
+  assert.equal(moved.behind, 0, 'catching up should leave nothing behind')
+  assert.equal(moved.ahead, 2, 'the branch now carries its own work plus the merge')
+  assert.equal(
+    git('api', 'status', '--porcelain'),
+    '',
+    'the human checkout must not have been touched',
+  )
+
   const noRemote = await fetch(`${base}/api/tasks/${created.id}/push`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -316,6 +341,7 @@ try {
   // The branch is still readable without its checkout, so it is still shippable.
   const afterDrop = await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()
   assert.equal(afterDrop[0].ahead, 0, 'merged into the base, so there is nothing left to merge')
+  assert.ok(afterDrop[0].produced > 0, 'but the task did produce commits: that is a merged branch, not an empty one')
   assert.equal(afterDrop[0].branch, task.trees[0].branch, 'the branch is still reported')
 
   // Cancel has to actually stop the agent. It used to send SIGTERM to one pid,
@@ -346,7 +372,8 @@ try {
     'ok  2 repos, 2 worktrees, both gates, blocking ask, 4 phases, per-repo commits,\n' +
     '    drop keeps branches, pasted image reaches the prompt, bad uploads refused,\n' +
     '    cancel kills a SIGTERM-ignoring tree, late ask cannot revive a dead task,\n' +
-    '    push needs a remote, merge refuses a dirty base and lands on a clean one',
+    '    push needs a remote, merge refuses a clashing edit and lands on a clean base,\n' +
+    '    catch-up merges the base in from the worktree without touching the checkout',
   )
 } catch (err) {
   failure = err

@@ -151,6 +151,10 @@ async function api(req, res, url) {
     const { repo } = JSON.parse((await body(req)) || '{}')
     return json(res, 200, { done: repoGit.push(id, repo), git: repoGit.status(id) })
   }
+  if (req.method === 'POST' && action === 'catch-up') {
+    const { repo } = JSON.parse((await body(req)) || '{}')
+    return json(res, 200, runner.catchUp(id, repo))
+  }
   if (req.method === 'POST' && action === 'merge') {
     const { repo } = JSON.parse((await body(req)) || '{}')
     return json(res, 200, { done: repoGit.merge(id, repo), git: repoGit.status(id) })

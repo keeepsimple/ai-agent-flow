@@ -101,9 +101,17 @@ commits the base branch is missing and offers two buttons:
 - **Push** runs `git push -u <remote> <branch>` so the branch exists on the
   remote and can be turned into an MR.
 - **Merge into \<base\>** merges the branch into the branch it forked from, in
-  your own checkout. It is refused, with the reason shown next to it, unless that
-  checkout is on the base branch and has nothing uncommitted. Neither button
-  deletes the branch, and neither one is automatic.
+  your own checkout. It is refused, naming the files, when something uncommitted
+  there would be overwritten by the merge, and when the checkout is on some other
+  branch. Unrelated uncommitted work is not in the way.
+- **Catch up with \<base\>** appears when the base has moved on. It runs an agent
+  that merges the base *into the task's branch*, inside the worktree, resolving
+  conflicts with the spec in hand and asking you when a conflict is a product
+  decision rather than a mechanical one. Your own checkout is not touched, so a
+  resolution you dislike costs a branch and nothing else. Afterwards the merge
+  into the base is a fast-forward, which cannot conflict.
+
+Neither button deletes the branch, and none of this is automatic.
 
 Both read the branch through the repo rather than the worktree, so **Drop
 worktrees** frees the disk without taking the work out of reach.

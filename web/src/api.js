@@ -40,6 +40,7 @@ export const api = {
   dropWorktree: (id) => call('DELETE', `/api/tasks/${id}/worktree`),
   push: (id, repo) => call('POST', `/api/tasks/${id}/push`, { repo }),
   merge: (id, repo) => call('POST', `/api/tasks/${id}/merge`, { repo }),
+  catchUp: (id, repo) => call('POST', `/api/tasks/${id}/catch-up`, { repo }),
 }
 
 export function useFlow() {

@@ -3,7 +3,7 @@ import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { DATA, bus, sse, tasks, artifactDir, emit, update, log } from './store.js'
-import { PHASES, GATES, PHASE_LABEL, buildPrompt } from './prompts.js'
+import { PHASES, GATES, PHASE_LABEL, buildPrompt, buildCatchUpPrompt } from './prompts.js'
 import { UPLOADS, verify as verifyUpload } from './uploads.js'
 import { notify } from './notify.js'
 
@@ -284,6 +284,37 @@ export function answerQuestion(id, questionId, answer) {
   return task
 }
 
+/**
+ * Pull the base branch into the task's branch and let an agent resolve whatever
+ * that turns up. It runs in the worktree, never in the human's own checkout, so
+ * a resolution they dislike costs them a branch and nothing else. Afterwards the
+ * merge into the base is a fast-forward, which cannot conflict.
+ */
+export function catchUp(id, repo) {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  if (task.status === 'running' || task.status === 'queued') throw new Error('this task is already running')
+  if (!task.root) throw new Error('the worktree was dropped, so there is nothing to merge into')
+  const tree = task.trees?.find((t) => t.repo === repo)
+  if (!tree) throw new Error(`unknown repo: ${repo}`)
+
+  const previous = task.status
+  update(id, { status: 'running', phase: `catching up with ${tree.baseBranch}`, error: null })
+
+  runClaude(task, buildCatchUpPrompt(tree, task), tree.worktree)
+    .then(() => {
+      if (tasks[id].status === 'cancelled') return
+      update(id, { status: previous, phase: null })
+      tell(task, `Caught up: ${task.title}`, `${tree.repo} merged ${tree.baseBranch} into its branch`)
+    })
+    .catch((err) => {
+      if (tasks[id].status === 'cancelled') return
+      fail(task, `catching up with ${tree.baseBranch}: ${err.message}`)
+    })
+
+  return task
+}
+
 export function cancel(id) {
   const task = tasks[id]
   if (!task) throw new Error('unknown task')
@@ -349,7 +380,7 @@ function describeTool(name, input = {}) {
   return text.length > 280 ? text.slice(0, 280) + '…' : text
 }
 
-function runClaude(task, prompt) {
+function runClaude(task, prompt, cwd = task.root) {
   const args = [
     '-p',
     '--output-format', 'stream-json',
@@ -369,7 +400,7 @@ function runClaude(task, prompt) {
     // goes through the shell. Nothing with a space reaches the command line
     // unquoted, and the prompt itself never touches it at all.
     const child = spawn(CLAUDE_BIN, WIN ? args.map(winQuote) : args, {
-      cwd: task.root,
+      cwd,
       shell: WIN,
       env: {
         ...process.env,
