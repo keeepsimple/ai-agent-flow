@@ -28,7 +28,7 @@ export default function Workspace({ task, flow }) {
     <>
       <Header active="workspace" task={task}>
         {ACTIVE.has(task.status) && (
-          <span className="inline-flex items-center gap-2 text-xs text-ink-3">
+          <span className="hidden items-center gap-2 text-xs text-ink-3 lg:inline-flex">
             <span className="ring-dot size-2 rounded-full bg-accent dot-live" />
             {task.phase} {started ? `· ${duration(started)}` : ''}
           </span>
@@ -45,7 +45,7 @@ export default function Workspace({ task, flow }) {
         <Button variant="primary" as="a" href={to.review(task.id)}>Review changes</Button>
       </Header>
 
-      <div className="flex min-h-0 flex-1 flex-wrap">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside
           aria-label="Changed files"
           className="box-border min-h-0 flex-[1_1_220px] overflow-y-auto border-r border-line bg-panel px-2 py-3"
@@ -55,10 +55,10 @@ export default function Workspace({ task, flow }) {
           <div className="mt-5 border-t border-line px-2 pt-3.5">
             <div className="mb-2 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Run</div>
             <dl className="m-0 flex flex-col gap-1.5 text-xs text-ink-3">
-              <div className="flex justify-between"><dt>Cost</dt><dd className="m-0 font-mono">${(task.cost || 0).toFixed(3)}</dd></div>
-              <div className="flex justify-between"><dt>Turns</dt><dd className="m-0 font-mono">{task.turns || 0}</dd></div>
-              <div className="flex justify-between text-muted"><dt>Permissions</dt><dd className="m-0">{task.permissionMode}</dd></div>
-              <div className="flex justify-between text-muted"><dt>Effort</dt><dd className="m-0">{task.effort || 'default'}</dd></div>
+              <div className="flex justify-between gap-3"><dt>Cost</dt><dd className="m-0 font-mono">${(task.cost || 0).toFixed(3)}</dd></div>
+              <div className="flex justify-between gap-3"><dt>Turns</dt><dd className="m-0 font-mono">{task.turns || 0}</dd></div>
+              <div className="flex justify-between gap-3 text-muted"><dt className="shrink-0">Permissions</dt><dd className="m-0 truncate">{task.permissionMode}</dd></div>
+              <div className="flex justify-between gap-3 text-muted"><dt className="shrink-0">Effort</dt><dd className="m-0 truncate">{task.effort || 'default'}</dd></div>
             </dl>
           </div>
         </aside>

@@ -57,7 +57,7 @@ export function AccentPicker() {
 export default function Header({ active, task, repoLabel, children }) {
   return (
     <header
-      className="flex min-h-14 flex-wrap items-center gap-3 border-b border-line bg-panel px-4 py-2"
+      className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-panel px-4"
     >
       <a href={to.sessions()} className="flex items-center gap-2.5 text-[15px] font-semibold text-ink no-underline">
         <Mark />
@@ -65,19 +65,21 @@ export default function Header({ active, task, repoLabel, children }) {
       </a>
       <span className="text-dim" aria-hidden="true">/</span>
 
-      <Chip as="span" className="cursor-default">
-        {repoLabel || task?.repos?.join(' + ') || 'repos'}
-        <IconChevronDown size={12} className="text-muted" />
+      <Chip as="span" className="max-w-[16rem] cursor-default">
+        <span className="truncate">{repoLabel || task?.repos?.join(' + ') || 'repos'}</span>
+        <IconChevronDown size={12} className="shrink-0 text-muted" />
       </Chip>
 
       {task?.trees?.[0] && (
-        <Chip as="span" mono className="cursor-default">
-          <IconGitBranch size={13} />
-          {task.trees[0].branch}
-        </Chip>
+        <span className="hidden min-w-0 xl:block">
+          <Chip as="span" mono className="max-w-[22rem] cursor-default">
+            <IconGitBranch size={13} className="shrink-0" />
+            <span className="truncate">{task.trees[0].branch}</span>
+          </Chip>
+        </span>
       )}
 
-      <nav aria-label="Primary" className="ml-2 flex flex-wrap gap-0.5">
+      <nav aria-label="Primary" className="ml-2 flex shrink-0 gap-0.5">
         {NAV.map(([key, label]) => {
           const href = key === 'sessions' ? to.sessions() : task ? to[key](task.id) : null
           const current = key === active
@@ -95,7 +97,7 @@ export default function Header({ active, task, repoLabel, children }) {
       </nav>
 
       <div className="flex-1" />
-      {children}
+      <div className="flex shrink-0 items-center gap-3">{children}</div>
     </header>
   )
 }

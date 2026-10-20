@@ -130,7 +130,7 @@ export default function Review({ task, flow }) {
         </Button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-wrap">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside
           aria-label="Changed files"
           className="box-border min-h-0 flex-[1_1_240px] overflow-y-auto border-r border-line bg-panel px-2 py-3.5"

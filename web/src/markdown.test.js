@@ -37,8 +37,23 @@ assert.deepEqual(blocks('```json\n{ "a": 1 }\n\n{ "b": 2 }\n```'), [
 ], 'a blank line inside a fence stays inside it')
 assert.deepEqual(blocks('```\nunclosed'), [{ type: 'code', text: 'unclosed' }])
 
+assert.deepEqual(
+  blocks('| Check | Result |\n|---|---|\n| lint | pass |\n| test | 20 passed |'),
+  [{ type: 'table', head: ['Check', 'Result'], rows: [['lint', 'pass'], ['test', '20 passed']] }],
+)
+assert.deepEqual(
+  blocks('| a | b |\n| c | d |'),
+  [{ type: 'p', text: '| a | b | | c | d |' }],
+  'pipes without a separator row are not a table, just two lines of one paragraph',
+)
+assert.deepEqual(
+  blocks('| a |\n|---|\n| b |\nafter').at(-1),
+  { type: 'p', text: 'after' },
+  'the line after a table is not swallowed',
+)
+
 assert.deepEqual(blocks('> noted'), [{ type: 'quote', text: 'noted' }])
 assert.deepEqual(blocks(''), [])
 assert.deepEqual(blocks(null), [])
 
-console.log('ok  markdown: paragraph joining, headings, lists, fences, quotes')
+console.log('ok  markdown: paragraph joining, headings, lists, fences, quotes, tables')

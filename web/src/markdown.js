@@ -4,8 +4,8 @@
  * Just enough for what an agent writes: headings, fenced code, lists, quotes.
  * Inline marks (bold, italic, code) are left in the text for the renderer.
  *
- * ponytail: flat lists, no tables, no links. Reach for a real parser the day a
- * document actually needs one.
+ * ponytail: flat lists and no links. Tables are here because an agent reporting
+ * what it ran writes them constantly, and raw pipes are unreadable.
  */
 export function blocks(source) {
   const lines = String(source || '').split('\n')
@@ -33,6 +33,18 @@ export function blocks(source) {
       const code = []
       for (i++; i < lines.length && !lines[i].startsWith('```'); i++) code.push(lines[i])
       out.push({ type: 'code', text: code.join('\n') })
+      continue
+    }
+
+    // | a | b |  followed by  |---|---|  is a table, and only then.
+    const cells = (row) => row.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+    if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1] || '')) {
+      endBlock()
+      const head = cells(line)
+      const rows = []
+      for (i += 2; i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i]); i++) rows.push(cells(lines[i]))
+      i-- // the loop's own i++ takes the line after the table
+      out.push({ type: 'table', head, rows })
       continue
     }
 

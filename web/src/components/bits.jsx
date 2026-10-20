@@ -100,7 +100,7 @@ export function Chip({ mono = false, active = false, className = '', as: As = 'b
     <As
       {...(As === 'button' ? { type: 'button' } : {})}
       className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-xs
-                  no-underline transition-colors duration-150
+                  whitespace-nowrap no-underline transition-colors duration-150
                   ${active ? 'border-accent/50 bg-accent/10 text-accent' : 'border-line bg-transparent text-ink-3 hover:border-line-strong hover:text-ink'}
                   ${mono ? 'font-mono' : ''} ${className}`}
       {...props}

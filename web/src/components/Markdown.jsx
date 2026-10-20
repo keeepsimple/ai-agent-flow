@@ -48,6 +48,32 @@ export default function Markdown({ source, className = '' }) {
             </ul>
           )
         }
+        if (block.type === 'table') {
+          return (
+            <div key={i} className="my-2 overflow-x-auto rounded-lg border border-line">
+              <table className="w-full border-collapse text-[12px]">
+                <thead>
+                  <tr className="bg-raised">
+                    {block.head.map((cell, j) => (
+                      <th key={j} className="border-b border-line px-2.5 py-1.5 text-left font-medium text-ink">
+                        {inline(cell, `${i}h${j}`)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, r) => (
+                    <tr key={r} className="border-b border-line/60 last:border-b-0">
+                      {row.map((cell, j) => (
+                        <td key={j} className="px-2.5 py-1.5 align-top">{inline(cell, `${i}r${r}c${j}`)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
         if (block.type === 'code') {
           return (
             <pre
