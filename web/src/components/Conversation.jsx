@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  IconAlertTriangle, IconCheck, IconFile, IconPencil, IconSearch, IconTerminal2,
+  IconAlertTriangle, IconCheck, IconChevronDown, IconFile, IconPencil, IconSearch, IconTerminal2,
 } from '@tabler/icons-react'
 import { Mark } from './Header.jsx'
 import Markdown from './Markdown.jsx'
@@ -13,17 +13,119 @@ const TOOL_ICON = [
 ]
 const iconFor = (tool) => (TOOL_ICON.find(([re]) => re.test(tool || ''))?.[1]) || IconTerminal2
 
-function ToolRow({ entry }) {
+function ToolRow({ entry, running = false }) {
   const Icon = iconFor(entry.tool)
   const edited = /edit|write/i.test(entry.tool || '')
   return (
     <div
-      className={`flex min-h-9 items-center gap-2.5 rounded-lg border bg-raised px-3 text-left
-                  ${edited ? 'border-accent/40 text-ink' : 'border-line text-ink-3'}`}
+      className={`flex min-h-9 items-center gap-2.5 rounded-xl border bg-raised px-3 text-left
+                  ${running ? 'border-accent/50 text-ink' : edited ? 'border-accent/40 text-ink' : 'border-line text-ink-3'}`}
     >
-      <Icon size={14} className={edited ? 'text-accent' : 'text-muted'} />
+      {running ? (
+        <span className="ring-dot size-2 shrink-0 rounded-full bg-accent dot-live" />
+      ) : (
+        <Icon size={14} className={edited ? 'text-accent' : 'text-muted'} />
+      )}
       <span className="shrink-0 text-[13px]">{entry.tool}</span>
       <span className="truncate font-mono text-xs text-muted" title={entry.text}>{entry.text}</span>
+    </div>
+  )
+}
+
+/**
+ * A failure is worth seeing, but a dozen lines of sed complaining is the same
+ * wall as a dozen tool calls. Show the first few and let it open.
+ */
+function Spill({ entry }) {
+  const [open, setOpen] = useState(false)
+  const lines = entry.text.split('\n')
+  const long = lines.length > 5
+  const shown = open || !long ? entry.text : lines.slice(0, 5).join('\n')
+
+  return (
+    <div className="flex flex-col gap-1">
+      <pre
+        className={`m-0 overflow-x-auto rounded-xl border border-line bg-page px-3 py-2 font-mono
+                    text-xs leading-relaxed whitespace-pre-wrap
+                    ${entry.kind === 'error' ? 'text-bad' : 'text-warn'}`}
+      >
+        {shown}
+      </pre>
+      {long && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex cursor-pointer items-center gap-1.5 self-start text-xs text-muted
+                     transition-colors duration-150 hover:text-ink"
+        >
+          <IconChevronDown size={12} className={open ? '' : '-rotate-90'} />
+          {open ? 'Show less' : `${lines.length - 5} more lines`}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Bash x7 - Read x2 - Agent, most used first. */
+function summarise(items) {
+  const counts = new Map()
+  for (const item of items) counts.set(item.tool, (counts.get(item.tool) || 0) + 1)
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([tool, n]) => (n > 1 ? `${tool} ×${n}` : tool))
+    .join(' · ')
+}
+
+/**
+ * A run of tool calls is scenery: twenty of them push what the agent actually
+ * said off the screen. Collapsed to a line, with whatever is running right now
+ * left showing, because that is the part worth watching.
+ */
+function ToolGroup({ items, live }) {
+  const [open, setOpen] = useState(false)
+  const earlier = live ? items.slice(0, -1) : items
+  const current = live ? items.at(-1) : null
+
+  if (open || items.length === 1) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        {items.length > 1 && (
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="flex cursor-pointer items-center gap-1.5 self-start text-xs text-muted
+                       transition-colors duration-150 hover:text-ink"
+          >
+            <IconChevronDown size={12} />
+            Hide {items.length} steps
+          </button>
+        )}
+        {items.map((item, i) => (
+          <ToolRow key={i} entry={item} running={live && i === items.length - 1} />
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {earlier.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          title="Show every step"
+          className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-xl border border-line
+                     bg-raised px-3 text-left transition-colors duration-150 hover:border-line-strong"
+        >
+          <IconChevronDown size={12} className="-rotate-90 shrink-0 text-muted" />
+          <span className="shrink-0 text-[13px] text-ink-3">
+            {earlier.length} step{earlier.length === 1 ? '' : 's'}
+          </span>
+          <span className="truncate font-mono text-xs text-muted">{summarise(earlier)}</span>
+        </button>
+      )}
+      {current && <ToolRow entry={current} running />}
     </div>
   )
 }
@@ -121,11 +223,9 @@ export default function Conversation({ task, children }) {
 
         {blocks.map((block, i) => {
           if (block.kind === 'tools') {
-            return (
-              <div key={i} className="flex flex-col gap-1.5">
-                {block.items.map((item, j) => <ToolRow key={j} entry={item} />)}
-              </div>
-            )
+            // Only the final run can still be in flight.
+            const live = task.status === 'running' && i === blocks.length - 1
+            return <ToolGroup key={i} items={block.items} live={live} />
           }
           const { entry } = block
           if (entry.kind === 'result') {
@@ -140,16 +240,7 @@ export default function Conversation({ task, children }) {
             )
           }
           if (entry.kind === 'error' || entry.kind === 'stderr') {
-            return (
-              <pre
-                key={i}
-                className={`m-0 overflow-x-auto rounded-lg border border-line bg-page px-3 py-2 font-mono
-                            text-xs leading-relaxed whitespace-pre-wrap
-                            ${entry.kind === 'error' ? 'text-bad' : 'text-warn'}`}
-              >
-                {entry.text}
-              </pre>
-            )
+            return <Spill key={i} entry={entry} />
           }
           if (entry.kind === 'question' || entry.kind === 'answer' || entry.kind === 'decision') {
             const mine = entry.kind !== 'question'
@@ -170,7 +261,7 @@ export default function Conversation({ task, children }) {
           return <Markdown key={i} source={entry.text} className="text-ink-2" />
         })}
 
-        {task.status === 'running' && (
+        {task.status === 'running' && blocks.at(-1)?.kind !== 'tools' && (
           <div className="flex items-center gap-2.5">
             <span className="ring-dot size-2 rounded-full bg-accent dot-live" />
             <span className="skeleton h-3 w-44 rounded" />
