@@ -15,14 +15,14 @@ function preamble(ctx) {
 
 Repo:       ${ctx.repo}
 Worktree:   ${ctx.worktree}   (you are already in it, on branch ${ctx.branch})
-Base:       ${ctx.baseBranch}
+Base:       ${ctx.baseRef} (on ${ctx.baseBranch} when the task started)
 Artifacts:  ${ctx.artifactDir}   (spec.md, plan.md, review.md live here, NOT in the repo)
 
 Read the repo's own CLAUDE.md and follow it. Stay inside this one repo; if the
 work genuinely needs a second repo, say so in your output and stop.
 
 If you hit a decision only the human can make, run:
-    ${ctx.askScript} "your question"
+    node "${ctx.askScript}" "your question"
 It blocks and prints their answer on stdout. Use it instead of guessing on
 anything that would be expensive to get wrong. Do not use it for questions you
 can answer by reading the code.`
@@ -77,7 +77,7 @@ End your output with: what you built, what you ran, and what the output was.`,
 
   review: (ctx) => `## Phase: review your own work
 
-Diff under review: \`git diff ${ctx.baseBranch}...HEAD\` in this worktree.
+Diff under review: \`git diff ${ctx.baseRef}...HEAD\` in this worktree.
 
 Review it as if someone else wrote it and you are the one paged at 3am:
 

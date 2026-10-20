@@ -1,12 +1,16 @@
 // One end-to-end check of the whole machine: worktree, four phases, both
 // approval gates, and the agent's blocking `ask`. Run: npm test
-// `claude` is stubbed, so this costs nothing and needs no network.
+// `claude` is stubbed, so this costs nothing and needs no network. The stub is
+// plain Node behind a one-line launcher, so this runs on macOS, Linux and
+// Windows alike.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 
+const WIN = process.platform === 'win32'
+const here = import.meta.dirname
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-flow-test-'))
 const repos = path.join(root, 'repos')
 const bin = path.join(root, 'bin')
@@ -24,41 +28,61 @@ fs.writeFileSync(path.join(repos, 'demo', 'README.md'), '# demo\n')
 git('add', '.')
 git('commit', '-qm', 'init')
 
-// Stub claude: emits stream-json, writes the artifact the phase is supposed to
-// write, and blocks on `ask` once so the question path is exercised too.
+// The stub reads the prompt from stdin exactly as the real CLI does, writes the
+// artifact its phase is supposed to write, and blocks on `ask` once so the
+// question path is covered too.
+const stub = path.join(bin, 'stub.mjs')
+fs.writeFileSync(stub, `
+import fs from 'node:fs'
+import path from 'node:path'
+import { execFileSync } from 'node:child_process'
+
+const args = process.argv.slice(2)
+const art = args[args.indexOf('--add-dir') + 1]
+let prompt = ''
+process.stdin.setEncoding('utf8')
+for await (const chunk of process.stdin) prompt += chunk
+
+const say = (text) =>
+  console.log(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } }))
+
+if (prompt.includes('Phase: write the spec')) {
+  say('spec phase')
+  fs.writeFileSync(path.join(art, 'spec.md'), '# spec')
+} else if (prompt.includes('Phase: write the implementation plan')) {
+  say('plan phase')
+  fs.writeFileSync(path.join(art, 'plan.md'), '# plan')
+} else if (prompt.includes('Phase: implement')) {
+  const ask = ${JSON.stringify(path.join(here, 'ask.mjs'))}
+  const answer = execFileSync(process.execPath, [ask, 'ship the narrow version or the full one?'], {
+    encoding: 'utf8',
+  }).trim()
+  say('human said: ' + answer)
+  fs.writeFileSync('impl.txt', 'stubbed')
+  execFileSync('git', ['add', '-A'])
+  execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'impl'])
+} else {
+  say('review phase')
+  fs.writeFileSync(path.join(art, 'review.md'), '# review')
+}
+
+console.log(JSON.stringify({
+  type: 'result', subtype: 'success', is_error: false,
+  result: 'ok', total_cost_usd: 0.01, num_turns: 2,
+}))
+`)
+
+const launcher = path.join(bin, WIN ? 'claude.cmd' : 'claude')
 fs.writeFileSync(
-  path.join(bin, 'claude'),
-  `#!/bin/sh
-prompt=""
-art=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -p) prompt="$2"; shift 2 ;;
-    --add-dir) art="$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-say() { printf '{"type":"assistant","message":{"content":[{"type":"text","text":"%s"}]}}\\n' "$1"; }
-case "$prompt" in
-  *"Phase: write the spec"*)   say "spec phase";   echo '# spec' > "$art/spec.md" ;;
-  *"Phase: write the implementation plan"*) say "plan phase"; echo '# plan' > "$art/plan.md" ;;
-  *"Phase: implement"*)
-      answer=$("$art/ask" "ship the narrow version or the full one?")
-      say "human said: $answer"
-      echo stubbed > impl.txt
-      git add -A && git -c user.email=t@e.com -c user.name=T commit -qm "impl"
-      ;;
-  *"Phase: review"*)           say "review phase"; echo '# review' > "$art/review.md" ;;
-esac
-printf '{"type":"result","subtype":"success","result":"ok","total_cost_usd":0.01,"num_turns":2}\\n'
-`,
+  launcher,
+  WIN ? `@node "${stub}" %*\n` : `#!/bin/sh\nexec node "${stub}" "$@"\n`,
   { mode: 0o755 },
 )
 
-const server = spawn(process.execPath, [path.join(import.meta.dirname, 'index.js')], {
+const server = spawn(process.execPath, [path.join(here, 'index.js')], {
   env: {
     ...process.env,
-    PATH: `${bin}:${process.env.PATH}`,
+    FLOW_CLAUDE_BIN: launcher,
     FLOW_DATA: path.join(root, 'data'),
     FLOW_REPO_ROOT: repos,
     FLOW_PORT: String(PORT),
@@ -139,7 +163,8 @@ try {
   failure = err
 } finally {
   server.kill('SIGKILL')
-  fs.rmSync(root, { recursive: true, force: true })
+  await sleep(200)
+  fs.rmSync(root, { recursive: true, force: true, maxRetries: 5 })
 }
 
 if (failure) {

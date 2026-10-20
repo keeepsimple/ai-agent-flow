@@ -2,8 +2,11 @@
 
 A local console for running Claude Code on several tasks at once. Each task gets
 its own git worktree, writes a spec, writes a plan, stops for your approval at
-both, implements, then reviews its own diff. You get a macOS notification when it
-needs a decision and when it finishes.
+both, implements, then reviews its own diff. You get a desktop notification when
+it needs a decision and when it finishes.
+
+Runs on macOS, Linux and Windows. It needs Node 20 or newer, git, and the
+`claude` CLI on your PATH.
 
 ```
 npm install
@@ -34,8 +37,11 @@ Tick **Run unattended** on a task to skip both approval gates.
 The agent gets a script it can run to ask you something:
 
 ```sh
-"$FLOW_ARTIFACTS/ask" "should this hit the live Shopify API or the cached copy?"
+node /path/to/agent-flow/server/ask.mjs "live Shopify API, or the cached copy?"
 ```
+
+The prompt hands it the absolute path, so there is nothing to install in the
+worktree and nothing that assumes a shell.
 
 That call blocks until you answer in the UI, and the answer comes back on stdout.
 The prompt tells the agent to use it for decisions only you can make, not for
@@ -63,7 +69,8 @@ when a task finishes, the branch is there for you to review and merge yourself.
 | `FLOW_MAX_CONCURRENT` | `3` | Tasks running at the same time |
 | `FLOW_PERMISSION_MODE` | `bypassPermissions` | Passed to `claude --permission-mode` |
 | `FLOW_MAX_BUDGET_USD` | unset | Per-phase spend cap |
-| `FLOW_NOTIFY` | on | `off` silences macOS notifications |
+| `FLOW_NOTIFY` | on | `off` silences desktop notifications |
+| `FLOW_CLAUDE_BIN` | `claude` | Path to the CLI, if it is not on your PATH |
 
 ## The risk worth knowing about
 
@@ -74,8 +81,25 @@ exactly that reason. Set `FLOW_PERMISSION_MODE=acceptEdits` if you would rather
 it could edit files but not run commands, and expect phases that need a shell to
 stall.
 
+## Platform notes
+
+Notifications use `osascript` on macOS, `notify-send` on Linux, and a PowerShell
+toast on Windows. A machine without a notification daemon just gets no popup;
+nothing else changes.
+
+On Windows the `claude` CLI is a `.cmd`, which Node will not spawn directly, so
+the child goes through `cmd.exe`. The prompt is piped in on stdin rather than
+passed as an argument, which keeps it off the command line entirely on every
+platform. Stopping a task uses `taskkill /T` there, because killing the wrapper
+alone would leave the agent running underneath.
+
+Windows also still has a 260 character path limit in places. If a repo name is
+long, point `FLOW_DATA` somewhere short like `C:\flow` so the worktrees stay
+well inside it.
+
 ## Checks
 
 `npm test` drives the whole machine end to end against a stubbed `claude`: it
 creates a worktree, walks all four phases, answers both gates, and answers a
-blocking question. No network, no spend.
+blocking question. No network, no spend. The stub is plain Node behind a
+one-line launcher, so the check runs on all three platforms.

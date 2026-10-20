@@ -10,6 +10,9 @@ export const PORT = Number(process.env.FLOW_PORT || 7777)
 export const REPO_ROOT = process.env.FLOW_REPO_ROOT || path.resolve(import.meta.dirname, '..', '..')
 const MAX_CONCURRENT = Number(process.env.FLOW_MAX_CONCURRENT || 3)
 const PERMISSION_MODE = process.env.FLOW_PERMISSION_MODE || 'bypassPermissions'
+const CLAUDE_BIN = process.env.FLOW_CLAUDE_BIN || 'claude'
+const WIN = process.platform === 'win32'
+const ASK_SCRIPT = path.join(import.meta.dirname, 'ask.mjs')
 
 const children = new Map() // taskId -> ChildProcess
 const gateWaiters = new Map() // taskId -> resolve(feedbackOrNull)
@@ -91,19 +94,8 @@ function setupWorktree(task) {
 
   const dir = artifactDir(task.id)
   fs.mkdirSync(dir, { recursive: true })
-  const askScript = path.join(dir, 'ask')
-  fs.writeFileSync(
-    askScript,
-    `#!/bin/sh
-# Ask the human a question and block until they answer in the Agent Flow UI.
-[ -z "$1" ] && { echo 'usage: ask "question"' >&2; exit 2; }
-exec curl -sS --max-time 86400 -X POST "$FLOW_URL/api/tasks/$FLOW_TASK_ID/ask" \\
-  -H 'Content-Type: text/plain' --data-binary "$1"
-`,
-    { mode: 0o755 },
-  )
 
-  update(task.id, { branch, worktree, baseRef, baseBranch, artifactDir: dir, askScript })
+  update(task.id, { branch, worktree, baseRef, baseBranch, artifactDir: dir })
 }
 
 async function runTask(task) {
@@ -126,6 +118,7 @@ async function runTask(task) {
     const prompt = buildPrompt(phase, {
       ...task,
       repo: path.join(REPO_ROOT, task.repo),
+      askScript: ASK_SCRIPT,
       feedback,
     })
     feedback = null
@@ -160,12 +153,12 @@ async function runTask(task) {
 
 function fail(task, message) {
   update(task.id, { status: 'failed', error: message })
-  notify(`Failed: ${task.title}`, message.slice(0, 180), { sound: 'Basso' })
+  notify(`Failed: ${task.title}`, message.slice(0, 180), { urgent: true })
 }
 
 function waitForApproval(task, phase) {
   update(task.id, { status: 'awaiting_approval', awaitingPhase: phase })
-  notify(`Needs your call: ${task.title}`, `${PHASE_LABEL[phase]} is ready to review`, { sound: 'Submarine' })
+  notify(`Needs your call: ${task.title}`, `${PHASE_LABEL[phase]} is ready to review`, { urgent: true })
   return new Promise((resolve) => gateWaiters.set(task.id, resolve))
 }
 
@@ -197,7 +190,7 @@ export function askQuestion(id, text) {
   task.questions.push(question)
   update(id, { status: 'awaiting_answer' })
   log(id, { kind: 'question', text })
-  notify(`Question: ${task.title}`, text.slice(0, 180), { sound: 'Submarine' })
+  notify(`Question: ${task.title}`, text.slice(0, 180), { urgent: true })
   return new Promise((resolve) => questionWaiters.set(question.id, resolve))
 }
 
@@ -219,7 +212,7 @@ export function cancel(id) {
   const task = tasks[id]
   if (!task) throw new Error('unknown task')
   update(id, { status: 'cancelled', phase: null, awaitingPhase: null })
-  children.get(id)?.kill('SIGTERM')
+  killTree(children.get(id))
   // Anything blocked on this task has to be let go, or the HTTP request that is
   // holding a question open never gets a response.
   gateWaiters.get(id)?.(null)
@@ -274,7 +267,7 @@ function describeTool(name, input = {}) {
 
 function runClaude(task, prompt) {
   const args = [
-    '-p', prompt,
+    '-p',
     '--output-format', 'stream-json',
     '--verbose',
     '--permission-mode', PERMISSION_MODE,
@@ -284,20 +277,27 @@ function runClaude(task, prompt) {
   if (process.env.FLOW_MAX_BUDGET_USD) args.push('--max-budget-usd', process.env.FLOW_MAX_BUDGET_USD)
 
   return new Promise((resolve, reject) => {
-    const child = spawn('claude', args, {
+    // On Windows `claude` is a .cmd, which Node refuses to spawn directly, so it
+    // goes through the shell. Nothing with a space reaches the command line
+    // unquoted, and the prompt itself never touches it at all.
+    const child = spawn(CLAUDE_BIN, WIN ? args.map(winQuote) : args, {
       cwd: task.worktree,
+      shell: WIN,
       env: {
         ...process.env,
         FLOW_URL: `http://127.0.0.1:${PORT}`,
         FLOW_TASK_ID: task.id,
         FLOW_ARTIFACTS: task.artifactDir,
       },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     })
     children.set(task.id, child)
+    child.stdin.on('error', () => {}) // the child can die before the prompt lands
+    child.stdin.end(prompt, 'utf8')
 
     let buffer = ''
     let summary = ''
+    let resultError = null
     child.stdout.setEncoding('utf8')
     child.stdout.on('data', (chunk) => {
       buffer += chunk
@@ -309,7 +309,12 @@ function runClaude(task, prompt) {
         try { msg = JSON.parse(line) } catch { log(task.id, { kind: 'text', text: line }); continue }
         const entry = toLogEntry(task, msg)
         if (entry) log(task.id, entry)
-        if (msg.type === 'result') summary = msg.result || ''
+        if (msg.type === 'result') {
+          summary = msg.result || ''
+          // A budget cap or a refusal ends the run with exit code 0 and an
+          // error result. Treat it as the failure it is.
+          if (msg.is_error) resultError = summary || msg.subtype || 'claude reported an error'
+        }
       }
     })
 
@@ -327,6 +332,7 @@ function runClaude(task, prompt) {
     child.on('close', (code) => {
       children.delete(task.id)
       if (task.status === 'cancelled') return resolve({ summary })
+      if (resultError) return reject(new Error(`${task.phase}: ${resultError}`))
       if (code === 0) return resolve({ summary })
       reject(new Error(`claude exited with code ${code} during ${task.phase}`))
     })
@@ -361,4 +367,25 @@ function toLogEntry(task, msg) {
     }
   }
   return null
+}
+
+/**
+ * On Windows the child is a cmd.exe wrapper, and killing it leaves the claude
+ * process underneath still running. taskkill /T is what actually stops the tree.
+ */
+function killTree(child) {
+  if (!child) return
+  if (!WIN) return void child.kill('SIGTERM')
+  // The process may have exited between the click and here, and taskkill
+  // treats that as an error. Cancelling is still what the human asked for.
+  try {
+    execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+  } catch {
+    child.kill()
+  }
+}
+
+/** Quote an argument for cmd.exe. Windows paths cannot contain a double quote. */
+function winQuote(arg) {
+  return /[\s&|<>^()]/.test(arg) ? `"${arg}"` : arg
 }

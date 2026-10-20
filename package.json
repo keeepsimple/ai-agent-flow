@@ -6,7 +6,7 @@
   "scripts": {
     "start": "vite build && node server/index.js",
     "serve": "node server/index.js",
-    "dev": "node server/index.js & vite",
+    "dev": "node server/dev.js",
     "build": "vite build",
     "test": "node server/test.js"
   },
