@@ -10,8 +10,8 @@ its own git worktree, writes a spec, writes a plan, stops for your approval at
 both, implements, then reviews its own diff. You get a desktop notification when
 it needs a decision and when it finishes.
 
-Runs on macOS, Linux and Windows. It needs Node 20 or newer, git, and the
-`claude` CLI on your PATH.
+Runs on macOS, Linux and Windows. It needs git and the `claude` CLI on your
+PATH, and Node 20 or newer unless you use the app.
 
 ```
 npm install
@@ -19,6 +19,36 @@ npm start          # builds the UI and serves http://127.0.0.1:7777
 ```
 
 `npm run dev` runs the server plus Vite with hot reload on :5173.
+
+### Or as a macOS app
+
+```
+npm run app        # dist/Agent Flow.app
+```
+
+Same server, same UI, wrapped so it is its own application. Two things that
+buys, both of which the web mode cannot have:
+
+- **It can be granted Full Disk Access itself.** In the web mode that
+  permission is held against whichever terminal you started the server from,
+  which is why copying your Chrome session is refused there by default.
+- **It carries its own Node**, downloaded from nodejs.org and checked against
+  the release SHASUMS at build time, so the machine running it needs none. A
+  Homebrew `node` is not used for this: it links against a dozen Homebrew
+  dylibs and would die on the first machine without them. The build refuses
+  any runtime that borrows a library from outside `/usr/lib`.
+
+It still needs `git` and `claude`. A GUI app inherits almost no `PATH`, so the
+launcher adds `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin` before
+starting; a `claude` installed somewhere else needs `FLOW_CLAUDE_BIN`.
+
+Data goes to `~/Library/Application Support/Agent Flow`, not inside the bundle,
+and repos are looked for under your home folder until you add a folder in the
+UI. Starting it when the server is already up just opens the browser.
+
+The bundle is ad-hoc signed, which is what Full Disk Access remembers it by.
+**That identity changes every time you rebuild**, so the permission has to be
+granted again after `npm run app`.
 
 ## Three screens
 
@@ -214,9 +244,11 @@ preferences cross; history, cache and extensions do not. It happens once, while
 signing out in one does not sign you out of the other. Delete `data/chrome` to
 take a fresh copy.
 
-**macOS keeps that folder behind Full Disk Access**, and it is the terminal
-running this server that needs it, not Chrome. Without it the copy is refused,
-**Test browser** says so, and you get a blank profile to sign into by hand.
+**macOS keeps that folder behind Full Disk Access**, held against whatever
+runs this server rather than against Chrome. In the web mode that is your
+terminal; the macOS app exists partly so it can hold that permission itself.
+Without it the copy is refused, **Test browser** says so, and you get a blank
+profile to sign into by hand.
 `FLOW_CHROME_PROFILE` picks which profile to copy when you have several
 (`Default`, `Profile 1`, …), and `FLOW_CHROME_USER_DATA` points at the folder
 holding them.

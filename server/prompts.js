@@ -103,11 +103,11 @@ document for the phase so it can be checked later.`
     ? `This is a Shopify app, so you can look at it running rather than reasoning
 about the screen. Start it and get its URL:
 
-    node "${ctx.previewScript}"
+    "${ctx.node}" "${ctx.previewScript}"
 
 Then open a path in a browser that is already signed in to the dev store:
 
-    node "${ctx.previewScript}" /app/pricing
+    "${ctx.node}" "${ctx.previewScript}" /app/pricing
 
 That prints the page's visible text and saves a screenshot; open the screenshot
 with the Read tool. Starting the app takes a couple of minutes the first time.
@@ -117,7 +117,7 @@ around the admin.
 `
     : ''
 }If you hit a decision only the human can make, run:
-    node "${ctx.askScript}" "your question"
+    "${ctx.node}" "${ctx.askScript}" "your question"
 It blocks and prints their answer on stdout. Use it instead of guessing on
 anything that would be expensive to get wrong. Do not use it for questions you
 can answer by reading the code.`
@@ -251,7 +251,7 @@ If it conflicts, resolve it:
   shorter or because it resolves faster.
 - A conflict where both sides changed the same behaviour on purpose is a product
   decision, not a mechanical one. Do not guess. Ask:
-      node "${ctx.askScript}" "your question"
+      "${ctx.node}" "${ctx.askScript}" "your question"
 - Stage each file with git add as you finish it, then commit the merge.
 
 Then run the verification commands from ${ctx.artifactDir}/plan.md and fix what

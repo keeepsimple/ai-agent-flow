@@ -19,6 +19,10 @@ export { options as shopifyOptions } from './preview.js'
 const MAX_CONCURRENT = Number(process.env.FLOW_MAX_CONCURRENT || 3)
 const CLAUDE_BIN = process.env.FLOW_CLAUDE_BIN || 'claude'
 const WIN = process.platform === 'win32'
+// The agent is handed the runtime running this server, not the word `node`.
+// Whatever starts the server is by definition present; `node` on the agent's
+// PATH is a separate bet, and on a machine that has no Node at all it is lost.
+const NODE_BIN = process.execPath
 const ASK_SCRIPT = path.join(import.meta.dirname, 'ask.mjs')
 const PREVIEW_SCRIPT = path.join(import.meta.dirname, 'preview.mjs')
 
@@ -257,6 +261,7 @@ async function runTask(task) {
 
     const prompt = buildPrompt(phase, {
       ...task,
+      node: NODE_BIN,
       askScript: ASK_SCRIPT,
       previewScript: task.trees?.some((t) => devServer.isShopifyApp(t.worktree)) ? PREVIEW_SCRIPT : null,
       needsTitle: phase === phasesFor(task.run)[0],
@@ -446,7 +451,7 @@ export function catchUp(id, repo) {
   return sideRun(
     task,
     `catching up with ${tree.baseBranch}`,
-    buildCatchUpPrompt(tree, task),
+    buildCatchUpPrompt(tree, { ...task, node: NODE_BIN, askScript: ASK_SCRIPT }),
     tree.worktree,
     `Caught up: ${task.title}`,
   )
@@ -465,7 +470,7 @@ export function followUp(id, request) {
   return sideRun(
     task,
     'follow-up',
-    buildFollowUpPrompt({ ...task, askScript: ASK_SCRIPT, request: request.trim() }),
+    buildFollowUpPrompt({ ...task, node: NODE_BIN, askScript: ASK_SCRIPT, request: request.trim() }),
     task.root,
     `Follow-up done: ${task.title}`,
   )

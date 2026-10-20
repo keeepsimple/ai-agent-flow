@@ -1,6 +1,7 @@
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawn } from 'node:child_process'
 import { bus, sse, tasks, readLog, artifact } from './store.js'
 import * as runner from './runner.js'
 import * as uploads from './uploads.js'
@@ -247,4 +248,10 @@ const server = http.createServer(async (req, res) => {
 server.listen(runner.PORT, '127.0.0.1', () => {
   console.log(`agent-flow  http://127.0.0.1:${runner.PORT}`)
   console.log(`repos       ${runner.listRepos().length} in ${runner.roots().length} folder(s)`)
+  // The app has no window of its own; the window is the browser. Started from
+  // a terminal, nobody asked for a tab to appear.
+  if (process.env.FLOW_OPEN) {
+    const open = { darwin: 'open', win32: 'explorer' }[process.platform] || 'xdg-open'
+    spawn(open, [`http://127.0.0.1:${runner.PORT}`], { stdio: 'ignore', detached: true }).unref()
+  }
 })
