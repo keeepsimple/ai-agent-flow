@@ -173,3 +173,15 @@ List<BoxShadow> accentGlow(Color accent, {bool lifted = false}) => [
 const ease = Cubic(0.16, 1, 0.3, 1);
 const fast = Duration(milliseconds: 140);
 const smooth = Duration(milliseconds: 220);
+
+/// 20, 26.3k, 753k, 7.4M. Tight enough to sit in a column.
+String tokens(num n) {
+  if (n <= 0) return '0';
+  if (n < 1000) return '$n';
+  if (n < 1000000) {
+    return n < 100000
+        ? '${(n / 1000).toStringAsFixed(1)}k'
+        : '${(n / 1000).round()}k';
+  }
+  return '${(n / 1000000).toStringAsFixed(1)}M';
+}

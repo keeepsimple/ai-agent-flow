@@ -1426,6 +1426,27 @@ function describeTool(name, input = {}) {
 }
 
 /**
+ * What the window holds now, and what the run has moved in total.
+ *
+ * The occupancy is the latest turn's whole input, cached or not: that is the
+ * number the model actually reads. The totals are per turn, so they add up.
+ */
+function noteUsage(task, usage) {
+  if (!usage) return
+  const io = task.io || { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }
+  io.input += usage.input_tokens || 0
+  io.cacheRead += usage.cache_read_input_tokens || 0
+  io.cacheWrite += usage.cache_creation_input_tokens || 0
+  io.output += usage.output_tokens || 0
+  task.io = io
+  task.context =
+    (usage.input_tokens || 0) +
+    (usage.cache_creation_input_tokens || 0) +
+    (usage.cache_read_input_tokens || 0)
+  emit(task)
+}
+
+/**
  * `meta` says which run this is (phase or side run) so the session the CLI
  * reports can be remembered against it; `resume` continues that session
  * instead of starting a new one.
@@ -1536,14 +1557,31 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {}, en
 
 function toLogEntry(task, msg, seen) {
   if (msg.type === 'assistant') {
+    const usage = msg.message?.usage
+    noteUsage(task, usage)
+
+    // What this turn produced, and what it added to the window. It rides the
+    // first entry only: one message can log several, and repeating the figure
+    // on each would read as that many times the tokens.
+    let spend = usage
+      ? { out: usage.output_tokens || 0, added: usage.cache_creation_input_tokens || 0 }
+      : null
+    const take = () => {
+      const mine = spend || {}
+      spend = null
+      return mine
+    }
+
     // One assistant message can carry prose and several tool calls. Log each in
     // order here and return nothing, so the stream stays chronological.
     for (const block of msg.message?.content || []) {
       if (block.type === 'text' && block.text.trim()) {
         seen.lastText = block.text
-        logRun(task, { kind: 'text', text: block.text })
+        logRun(task, { kind: 'text', text: block.text, ...take() })
       }
-      if (block.type === 'tool_use') logRun(task, { kind: 'tool', tool: block.name, text: describeTool(block.name, block.input) })
+      if (block.type === 'tool_use') {
+        logRun(task, { kind: 'tool', tool: block.name, text: describeTool(block.name, block.input), ...take() })
+      }
     }
     return null
   }
@@ -1557,6 +1595,11 @@ function toLogEntry(task, msg, seen) {
     task.cost = +(task.cost + (msg.total_cost_usd || 0)).toFixed(4)
     warnOnCost(task)
     task.turns += msg.num_turns || 0
+    noteUsage(task, msg.usage)
+    // Only the result carries it, so it is remembered for the turns before the
+    // next one arrives.
+    const window = Object.values(msg.modelUsage || {})[0]?.contextWindow
+    if (window) task.contextWindow = window
     emit(task)
     const result = msg.result || (msg.subtype === 'success' ? '' : msg.subtype || '')
     return {

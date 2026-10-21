@@ -5,7 +5,7 @@ import {
 } from '@tabler/icons-react'
 import { Mark } from './Header.jsx'
 import Markdown from './Markdown.jsx'
-import { AttachStrip, Button, duration } from './bits.jsx'
+import { AttachStrip, Button, duration, tokens } from './bits.jsx'
 
 const TOOL_ICON = [
   [/grep|glob|search/i, IconSearch],
@@ -13,6 +13,18 @@ const TOOL_ICON = [
   [/edit|write|multiedit/i, IconPencil],
 ]
 const iconFor = (tool) => (TOOL_ICON.find(([re]) => re.test(tool || ''))?.[1]) || IconTerminal2
+
+/** What this turn added to the window, and what it produced. */
+function Spend({ entry, className = '' }) {
+  if (!entry.added && !entry.out) return null
+  return (
+    <span className={`shrink-0 font-mono text-[10.5px] whitespace-nowrap text-faint ${className}`}>
+      {entry.added ? `+${tokens(entry.added)}` : null}
+      {entry.added && entry.out ? ' ' : null}
+      {entry.out ? `${tokens(entry.out)} out` : null}
+    </span>
+  )
+}
 
 function ToolRow({ entry, running = false }) {
   const Icon = iconFor(entry.tool)
@@ -32,6 +44,7 @@ function ToolRow({ entry, running = false }) {
       )}
       <span className="shrink-0 text-[13px]">{entry.tool}</span>
       <span className="truncate font-mono text-xs text-muted" title={entry.text}>{entry.text}</span>
+      <Spend entry={entry} className="ml-auto" />
     </div>
   )
 }
@@ -281,7 +294,12 @@ export default function Conversation({ task, children }) {
               </div>
             )
           }
-          return <Markdown key={i} source={entry.text} className="text-ink-2" />
+          return (
+            <div key={i} className="flex flex-col gap-1">
+              <Markdown source={entry.text} className="text-ink-2" />
+              <Spend entry={entry} className="self-end" />
+            </div>
+          )
         })}
 
         {task.status === 'running' && blocks.at(-1)?.kind !== 'tools' && (

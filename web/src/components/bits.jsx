@@ -50,6 +50,14 @@ export function duration(from, to) {
   return span((to || Date.now()) - from)
 }
 
+/** 20, 26.3k, 753k, 7.4M. Tight enough to sit in a column. */
+export const tokens = (n) => {
+  if (!n) return '0'
+  if (n < 1000) return String(n)
+  if (n < 1e6) return `${(n / 1000).toFixed(n < 100_000 ? 1 : 0)}k`
+  return `${(n / 1e6).toFixed(1)}M`
+}
+
 export const bytes = (n) => {
   if (!n) return '0'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']

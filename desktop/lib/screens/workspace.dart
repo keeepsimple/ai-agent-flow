@@ -344,11 +344,87 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     );
   }
 
+  /// How full the window is, and what the run has moved in total.
+  Widget _context(Task task) {
+    if (task.context <= 0) return const SizedBox.shrink();
+    final window = task.contextWindow;
+    final share = window > 0 ? task.context / window : 0.0;
+    final bar = share > 0.85
+        ? Tern.bad
+        : share > 0.6
+        ? Tern.warn
+        : Theme.of(context).colorScheme.primary;
+    final io = task.io;
+    final total = ['input', 'cacheRead', 'cacheWrite', 'output']
+        .fold<num>(0, (sum, k) => sum + ((io[k] ?? 0) as num));
+
+    Widget row(String label, num value, {bool strong = false}) => Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Row(children: [
+        Expanded(
+          child: Text(label,
+              style: t(11.5,
+                  color: strong ? Tern.ink3 : Tern.muted,
+                  weight: strong ? FontWeight.w600 : FontWeight.w400)),
+        ),
+        Text(tokens(value),
+            style: t(11.5,
+                color: strong ? Tern.ink : Tern.ink3,
+                code: true,
+                weight: strong ? FontWeight.w600 : FontWeight.w400)),
+      ]),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Context', style: t(11, color: Tern.muted)),
+        const SizedBox(height: 6),
+        Row(crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic, children: [
+          Text(tokens(task.context),
+              style: t(16, color: Tern.ink, weight: FontWeight.w600, code: true)),
+          if (window > 0)
+            Text('  /  ${tokens(window)}', style: t(11.5, color: Tern.muted, code: true)),
+          const Spacer(),
+          if (window > 0)
+            Text('${(share * 100).round()}%', style: t(11.5, color: Tern.muted, code: true)),
+        ]),
+        if (window > 0) ...[
+          const SizedBox(height: 7),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: Stack(children: [
+              Container(height: 5, color: Tern.lineDim),
+              FractionallySizedBox(
+                widthFactor: share.clamp(0.0, 1.0),
+                child: Container(height: 5, color: bar),
+              ),
+            ]),
+          ),
+        ],
+        if (io.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          row('Input', (io['input'] ?? 0) as num),
+          row('Cache read', (io['cacheRead'] ?? 0) as num),
+          row('Cache write', (io['cacheWrite'] ?? 0) as num),
+          row('Output', (io['output'] ?? 0) as num),
+          const Padding(
+            padding: EdgeInsets.only(top: 7),
+            child: Divider(height: 1, color: Tern.line),
+          ),
+          row('Total I/O', total, strong: true),
+        ],
+      ]),
+    );
+  }
+
   Widget _explorer(Task task, List<Map<String, dynamic>> files) => Container(
     color: Tern.panel,
     child: ListView(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       children: [
+        _context(task),
         Text('Phases', style: t(11, color: Tern.muted)),
         const SizedBox(height: 6),
         for (final entry in task.phases.entries)

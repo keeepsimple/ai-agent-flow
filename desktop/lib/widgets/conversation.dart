@@ -264,6 +264,18 @@ class _ConversationState extends State<Conversation> {
     );
   }
 
+  /// What this turn added to the window, and what it produced.
+  Widget? _spend(Map<String, dynamic> entry) {
+    final added = (entry['added'] ?? 0) as num;
+    final out = (entry['out'] ?? 0) as num;
+    if (added == 0 && out == 0) return null;
+    final parts = [
+      if (added > 0) '+${tokens(added)}',
+      if (out > 0) '${tokens(out)} out',
+    ];
+    return Text(parts.join('  '), style: t(10.5, color: Tern.faint, code: true));
+  }
+
   Widget _render(BuildContext context, _Block block, int index, bool last) {
     switch (block.kind) {
       case 'tools':
@@ -325,10 +337,19 @@ class _ConversationState extends State<Conversation> {
           ),
         );
       default:
-        return MarkdownView(
-          (block.items.first['text'] ?? '') as String,
-          onFile: widget.onFile,
-        );
+        final entry = block.items.first;
+        final spend = _spend(entry);
+        if (spend == null) {
+          return MarkdownView(
+            (entry['text'] ?? '') as String,
+            onFile: widget.onFile,
+          );
+        }
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          MarkdownView((entry['text'] ?? '') as String, onFile: widget.onFile),
+          const SizedBox(height: 3),
+          Align(alignment: Alignment.centerRight, child: spend),
+        ]);
     }
   }
 

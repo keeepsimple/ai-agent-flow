@@ -24,6 +24,10 @@ class Task {
   int get shellReads => ((raw['toolMix'] as Map?)?['shellReads'] ?? 0) as int;
   String? get model => raw['model'] as String?;
   String? get effort => raw['effort'] as String?;
+  int get context => (raw['context'] ?? 0) as int;
+  int get contextWindow => (raw['contextWindow'] ?? 0) as int;
+  Map<String, dynamic> get io =>
+      (raw['io'] as Map?)?.cast<String, dynamic>() ?? const {};
   List<String> get queued =>
       (raw['queued'] as List?)?.cast<String>() ?? const [];
   String? get openQuestionId => raw['openQuestionId'] as String?;
