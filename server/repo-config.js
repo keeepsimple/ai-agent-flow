@@ -24,12 +24,26 @@ export function get(repoPath) {
     jenkins,
     hasJenkinsToken: secrets.read(owner(repoPath), 'JENKINS_TOKEN') !== null,
     landTarget: saved.landTarget || null,
+    // What a fresh worktree needs: a command to run in it, files to bring
+    // over from the checkout (generated, gitignored), and the repo's gate.
+    setup: saved.setup || '',
+    copy: Array.isArray(saved.copy) ? saved.copy : [],
+    checks: Array.isArray(saved.checks) ? saved.checks : [],
   }
 }
 
-export function set(repoPath, { prodBranch, jenkins, jenkinsToken, landTarget } = {}) {
+export function set(repoPath, { prodBranch, jenkins, jenkinsToken, landTarget, setup, copy, checks } = {}) {
   const all = load()
   const mine = all[repoPath] || {}
+  if (setup !== undefined) mine.setup = String(setup || '').trim()
+  if (copy !== undefined) {
+    const list = (Array.isArray(copy) ? copy : []).map((p) => String(p).trim()).filter(Boolean)
+    for (const p of list) {
+      if (path.isAbsolute(p) || p.split(/[\\/]/).includes('..')) throw new Error(`copy paths must stay inside the repo: ${p}`)
+    }
+    mine.copy = list
+  }
+  if (checks !== undefined) mine.checks = (Array.isArray(checks) ? checks : []).map((c) => String(c).trim()).filter(Boolean)
   if (landTarget !== undefined) mine.landTarget = landTarget || null
   if (prodBranch !== undefined) {
     if (!/^[A-Za-z0-9._\/-]+$/.test(prodBranch || '')) throw new Error('bad branch name')

@@ -50,6 +50,7 @@ export const PHASE_LABEL = {
 }
 
 import { render, load } from './templates.js'
+import * as repoConfig from './repo-config.js'
 
 const treeTable = (ctx) =>
   ctx.trees
@@ -85,6 +86,23 @@ function secretsNote(ctx) {
   })
 }
 
+/** The repo's checks, and which of them were already red at base. */
+function checksNote(ctx) {
+  const out = []
+  for (const tree of ctx.trees || []) {
+    const { checks } = repoConfig.get(tree.repoPath)
+    if (!checks.length) continue
+    const red = (ctx.baseline?.[tree.repo] || []).filter((b) => b.code !== 0)
+    out.push(
+      `Checks for ${tree.repo}: ${checks.map((c) => `\`${c}\``).join(', ')}. ` +
+        (red.length
+          ? `Red at base: ${red.map((b) => `\`${b.cmd}\` (exit ${b.code ?? 'capped'})`).join(', ')} — see ${ctx.artifactDir}/baseline/${tree.repo}/. A failure that is also red there is not yours: say which, and move on.`
+          : ctx.baseline?.[tree.repo] ? 'All green at base: a failure after your change is yours.' : ''),
+    )
+  }
+  return out.length ? `\n${out.join('\n')}\n` : ''
+}
+
 function preamble(ctx) {
   const many = ctx.trees.length > 1
   return render(load('preamble'), {
@@ -94,6 +112,7 @@ function preamble(ctx) {
     treeTable: treeTable(ctx),
     artifactDir: ctx.artifactDir,
     secretsNote: secretsNote(ctx),
+    checksNote: checksNote(ctx),
     hasAttachments: Boolean(ctx.attachments?.length),
     attachmentList: (ctx.attachments || []).map((file) => `    ${file}`).join('\n'),
     autoApprove: Boolean(ctx.autoApprove),

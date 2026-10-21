@@ -351,10 +351,10 @@ class RepoCard extends StatelessWidget {
                 ),
               ),
             FlowButton(
-              label: 'Prod…',
+              label: 'Repo…',
               icon: Icons.tune,
               onPressed: onConfigureProd,
-              tooltip: 'Which branch is prod for this repo, and which Jenkins job deploys it',
+              tooltip: 'Prod branch and Jenkins job; what a fresh worktree needs: setup, files to copy, checks',
             ),
           ]),
           if (blocked != null) ...[
@@ -469,19 +469,22 @@ class _ProdConfigDialogState extends State<ProdConfigDialog> {
   late final _job = TextEditingController(text: (_jenkins?['job'] ?? '') as String);
   late final _user = TextEditingController(text: (_jenkins?['user'] ?? '') as String);
   final _token = TextEditingController();
+  late final _setup = TextEditingController(text: (widget.config['setup'] ?? '') as String);
+  late final _copy = TextEditingController(text: ((widget.config['copy'] as List?) ?? const []).join('\n'));
+  late final _checks = TextEditingController(text: ((widget.config['checks'] as List?) ?? const []).join('\n'));
 
   Map? get _jenkins => widget.config['jenkins'] as Map?;
   bool get _hasToken => widget.config['hasJenkinsToken'] == true;
 
   @override
   void dispose() {
-    for (final c in [_branch, _url, _job, _user, _token]) {
+    for (final c in [_branch, _url, _job, _user, _token, _setup, _copy, _checks]) {
       c.dispose();
     }
     super.dispose();
   }
 
-  Widget _field(String label, TextEditingController controller, {String? hint, bool secret = false}) => Padding(
+  Widget _field(String label, TextEditingController controller, {String? hint, bool secret = false, int lines = 1}) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(label, style: t(11, color: Tern.muted)),
@@ -489,6 +492,7 @@ class _ProdConfigDialogState extends State<ProdConfigDialog> {
           TextField(
             controller: controller,
             obscureText: secret,
+            maxLines: secret ? 1 : lines,
             style: t(12.5, color: Tern.ink, code: true),
             decoration: InputDecoration(
               isDense: true,
@@ -506,11 +510,19 @@ class _ProdConfigDialogState extends State<ProdConfigDialog> {
   Widget build(BuildContext context) => AlertDialog(
         backgroundColor: Tern.raised,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text('Prod for ${widget.repo}', style: t(14, color: Tern.ink)),
+        title: Text('Repo settings: ${widget.repo}', style: t(14, color: Tern.ink)),
         content: SizedBox(
           width: 420,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Worktree: what a fresh checkout of this repo needs before an agent starts', style: t(11.5, color: Tern.muted)),
+            const SizedBox(height: 8),
+            _field('Setup command', _setup, hint: 'pnpm install --frozen-lockfile && pnpm prisma generate'),
+            _field('Copy from the checkout (one per line; generated, gitignored files)', _copy, hint: '@types/api-routes.d.ts', lines: 3),
+            _field('Checks (one per line; run once at base, named to the agent)', _checks, hint: 'pnpm tsc', lines: 3),
+            const SizedBox(height: 6),
+            Text('Prod', style: t(11.5, color: Tern.muted)),
+            const SizedBox(height: 8),
             _field('Prod branch', _branch, hint: 'prod'),
             const SizedBox(height: 4),
             Text('Jenkins, to watch the deploy after the push (optional)', style: t(11.5, color: Tern.muted)),
@@ -537,6 +549,9 @@ class _ProdConfigDialogState extends State<ProdConfigDialog> {
                   ? null
                   : {'url': _url.text.trim(), 'job': _job.text.trim(), 'user': _user.text.trim()},
               if (_token.text.isNotEmpty) 'jenkinsToken': _token.text,
+              'setup': _setup.text.trim(),
+              'copy': _copy.text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList(),
+              'checks': _checks.text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList(),
             }),
           ),
         ],

@@ -1083,6 +1083,42 @@ try {
   assert.throws(() => execFileSync(process.execPath, [path.join(here, 'guard-secrets.mjs'), tree5.repoPath, 'main', tree5.branch], { stdio: 'pipe' }), (e) => e.status === 1 && /notes\.txt:1/.test(String(e.stderr)))
   git('web', 'pull', '-q', '--ff-only', 'origin', 'main')
   console.log('ok: the guard blames only the task\'s own commits')
+
+  // A worktree that arrives ready: the repo's setup ran in it, generated files
+  // came over from the checkout, and the checks were run once at base so a
+  // failure that was already there is known before the agent starts.
+  const putRepo = (name, patch) => fetch(`${base}/api/repos/config?repo=${name}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
+  assert.ok((await putRepo('api', { setup: 'echo ran > SETUP_MARK', copy: ['generated.txt', 'missing.txt'], checks: ['sh -c "echo boom; exit 3"', 'true'] })).ok)
+  assert.equal((await putRepo('api', { copy: ['../outside'] })).status, 400, 'copy paths stay inside the repo')
+  const apiCfg = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
+  assert.deepEqual([apiCfg.setup, apiCfg.copy, apiCfg.checks], ['echo ran > SETUP_MARK', ['generated.txt', 'missing.txt'], ['sh -c "echo boom; exit 3"', 'true']])
+  fs.writeFileSync(path.join(repos, 'api', 'generated.txt'), 'gen')
+  const ready = await post('/api/tasks', { repos: ['api'], prompt: 'ready me', run: 'quick', autoApprove: true })
+  const readied = await waitFor(ready.id, (t) => t.status === 'done' || t.status === 'failed', 'the ready task')
+  assert.equal(readied.status, 'done', readied.error)
+  const readyTree = readied.trees[0].worktree
+  assert.equal(fs.readFileSync(path.join(readyTree, 'SETUP_MARK'), 'utf8').trim(), 'ran', 'setup ran in the worktree')
+  assert.equal(fs.readFileSync(path.join(readyTree, 'generated.txt'), 'utf8'), 'gen', 'the generated file came over')
+  assert.ok(readied.log.some((l) => l.kind === 'tool' && l.tool === 'Setup' && /echo ran/.test(l.text)), 'setup shows in the conversation')
+  assert.ok(readied.log.some((l) => l.text === 'Copied from the checkout: generated.txt'), 'and so does what was copied, the missing one skipped')
+  const baselineDir = path.join(root, 'data', 'tasks', ready.id, 'baseline', 'api')
+  assert.match(fs.readFileSync(path.join(baselineDir, '0.txt'), 'utf8'), /^\$ sh -c "echo boom; exit 3"\nexit 3\n[\s\S]*boom/)
+  assert.match(fs.readFileSync(path.join(baselineDir, '1.txt'), 'utf8'), /exit 0/)
+  assert.deepEqual(readied.baseline.api.map((b) => b.code), [3, 0])
+  assert.ok(readied.log.some((l) => /Baseline for api: 1 of 2 checks red at base/.test(l.text)), 'said in one line')
+  const readyPrompt = fs.readFileSync(path.join(root, 'data', 'tasks', ready.id, 'prompt.txt'), 'utf8')
+  assert.match(readyPrompt, /Checks for api: `sh -c "echo boom; exit 3"`, `true`/)
+  assert.match(readyPrompt, /Red at base: `sh -c "echo boom; exit 3"` \(exit 3\)/)
+  assert.match(readyPrompt, /Read files with the Read tool/)
+  // A follow-up on a rebuilt worktree gets the setup again.
+  await fetch(`${base}/api/tasks/${ready.id}/worktree`, { method: 'DELETE' })
+  await post(`/api/tasks/${ready.id}/follow-up`, { request: 'one more thing' })
+  const readyAgain = await waitFor(ready.id, (t) => t.status === 'done' && t.phase === null, 'the follow-up on the rebuilt worktree')
+  assert.equal(fs.readFileSync(path.join(readyAgain.root, 'SETUP_MARK'), 'utf8').trim(), 'ran', 'setup ran again for the rebuilt worktree')
+  assert.equal(readyAgain.log.filter((l) => /Baseline for api/.test(l.text)).length, 1, 'but the baseline is not re-run')
+  fs.rmSync(path.join(repos, 'api', 'generated.txt'), { force: true })
+  await putRepo('api', { setup: '', copy: [], checks: [] })
+  console.log('ok: a worktree arrives with setup run, generated files copied, and the base checks known')
   assert.equal(
     git('api', 'rev-parse', 'main'),
     git('api', 'rev-parse', landed.trees[0].branch),
@@ -1258,14 +1294,14 @@ try {
   // Per-repo config: where prod is, and how to watch its deploy. The Jenkins
   // token goes to the keychain, and never comes back out through the API.
   const cfg0 = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
-  assert.deepEqual(cfg0, { prodBranch: 'prod', jenkins: null, hasJenkinsToken: false, landTarget: 'main' }, 'the api landing above remembered main')
+  assert.deepEqual(cfg0, { prodBranch: 'prod', jenkins: null, hasJenkinsToken: false, landTarget: 'main', setup: '', copy: [], checks: [] }, 'the api landing above remembered main')
   const putCfg = await fetch(`${base}/api/repos/config?repo=api`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, jenkinsToken: 't' }),
   })
   assert.ok(putCfg.ok, 'config saved')
   const cfg1 = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
-  assert.deepEqual(cfg1, { prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, hasJenkinsToken: true, landTarget: 'main' })
+  assert.deepEqual(cfg1, { prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, hasJenkinsToken: true, landTarget: 'main', setup: '', copy: [], checks: [] })
   assert.equal(secrets.read('repo:' + path.join(repos, 'api'), 'JENKINS_TOKEN'), 't')
   assert.ok(!fs.readFileSync(path.join(root, 'data', 'repos.json'), 'utf8').includes('"t"'), 'the token is not in the file')
   const badCfg = await fetch(`${base}/api/repos/config?repo=nope`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' })
@@ -1468,6 +1504,15 @@ try {
   const oldLog = fs.readFileSync(path.join(root, 'data', 'logs', `${old.id}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
   assert.ok(oldLog.some((l) => l.text === 'ok I used {{secret:EGO_API_KEY}}\nthen ran it'), 'the log line is intact around the placeholder')
   await fetch(`${base}/api/tasks/${old.id}`, { method: 'DELETE' })
+
+  // A setup that never ends is capped, said so, and the run still starts.
+  await restart({ FLOW_AUTO_RESUME: '0', FLOW_SETUP_MAX_MS: '500' })
+  await putRepo('api', { setup: 'sleep 30' })
+  const capped = await post('/api/tasks', { repos: ['api'], prompt: 'cap me', run: 'ask' })
+  const cappedDone = await waitFor(capped.id, (t) => t.status === 'done' || t.status === 'failed', 'the capped-setup task')
+  assert.equal(cappedDone.status, 'done', cappedDone.error)
+  assert.ok(cappedDone.log.some((l) => l.kind === 'error' && /setup capped/.test(l.text)), 'the cap is said, not silent')
+  await putRepo('api', { setup: '' })
 
   // A run that has not reported its session yet cannot be "continued" into an
   // older session when the server dies under it: it is a plain failure.

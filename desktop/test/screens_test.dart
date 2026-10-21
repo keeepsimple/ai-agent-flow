@@ -556,11 +556,20 @@ void main() {
       const Center(
         child: ProdConfigDialog(
           repo: 'mobile-admin-shopify',
-          config: {'prodBranch': 'prod', 'jenkins': {'url': 'https://jenkins.example.com', 'job': 'admin-prod', 'user': 'ci'}, 'hasJenkinsToken': true},
+          config: {
+            'prodBranch': 'prod',
+            'jenkins': {'url': 'https://jenkins.example.com', 'job': 'admin-prod', 'user': 'ci'},
+            'hasJenkinsToken': true,
+            'setup': 'pnpm install --frozen-lockfile',
+            'copy': ['@types/api-routes.d.ts'],
+            'checks': ['pnpm tsc', 'pnpm verify-all'],
+          },
         ),
       ),
-      const Size(640, 480),
+      const Size(640, 720),
     );
+    expect(find.text('Setup command'), findsOneWidget);
+    expect(find.text('pnpm tsc\npnpm verify-all'), findsOneWidget);
     expect(find.text('Prod branch'), findsOneWidget);
     expect(find.text('Jenkins job'), findsOneWidget);
     expect(find.textContaining('token is set'), findsOneWidget);

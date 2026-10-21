@@ -12,7 +12,7 @@ export const OVERRIDES_DIR = path.join(DATA, 'prompts')
 
 /** What each prompt is given. The API shows these; load() checks overrides against them. */
 export const KNOWN = {
-  preamble: ['many', 'treeCount', 'root', 'treeTable', 'artifactDir', 'secretsNote', 'hasAttachments', 'attachmentList', 'autoApprove', 'hasPreview', 'node', 'previewScript', 'askScript'],
+  preamble: ['many', 'treeCount', 'root', 'treeTable', 'artifactDir', 'secretsNote', 'checksNote', 'hasAttachments', 'attachmentList', 'autoApprove', 'hasPreview', 'node', 'previewScript', 'askScript'],
   title: ['artifactDir'],
   secrets: ['noShell', 'names', 'lines', 'first'],
   answer: ['preamble', 'prompt', 'workDir', 'titleAsk'],

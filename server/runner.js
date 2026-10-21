@@ -33,6 +33,8 @@ const NODE_BIN = process.execPath
 const ASK_SCRIPT = path.join(import.meta.dirname, 'ask.mjs')
 const PREVIEW_SCRIPT = path.join(import.meta.dirname, 'preview.mjs')
 const GUARD_SCRIPT = path.join(import.meta.dirname, 'guard-secrets.mjs')
+// A setup or baseline command that never ends is cut here, said so, and the run starts anyway.
+const SETUP_MAX_MS = Number(process.env.FLOW_SETUP_MAX_MS || 600_000)
 const JENKINS_SCRIPT = path.join(import.meta.dirname, 'jenkins.mjs')
 
 // These three end up on a command line, which on Windows goes through cmd.exe,
@@ -297,6 +299,86 @@ function pump() {
   }
 }
 
+/** Generated, gitignored files the checkout has and a fresh worktree does not. */
+function copyFromCheckout(task, tree, paths) {
+  const copied = []
+  for (const p of paths || []) {
+    const from = path.join(tree.repoPath, p)
+    const to = path.join(tree.worktree, p)
+    if (!fs.existsSync(from)) continue
+    fs.mkdirSync(path.dirname(to), { recursive: true })
+    fs.cpSync(from, to, { recursive: true, force: true })
+    copied.push(p)
+  }
+  if (copied.length) log(task.id, { kind: 'text', text: `Copied from the checkout: ${copied.join(', ')}` })
+  return copied
+}
+
+/** A shell command in the worktree, logged like a tool call, capped so it cannot hang the task. */
+function runCommand(task, cwd, cmd, label) {
+  log(task.id, { kind: 'tool', tool: label, text: cmd })
+  return new Promise((resolve) => {
+    const child = spawn(WIN ? 'cmd.exe' : 'sh', WIN ? ['/c', cmd] : ['-c', cmd], {
+      cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], detached: !WIN,
+    })
+    children.set(task.id, child)
+    let out = ''
+    const take = (d) => { out += d; if (out.length > 200_000) out = out.slice(-100_000) }
+    child.stdout.on('data', take)
+    child.stderr.on('data', take)
+    let capped = false
+    const timer = setTimeout(() => { capped = true; killTree(child) }, SETUP_MAX_MS)
+    const finish = (code, tail) => {
+      clearTimeout(timer)
+      if (children.get(task.id) === child) children.delete(task.id)
+      resolve({ code, tail, capped })
+    }
+    child.on('error', (err) => finish(-1, err.message))
+    child.on('close', (code) => finish(code, out.trim().split('\n').slice(-40).join('\n')))
+  })
+}
+
+const capWords = () => (SETUP_MAX_MS >= 60_000 ? `${Math.round(SETUP_MAX_MS / 60_000)} min` : `${Math.round(SETUP_MAX_MS / 1000)} s`)
+
+/**
+ * What the repo says a worktree needs, once per checkout: the setup command,
+ * then the checks run once at base so a failure that was already there is
+ * known before the agent starts and never mistaken for its own.
+ */
+async function prepareWorktrees(task) {
+  if (!task.trees?.length || task.prepared === task.root) return
+  for (const tree of task.trees) {
+    const cfg = repoConfig.get(tree.repoPath)
+    if (cfg.setup) {
+      const r = await runCommand(task, tree.worktree, cfg.setup, 'Setup')
+      if (r.capped) log(task.id, { kind: 'error', text: `setup capped at ${capWords()} for ${tree.repo}; the run starts anyway` })
+      else if (r.code !== 0) log(task.id, { kind: 'error', text: `setup exited ${r.code} for ${tree.repo}:\n${r.tail}` })
+      else if (r.tail) log(task.id, { kind: 'text', text: r.tail })
+      if (stopped(task)) return
+    }
+    if (cfg.checks.length && !task.baseline?.[tree.repo]) {
+      const dir = path.join(task.artifactDir, 'baseline', tree.repo)
+      fs.mkdirSync(dir, { recursive: true })
+      const results = []
+      for (let n = 0; n < cfg.checks.length; n++) {
+        const cmd = cfg.checks[n]
+        const r = await runCommand(task, tree.worktree, cmd, 'Baseline')
+        fs.writeFileSync(path.join(dir, `${n}.txt`), `$ ${cmd}\nexit ${r.capped ? 'capped' : r.code}\n${r.tail}\n`)
+        results.push({ cmd, code: r.capped ? null : r.code })
+        if (stopped(task)) return
+      }
+      update(task.id, { baseline: { ...(task.baseline || {}), [tree.repo]: results }, baselineAt: Date.now() })
+      const red = results.filter((x) => x.code !== 0)
+      log(task.id, {
+        kind: 'text',
+        text: `Baseline for ${tree.repo}: ${red.length} of ${results.length} checks red at base` +
+          (red.length ? ` (${red.map((x) => `${x.cmd} → exit ${x.code ?? 'capped'}`).join('; ')})` : ''),
+      })
+    }
+  }
+  update(task.id, { prepared: task.root })
+}
+
 /**
  * One worktree per repo, all under data/worktrees/<taskId>/. A feature that
  * spans three repos gets three branches and three isolated checkouts, so every
@@ -328,7 +410,9 @@ function setupWorktrees(task) {
       if (hasBranch) git(repoPath, 'worktree', 'add', worktree, branch)
       else git(repoPath, 'worktree', 'add', '-b', branch, worktree, baseRef)
     }
-    return { repo, repoPath, worktree, branch, baseRef, baseBranch }
+    const tree = { repo, repoPath, worktree, branch, baseRef, baseBranch }
+    copyFromCheckout(task, tree, repoConfig.get(repoPath).copy)
+    return tree
   })
 
   const dir = artifactDir(task.id)
@@ -353,6 +437,8 @@ async function runTask(task) {
     log(task.id, { kind: 'error', text: `worktree setup failed: ${err.message}` })
     return fail(task, err.message)
   }
+  await prepareWorktrees(task)
+  if (stopped(task)) return
 
   let feedback = null
   for (const phase of phasesFor(task.run)) {
@@ -540,7 +626,8 @@ function sideRun(task, label, prompt, cwd, finished, opts = {}) {
   const previous = task.status
   update(task.id, { status: 'running', phase: label, error: null })
 
-  runClaude(task, prompt, cwd, { ...opts, meta: { kind: 'side', label } })
+  prepareWorktrees(task)
+    .then(() => (stopped(task) ? null : runClaude(task, prompt, cwd, { ...opts, meta: { kind: 'side', label } })))
     .then(() => {
       if (stopped(task)) return
       update(task.id, { status: previous, phase: null })
@@ -1016,7 +1103,7 @@ export function removeWorktrees(id) {
   fs.rmSync(path.join(DATA, 'worktrees', task.id), { recursive: true, force: true })
   // The branches stay. Dropping the checkout is not the same as throwing the
   // work away, and setupWorktrees knows how to pick them back up.
-  update(id, { root: null, droppedAt: Date.now() })
+  update(id, { root: null, droppedAt: Date.now(), prepared: null })
   forgetDiskSize()
   return task
 }

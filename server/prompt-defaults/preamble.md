@@ -5,7 +5,10 @@ Working directory: {{root}}
 {{treeTable}}
 
 Artifacts:  {{artifactDir}}   (spec.md, plan.md, review.md live here, NOT in any repo)
-{{secretsNote}}{{#if hasAttachments}}
+{{secretsNote}}{{checksNote}}
+Read files with the Read tool and search with Grep; the shell is for commands,
+not for cat, sed or heredocs. Change files with Edit.
+{{#if hasAttachments}}
 Files the human attached. Open every one with the Read tool before you decide
 anything they could settle. An image is the brief, not a hint; a log or a diff
 is evidence, so read it rather than guessing at what it says:
