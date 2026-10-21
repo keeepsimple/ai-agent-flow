@@ -84,6 +84,16 @@ if (prompt.includes('SLEEPY')) {
     execFileSync('git', ['-C', where, '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'fix build'])
   }
   say('reproduced it, fixed it, checks pass')
+} else if (prompt.includes('--ff-only')) {
+  // The merge run: catch the branch up here, then fast-forward the base in
+  // the repo itself.
+  const at = (text, after, before) => text.split(after)[1].split(before)[0]
+  const branch = at(prompt, ', on ', ',')
+  const repoPath = at(prompt, 'git -C ', ' status --short')
+  const target = at(prompt, 'put it into ', ',')
+  execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'merge', target])
+  execFileSync('git', ['-C', repoPath, 'merge', '--ff-only', branch])
+  say('caught up, checks pass, fast-forwarded ' + target)
 } else if (prompt.includes('into this branch')) {
   // Catch-up run: do the merge for real, in the worktree we were started in.
   execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'merge', 'main'])
@@ -552,7 +562,7 @@ try {
   fs.writeFileSync(path.join(repos, 'web', 'impl.txt'), 'my own edit')
   dirty = await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()
   assert.match(dirty.find((r) => r.repo === 'web').mergeBlockedBy, /impl\.txt/)
-  const refused = await fetch(`${base}/api/tasks/${created.id}/merge`, {
+  const refused = await fetch(`${base}/api/tasks/${created.id}/merge-now`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ repo: 'web' }),
@@ -568,7 +578,7 @@ try {
   assert.equal(web.unpushed, 0, 'the task branch should be on the remote')
   assert.equal(web.baseUnpushed, 0, 'and the base has not moved yet')
 
-  await post(`/api/tasks/${created.id}/merge`, {})
+  await post(`/api/tasks/${created.id}/merge-now`, {})
   for (const repo of REPOS) {
     assert.match(git(repo, 'log', '--oneline', 'main'), /impl/, `${repo} main should have the work`)
   }
@@ -756,6 +766,35 @@ try {
   assert.equal(lateAsk.status, 400, 'a cancelled task must not be revived by a late question')
   assert.match((await lateAsk.json()).error, /cancelled/)
 
+  // Merging is the agent's job now: it catches the branch up first, which is
+  // what makes the merge itself a fast-forward. `merge-now` is the plain one.
+  const landing = await post('/api/tasks', {
+    repos: ['api'],
+    prompt: 'land me',
+    run: 'quick',
+    autoApprove: true, // the implement stub asks one question
+  })
+  await waitFor(landing.id, (t) => t.status === 'done' || t.status === 'failed', 'the run to land')
+  const beforeMerge = git('api', 'rev-parse', 'main')
+
+  await post(`/api/tasks/${landing.id}/merge`, { repo: 'api' })
+  const landed = await waitFor(
+    landing.id,
+    (t) => t.status === 'done' || t.status === 'failed',
+    'the merge run',
+  )
+  assert.equal(landed.status, 'done', `merge run failed: ${landed.error}`)
+  assert.ok(
+    landed.log.some((l) => l.kind === 'decision' && l.text.startsWith('Merge ')),
+    'the conversation should say what was asked for',
+  )
+  assert.notEqual(git('api', 'rev-parse', 'main'), beforeMerge, 'and main should have moved')
+  assert.equal(
+    git('api', 'rev-parse', 'main'),
+    git('api', 'rev-parse', landed.trees[0].branch),
+    'to exactly the branch, because a fast-forward writes no merge commit',
+  )
+
   console.log(
     'ok  2 repos, 2 worktrees, both gates, blocking ask, 4 phases, per-repo commits,\n' +
     '    drop keeps branches, pasted image reaches the prompt, bad uploads refused,\n' +
@@ -766,6 +805,7 @@ try {
     '    unattended answers its own questions and the agent names an untitled task,\n' +
     '    the branch follows that name and a request in Vietnamese still slugs readably,\n' +
     '    retrying a finished task is refused rather than silently repeated,\n' +
+    '    merging is an agent run that catches up first and fast-forwards,\n' +
     '    @ finds a tracked file, name matches first,\n' +
     '    choosing no run shape is the plain one: no documents, no review,\n' +
     '    a quick run skips spec and plan but still reviews itself,\n' +

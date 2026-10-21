@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { DATA, bus, sse, tasks, artifactDir, emit, update, log, save, flush } from './store.js'
 import {
   RUNS, GATES, PHASE_LABEL, phasesFor, buildPrompt, buildCatchUpPrompt, buildFollowUpPrompt,
+  buildMergePrompt,
 } from './prompts.js'
 import { UPLOADS, verify as verifyUpload } from './uploads.js'
 import { notify } from './notify.js'
@@ -459,6 +460,29 @@ export function catchUp(id, repo) {
     buildCatchUpPrompt(tree, { ...task, node: NODE_BIN, askScript: ASK_SCRIPT }),
     tree.worktree,
     `Caught up: ${task.title}`,
+  )
+}
+
+/**
+ * Land this branch on its base, agent-driven.
+ *
+ * The plain merge refuses whenever the base has moved, which is most of the
+ * time, and then it is on you to catch up and come back. This does both in
+ * one run, in the worktree, and stops rather than guessing when the checkout
+ * is somewhere it should not be touched.
+ */
+export function mergeViaAgent(id, repo) {
+  const task = readyForSideRun(id)
+  const tree = task.trees?.find((t) => t.repo === repo)
+  if (!tree) throw new Error(`unknown repo: ${repo}`)
+
+  log(id, { kind: 'decision', text: `Merge ${tree.branch} into ${tree.baseBranch}` })
+  return sideRun(
+    task,
+    `merging into ${tree.baseBranch}`,
+    buildMergePrompt(tree, { ...task, node: NODE_BIN, askScript: ASK_SCRIPT }),
+    tree.worktree,
+    `Merged: ${task.title}`,
   )
 }
 

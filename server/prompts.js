@@ -297,6 +297,68 @@ of the checks you ran.`
 }
 
 /**
+ * Get this branch into the base with nothing left behind it.
+ *
+ * Two steps that used to be two buttons: catch up, then merge. Doing them in
+ * one run is what makes the second one safe — after the base has been merged
+ * in, the merge the other way is a fast-forward, which cannot conflict.
+ */
+export function buildMergePrompt(tree, ctx) {
+  return `You are in ${tree.worktree}, on ${tree.branch}, in the ${tree.repo} repo.
+Read this repo's CLAUDE.md and follow it.
+
+The human asked for this branch to end up in ${tree.baseBranch}, with nothing
+left behind it. Do it in this order and stop at the first thing that is not
+yours to decide.
+
+1.  Bring ${tree.baseBranch} into this branch, here in the worktree:
+
+        git fetch 2>/dev/null || true
+        git merge ${tree.baseBranch}
+
+    If it conflicts, resolve it. Read ${ctx.artifactDir}/spec.md first where it
+    exists: it says what this branch was for, which is what tells you which
+    side of a conflict carries intent. Where the two sides changed different
+    things, keep both. Never take one side wholesale because it is shorter or
+    because it resolves faster.
+
+    A conflict where both sides changed the same behaviour on purpose is a
+    product decision, not a mechanical one. Do not guess:
+
+        "${ctx.node}" "${ctx.askScript}" "your question"
+
+2.  Run this repo's own checks and fix what the merge broke. Never report a
+    check as passing without having run it and read the output.
+
+3.  Only then put it into ${tree.baseBranch}, in the repo itself rather than in
+    the worktree:
+
+        git -C ${tree.repoPath} status --short
+        git -C ${tree.repoPath} branch --show-current
+
+    Three things stop you here, and each one is a sentence back to the human
+    rather than something to work around:
+
+    - the checkout is on some other branch. Say which. Do not switch it.
+    - it has uncommitted changes to files this merge would touch. Name them.
+    - anything else that looks like someone is in the middle of something.
+
+    When it is clear:
+
+        git -C ${tree.repoPath} merge --ff-only ${tree.branch}
+
+    \`--ff-only\` on purpose. After step 1 this is a fast-forward, so it cannot
+    conflict and cannot write a merge commit into ${tree.baseBranch}. If git
+    refuses it, ${tree.baseBranch} moved while you were working: go back to
+    step 1 rather than forcing it.
+
+Do not push. Do not delete the branch. Do not touch any other repo.
+
+End with: what conflicted and how you resolved it, what you ran and its real
+output, and what ${tree.baseBranch} points at now.`
+}
+
+/**
  * A follow-up: the task already ran, and the human came back with something
  * else to do on the same branches. Usually "the build is broken".
  */
