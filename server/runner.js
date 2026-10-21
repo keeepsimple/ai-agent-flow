@@ -808,7 +808,7 @@ function drain(id) {
   // One run for everything that piled up, in the order it was typed: three
   // separate agent runs for three sentences is three times the price and
   // loses the thread between them.
-  followUp(id, waiting.join('\n\n'))
+  followUp(id, waiting.join('\n\n'), { logged: true })
 }
 
 /**
@@ -938,7 +938,7 @@ export function setModel(id, model) {
   return update(id, { model: next })
 }
 
-export function followUp(id, request, { secrets: given = [], hideSecrets = false } = {}) {
+export function followUp(id, request, { secrets: given = [], hideSecrets = false, logged = false } = {}) {
   if (!request?.trim()) throw new Error('say what you want changed')
 
   // Busy is not a reason to lose what someone just typed. It waits in line
@@ -956,7 +956,7 @@ export function followUp(id, request, { secrets: given = [], hideSecrets = false
   }
   if (busy.status === 'running' || busy.status === 'queued') {
     update(id, { queued: [...(busy.queued || []), request.trim()] })
-    log(id, { kind: 'decision', text: `Queued: ${request.trim()}` })
+    log(id, { kind: 'decision', text: request.trim() })
     return busy
   }
 
@@ -964,13 +964,13 @@ export function followUp(id, request, { secrets: given = [], hideSecrets = false
 
   // "Continue" means continue: the same session, not a new run told the story again.
   if (CONTINUE.test(request.trim()) && task.lastSession?.id) {
-    log(id, { kind: 'decision', text: `Follow-up: ${request.trim()}` })
+    if (!logged) log(id, { kind: 'decision', text: request.trim() })
     return sideRun(task, 'follow-up', resumePrompt(), task.lastSession.cwd || task.root, `Follow-up done: ${task.title}`, {
       resume: task.lastSession.id,
     })
   }
 
-  log(id, { kind: 'decision', text: `Follow-up: ${request.trim()}` })
+  if (!logged) log(id, { kind: 'decision', text: request.trim() })
   return sideRun(
     task,
     'follow-up',

@@ -870,7 +870,7 @@ try {
   assert.deepEqual(waiting.queued, ['and fix the other thing'])
   assert.equal(waiting.status, 'running', 'queueing must not disturb the run in front of it')
   assert.ok(
-    waiting.log.some((l) => l.kind === 'decision' && l.text === 'Queued: and fix the other thing'),
+    waiting.log.some((l) => l.kind === 'decision' && l.text === 'and fix the other thing'),
     'and it shows in the conversation rather than vanishing until later',
   )
 
@@ -1425,7 +1425,7 @@ try {
   assert.equal(secrets.read(hidden.id, 'SMTP_TOKEN'), 'abcdefgh12345678')
   await post(`/api/tasks/${hidden.id}/follow-up`, { request: 'also glpat-ABCDEFGHIJKLMNOPQRST', hideSecrets: true })
   const hiddenMore = await waitFor(hidden.id, (t) => t.status === 'done' && t.phase === null, 'the hidden follow-up')
-  assert.ok(hiddenMore.log.some((l) => l.text === 'Follow-up: also {{secret:SECRET_1}}'), 'the follow-up is logged redacted')
+  assert.ok(hiddenMore.log.some((l) => l.text === 'also {{secret:SECRET_1}}'), 'the follow-up is logged redacted')
   assert.deepEqual(hiddenMore.secrets, ['EGO_API_KEY', 'SMTP_TOKEN', 'SECRET_1'])
   await post(`/api/tasks/${hidden.id}/follow-up`, { request: 'and xoxb-ABCDEFGHIJKLMNOPQRS too', hideSecrets: true })
   const hiddenAgain = await waitFor(hidden.id, (t) => t.status === 'done' && t.phase === null && t.secrets.length === 4, 'the second hidden follow-up')
