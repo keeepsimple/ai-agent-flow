@@ -358,6 +358,10 @@ async function api(req, res, url) {
     const { repo } = JSON.parse((await body(req)) || '{}')
     return json(res, 200, { done: repoGit.merge(id, repo), git: repoGit.status(id) })
   }
+  if (req.method === 'POST' && action === 'model') {
+    const { model } = JSON.parse((await body(req)) || '{}')
+    return json(res, 200, runner.setModel(id, model))
+  }
   if (req.method === 'POST' && action === 'cancel') return json(res, 200, runner.cancel(id))
   if (req.method === 'POST' && action === 'retry') return json(res, 200, runner.retry(id))
   if (req.method === 'POST' && action === 'resume') return json(res, 200, runner.resume(id))

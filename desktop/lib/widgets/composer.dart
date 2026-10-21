@@ -38,6 +38,58 @@ class _ComposerState extends State<Composer> {
     super.dispose();
   }
 
+  /// The model the next run uses.
+  ///
+  /// The CLI args are rebuilt on every spawn, so this cannot reach a run that
+  /// is already talking, and the tooltip does not pretend it can.
+  Widget _modelPicker(Task task) {
+    final models =
+        (widget.flow.options?['models'] as List?)?.cast<String>() ?? const [];
+    if (models.isEmpty) return const SizedBox.shrink();
+    final cli = (widget.flow.defaults?['cliModel'] as String?) ?? '';
+    final now = task.model ?? '';
+    String label(String m) =>
+        m.isNotEmpty ? m : (cli.isEmpty ? 'default' : 'default ($cli)');
+
+    return PopupMenuButton<String>(
+      tooltip: 'The model the next run uses',
+      padding: EdgeInsets.zero,
+      color: Tern.raised,
+      onSelected: (picked) {
+        if (picked == now) return;
+        widget.flow.run(() => widget.flow.api.setModel(task.id, picked));
+      },
+      itemBuilder: (_) => [
+        for (final m in models)
+          PopupMenuItem(
+            value: m,
+            height: 32,
+            child: Text(
+              label(m),
+              style: t(12, color: m == now ? Tern.ink : Tern.ink3),
+            ),
+          ),
+      ],
+      child: Container(
+        height: 30,
+        padding: const EdgeInsets.only(left: 11, right: 6),
+        decoration: BoxDecoration(
+          color: Tern.raised,
+          border: raised(Tern.lineStrong),
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: e1,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label(now), style: t(12, color: Tern.ink3)),
+            const Icon(Icons.expand_more, size: 15, color: Tern.muted),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _send() async {
     final body = _text.text.trim();
     // Running is not a reason to refuse it. The server holds it until the
@@ -154,6 +206,8 @@ class _ComposerState extends State<Composer> {
                 // out plainly they ran off the end and took the send button
                 // with them, so they get the leftover room and no more.
                 Expanded(child: _Repos(task.trees)),
+                const SizedBox(width: 8),
+                _modelPicker(task),
                 const SizedBox(width: 10),
                 Text(sendHint, style: t(10.5, color: Tern.muted, code: true)),
                 const SizedBox(width: 8),

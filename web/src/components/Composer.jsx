@@ -1,13 +1,28 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { IconArrowUp, IconPaperclip } from '@tabler/icons-react'
-import { AttachStrip, useAttachments } from './bits.jsx'
+import { AttachStrip, selectChip, useAttachments } from './bits.jsx'
 import { api } from '../api.js'
 
 /** The prompt box at the foot of the workspace: a follow-up on this task. */
-export default function Composer({ task, onError }) {
+export default function Composer({ task, flow, onError }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const attach = useAttachments()
+  // Optimistic: the select should move under the pointer, not a round trip
+  // later. It goes back if the server will not have it.
+  const [model, setModel] = useState(task.model || '')
+  useEffect(() => setModel(task.model || ''), [task.model])
+
+  const changeModel = async (next) => {
+    const was = model
+    setModel(next)
+    try {
+      await api.setModel(task.id, next)
+    } catch (err) {
+      setModel(was)
+      onError(err.message)
+    }
+  }
   // The worktree being dropped no longer blocks this: asking for one more
   // thing checks the branches back out.
   const dropped = !task.root
@@ -70,6 +85,23 @@ export default function Composer({ task, onError }) {
               @{tree.repo}
             </span>
           ))}
+          {flow?.options?.models && (
+            <select
+              value={model}
+              onChange={(e) => changeModel(e.target.value)}
+              // It is the next run that reads this: the args are rebuilt each
+              // spawn, and nothing can reach a process already talking.
+              title="The model the next run uses"
+              aria-label="Model"
+              className={selectChip}
+            >
+              {flow.options.models.map((m) => (
+                <option key={m} value={m}>
+                  {m || (flow.defaults?.cliModel ? `default (${flow.defaults.cliModel})` : 'default')}
+                </option>
+              ))}
+            </select>
+          )}
           <div className="flex-1" />
           <span className="font-mono text-[10px] text-muted">⌘↵</span>
           <button

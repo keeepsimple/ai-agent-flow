@@ -151,6 +151,8 @@ class Api {
       _send('POST', '/api/tasks/$id/answer',
           {'questionId': questionId, 'answer': answer});
 
+  Future<dynamic> setModel(String id, String model) =>
+      _send('POST', '/api/tasks/$id/model', {'model': model});
   Future<dynamic> cancel(String id) => _send('POST', '/api/tasks/$id/cancel');
   Future<dynamic> retry(String id) => _send('POST', '/api/tasks/$id/retry');
   Future<dynamic> resume(String id) => _send('POST', '/api/tasks/$id/resume');

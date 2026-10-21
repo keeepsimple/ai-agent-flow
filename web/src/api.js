@@ -39,6 +39,7 @@ export const api = {
   create: (payload) => call('POST', '/api/tasks', payload),
   approve: (id, approved, feedback) => call('POST', `/api/tasks/${id}/approve`, { approved, feedback }),
   answer: (id, questionId, answer) => call('POST', `/api/tasks/${id}/answer`, { questionId, answer }),
+  setModel: (id, model) => call('POST', `/api/tasks/${id}/model`, { model }),
   cancel: (id) => call('POST', `/api/tasks/${id}/cancel`),
   retry: (id) => call('POST', `/api/tasks/${id}/retry`),
   dropWorktree: (id) => call('DELETE', `/api/tasks/${id}/worktree`),

@@ -84,7 +84,7 @@ export default function Workspace({ task, flow }) {
           <Conversation task={task}>
             <Decision task={task} onError={flow.setError} />
           </Conversation>
-          <Composer task={task} onError={flow.setError} />
+          <Composer task={task} flow={flow} onError={flow.setError} />
         </section>
 
         <section aria-label="Changes" className="flex min-h-0 min-w-0 flex-[1_1_540px] flex-col bg-panel">

@@ -849,6 +849,24 @@ export function shipViaAgent(id, repo) {
  * one more thing. Same worktrees, same branches, no new task to lose the
  * context of what this already is.
  */
+/**
+ * Switch the model part-way through a conversation.
+ *
+ * The CLI args are rebuilt on every spawn, so this lands on the next run and
+ * never on the one in flight: there is no way to reach a process that is
+ * already talking, and pretending otherwise would be the lie. It goes in the
+ * transcript because reading a conversation later and wondering why the
+ * answers changed shape is exactly the question this has to answer.
+ */
+export function setModel(id, model) {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  const next = pick(model, MODELS, DEFAULTS.model, 'model')
+  if (next === (task.model || '')) return task
+  log(id, { kind: 'decision', text: `Model: ${task.model || 'default'} \u2192 ${next || 'default'}` })
+  return update(id, { model: next })
+}
+
 export function followUp(id, request, { secrets: given = [], hideSecrets = false } = {}) {
   if (!request?.trim()) throw new Error('say what you want changed')
 
