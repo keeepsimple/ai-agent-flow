@@ -660,6 +660,30 @@ void main() {
     expect(names, ['omise-hold-refund-estimate.xlsx', 'app/services/discount.server.ts']);
   });
 
+  testWidgets('a document in the explorer opens in the right pane', (tester) async {
+    final flow = _flow();
+    final task = _task({
+      'status': 'awaiting_approval',
+      'awaitingPhase': 'spec',
+      'phase': null,
+      'docs': {'spec.md': '# The spec\n\nIntent: keep the old column.'},
+    });
+    tester.view.physicalSize = const Size(1340, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(body: WorkspaceScreen(flow: flow, task: task, prefs: Prefs.memory())),
+    ));
+    await tester.pump();
+    expect(find.text('Intent: keep the old column.'), findsNothing);
+    await tester.tap(find.text('spec.md'));
+    await tester.pump();
+    expect(find.text('Intent: keep the old column.'), findsOneWidget, reason: 'rendered in the pane');
+    expect(find.text('spec.md'), findsNWidgets(2), reason: 'and named in the pane header');
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('the header with nothing open', (tester) async {
     final flow = _flow();
     await _shoot(

@@ -9,6 +9,7 @@ import '../widgets/composer.dart';
 import '../widgets/conversation.dart';
 import '../widgets/decision.dart';
 import '../widgets/diff_view.dart';
+import '../widgets/markdown_view.dart';
 import '../widgets/output_pane.dart';
 import '../widgets/splitter.dart';
 import '../widgets/status_line.dart';
@@ -39,6 +40,9 @@ class WorkspaceScreen extends StatefulWidget {
 class _WorkspaceScreenState extends State<WorkspaceScreen> {
   List<Map<String, dynamic>>? _diff;
   String? _file;
+
+  /// A document picked in the explorer; shown in the pane instead of the diff.
+  String? _doc;
   String? _loadedFor;
   final _jump = ValueNotifier<int>(0);
 
@@ -216,7 +220,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           if (open)
             Expanded(
               child: Text(
-                chosen == null ? 'Changes' : chosen['path'] as String,
+                _doc ?? (chosen == null ? 'Changes' : chosen['path'] as String),
                 overflow: TextOverflow.ellipsis,
                 style: t(11.5, color: Tern.ink3, code: true),
               ),
@@ -255,14 +259,19 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             header,
             if (open)
               Expanded(
-                child: chosen == null
-                    ? Center(
-                        child: Text(
-                          'Nothing changed yet.',
-                          style: t(12, color: Tern.muted),
-                        ),
+                child: _doc != null
+                    ? SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: MarkdownView(widget.task.docs[_doc] as String?),
                       )
-                    : DiffView(chosen['patch'] as String?),
+                    : chosen == null
+                        ? Center(
+                            child: Text(
+                              'Nothing changed yet.',
+                              style: t(12, color: Tern.muted),
+                            ),
+                          )
+                        : DiffView(chosen['patch'] as String?),
               ),
           ],
         ),
@@ -304,18 +313,31 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           Text('Documents', style: t(11, color: Tern.muted)),
           const SizedBox(height: 6),
           for (final name in task.docs.keys)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 3),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.description_outlined,
-                    size: 13,
-                    color: Tern.faint,
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => setState(() {
+                  _doc = name;
+                  if (!widget.prefs.changesOpen) widget.prefs.set(changesOpen: true);
+                }),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _doc == name ? Tern.raised : null,
+                    borderRadius: BorderRadius.circular(5),
                   ),
-                  const SizedBox(width: 7),
-                  Text(name, style: t(12, color: Tern.ink3, code: true)),
-                ],
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.description_outlined,
+                        size: 13,
+                        color: _doc == name ? Tern.ink : Tern.faint,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(name, style: t(12, color: _doc == name ? Tern.ink : Tern.ink3, code: true)),
+                    ],
+                  ),
+                ),
               ),
             ),
         ],
@@ -330,7 +352,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               _FileRow(
                 file: file,
                 selected: file['path'] == _file,
-                onTap: () => setState(() => _file = file['path'] as String),
+                onTap: () => setState(() {
+                  _file = file['path'] as String;
+                  _doc = null;
+                }),
               ),
         ],
       ],
