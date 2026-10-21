@@ -220,14 +220,25 @@ class _NewTaskState extends State<NewTask> {
     }
   }
 
+  /// Which repos a task would run against. Ticking none means the whole
+  /// workspace: every repo in the folder being shown, one worktree each.
+  List<String> _target() {
+    if (_picked.isNotEmpty) return _picked.toList();
+    final workspace = widget.flow.workspace;
+    return widget.flow.repos
+        .where((r) => workspace == null || r['root'] == workspace)
+        .map((r) => r['name'] as String)
+        .toList();
+  }
+
   Future<void> _start() async {
-    if (_prompt.text.trim().isEmpty || _picked.isEmpty || _busy) return;
+    if (_prompt.text.trim().isEmpty || _target().isEmpty || _busy) return;
     setState(() => _busy = true);
     try {
       final task = await widget.flow.api.create({
         'prompt': _prompt.text.trim(),
         if (_title.text.trim().isNotEmpty) 'title': _title.text.trim(),
-        'repos': _picked.toList(),
+        'repos': _target(),
         'run': _run,
         'autoApprove': _unattended,
         if (_model != null) 'model': _model,
@@ -261,7 +272,8 @@ class _NewTaskState extends State<NewTask> {
         ? widget.flow.repos
         : widget.flow.repos.where((r) => r['root'] == workspace).toList();
     final runs = (_options['runs'] as List?) ?? const [];
-    final ready = _prompt.text.trim().isNotEmpty && _picked.isNotEmpty;
+    final target = _target();
+    final ready = _prompt.text.trim().isNotEmpty && target.isNotEmpty;
 
     return Panel(
       colour: Tern.input,
@@ -315,7 +327,20 @@ class _NewTaskState extends State<NewTask> {
             ),
           ],
           const SizedBox(height: 14),
-          Text('Repos', style: t(11.5, color: Tern.muted)),
+          Row(children: [
+            Text('Repos', style: t(11.5, color: Tern.muted)),
+            const SizedBox(width: 8),
+            // Ticking none is a choice, not an omission, and it is the
+            // expensive one: a worktree per repo.
+            Text(
+              _picked.isEmpty
+                  ? (target.isEmpty
+                      ? 'no repos in this workspace'
+                      : 'none ticked — the whole workspace, ${target.length} repos')
+                  : '${_picked.length} of ${repos.length}',
+              style: t(11, color: _picked.isEmpty ? Tern.warn : Tern.faint),
+            ),
+          ]),
           const SizedBox(height: 7),
           Wrap(
             spacing: 6,

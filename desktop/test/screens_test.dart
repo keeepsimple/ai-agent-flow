@@ -11,11 +11,13 @@ import 'dart:io';
 import 'package:agent_flow/api.dart';
 import 'package:agent_flow/flow.dart';
 import 'package:agent_flow/screens/review.dart';
+import 'package:agent_flow/shortcuts.dart';
 import 'package:agent_flow/screens/sessions.dart';
 import 'package:agent_flow/screens/workspace.dart';
 import 'package:agent_flow/theme.dart';
 import 'package:agent_flow/widgets/bits.dart';
 import 'package:agent_flow/widgets/header.dart';
+import 'package:agent_flow/widgets/sidebar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -148,6 +150,23 @@ void main() {
         SessionsScreen(flow: flow, onOpen: (_) {}), const Size(1340, 900));
   });
 
+  testWidgets('the workspaces, and what has been going on in them', (tester) async {
+    final flow = _flow();
+    flow.tasks = [
+      _task({}),
+      _task({'id': 'b2', 'title': 'Create with AI loses its segment', 'status': 'awaiting_approval', 'awaitingPhase': 'plan'}),
+      _task({'id': 'c3', 'title': 'Kiwi size chart polish', 'status': 'done'}),
+      _task({
+        'id': 'e5',
+        'title': 'Driver app loses its route on a cold start',
+        'repos': ['warehouse-api'],
+        'repoPaths': ['/w/logistek/warehouse-api'],
+      }),
+    ];
+    await _shoot(tester, 'sidebar', Sidebar(flow: flow, onOpen: (_) {}),
+        const Size(244, 460));
+  });
+
   testWidgets('the workspace, mid-run', (tester) async {
     final flow = _flow();
     final task = _task({
@@ -266,6 +285,50 @@ void main() {
     expect(flow.visible.map((t) => t.id), ['e5', 'old']);
     flow.pickWorkspace(null);
     expect(flow.visible, hasLength(3), reason: 'no workspace means all of them');
+  });
+
+  testWidgets('the shortcuts fire even while a field has focus', (tester) async {
+    // The bug this is about was not the bindings: a shortcut is only seen on
+    // its way up from whatever has focus, so with nothing focused inside the
+    // subtree holding them, Cmd-\\ reached nothing at all.
+    var sidebar = 0;
+    final picked = <int>[];
+    var everything = 0;
+
+    await tester.pumpWidget(MaterialApp(
+      home: CallbackShortcuts(
+        bindings: workspaceShortcuts(
+          workspaces: 2,
+          onWorkspace: picked.add,
+          onEverything: () => everything++,
+          onToggleSidebar: () => sidebar++,
+        ),
+        child: const Focus(
+          autofocus: true,
+          child: Material(child: TextField(autofocus: true)),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    Future<void> press(LogicalKeyboardKey key) async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+      await tester.sendKeyEvent(key);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+      await tester.pump();
+    }
+
+    await press(LogicalKeyboardKey.backslash);
+    expect(sidebar, 1, reason: 'Cmd-\\ has to reach the window, not the text field');
+
+    await press(LogicalKeyboardKey.digit2);
+    expect(picked, [1]);
+
+    await press(LogicalKeyboardKey.digit9);
+    expect(picked, [1], reason: 'there is no ninth workspace to switch to');
+
+    await press(LogicalKeyboardKey.digit0);
+    expect(everything, 1);
   });
 
   testWidgets('the bar lines up with the traffic lights', (tester) async {

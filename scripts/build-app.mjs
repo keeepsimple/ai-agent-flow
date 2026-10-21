@@ -108,6 +108,41 @@ function carry(into, binary) {
   if (fs.existsSync(web)) fs.cpSync(web, path.join(into, 'web', 'dist'), { recursive: true })
 }
 
+/**
+ * Sign the bundle, because the signature is the identity macOS remembers a
+ * permission against.
+ *
+ * Ad-hoc is the default and costs nothing, but its identity is the hash of
+ * the bundle, so every rebuild is a different app and Full Disk Access has to
+ * be granted again. Signing with a real certificate keeps the identity fixed
+ * across rebuilds, and the grant with it.
+ *
+ * The entitlements have to be handed over here too: re-signing without them
+ * silently drops the ones Flutter applied at build time.
+ *
+ * No hardened runtime: it is needed to notarise, not to keep a permission,
+ * and turning it on is not something this can check from here.
+ */
+function sign(app) {
+  const identity = process.env.FLOW_SIGN_IDENTITY || arg('sign', '-')
+  const entitlements = path.join(DESKTOP, 'macos', 'Runner', 'Release.entitlements')
+
+  run('codesign', [
+    '--force', '--deep', '--sign', identity,
+    '--entitlements', entitlements,
+    app,
+  ], { stdio: 'inherit' })
+
+  if (identity === '-') {
+    console.log(
+      '\nSigned ad-hoc, so Full Disk Access has to be granted again after every\n' +
+        'build. To keep it, sign with a certificate you already have:\n' +
+        '  security find-identity -v -p codesigning\n' +
+        '  FLOW_SIGN_IDENTITY="Apple Development: you (TEAMID)" npm run app',
+    )
+  }
+}
+
 async function build() {
   if (!fs.existsSync(path.join(ROOT, 'web', 'dist', 'index.html'))) {
     run('npm', ['run', 'build'], { cwd: ROOT, stdio: 'inherit' })
@@ -131,10 +166,7 @@ async function build() {
     run('ditto', [built, app])
     carry(path.join(app, 'Contents', 'Resources', 'flow'), binary)
 
-    // Ad-hoc signing gives the bundle the identity Full Disk Access is
-    // remembered by. It changes on every rebuild, so the grant has to be
-    // renewed when you rebuild.
-    run('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' })
+    sign(app)
     console.log(`\n${app}  (${run('du', ['-sh', app]).split('\t')[0]})`)
     console.log('Move it to /Applications, then grant it Full Disk Access.')
   } else {

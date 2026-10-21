@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'flow.dart';
@@ -10,6 +9,7 @@ import 'screens/review.dart';
 import 'screens/sessions.dart';
 import 'screens/workspace.dart';
 import 'server.dart';
+import 'shortcuts.dart';
 import 'prefs.dart';
 import 'theme.dart';
 import 'widgets/bits.dart';
@@ -21,8 +21,7 @@ void main() {
   runApp(const AgentFlowApp());
 }
 
-int get _port =>
-    int.tryParse(Platform.environment['FLOW_PORT'] ?? '') ?? 7777;
+int get _port => int.tryParse(Platform.environment['FLOW_PORT'] ?? '') ?? 7777;
 
 class AgentFlowApp extends StatefulWidget {
   const AgentFlowApp({super.key});
@@ -31,7 +30,8 @@ class AgentFlowApp extends StatefulWidget {
   State<AgentFlowApp> createState() => _AgentFlowAppState();
 }
 
-class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver {
+class _AgentFlowAppState extends State<AgentFlowApp>
+    with WidgetsBindingObserver {
   final _server = FlowServer(_port);
   late final FlowState _flow = FlowState(Api(_port));
 
@@ -88,10 +88,8 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
       theme: ternTheme(_accent),
       home: AnimatedBuilder(
         animation: _flow,
-        builder: (context, _) => Scaffold(
-          backgroundColor: Tern.page,
-          body: _body(context),
-        ),
+        builder: (context, _) =>
+            Scaffold(backgroundColor: Tern.page, body: _body(context)),
       ),
     );
   }
@@ -105,17 +103,28 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
       return Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(_trouble!, textAlign: TextAlign.center, style: t(13, color: Tern.ink)),
-            const SizedBox(height: 10),
-            Text('Run it from a terminal to see why.',
-                style: t(12, color: Tern.muted)),
-          ]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _trouble!,
+                textAlign: TextAlign.center,
+                style: t(13, color: Tern.ink),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Run it from a terminal to see why.',
+                style: t(12, color: Tern.muted),
+              ),
+            ],
+          ),
         ),
       );
     }
     if (!_ready) {
-      return Center(child: Text('Starting the server…', style: t(12.5, color: Tern.muted)));
+      return Center(
+        child: Text('Starting the server…', style: t(12.5, color: Tern.muted)),
+      );
     }
 
     final task = _flow.detail;
@@ -124,67 +133,89 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
     // High in the tree on purpose: a key the focused text field does not want
     // travels up to here, so typing is never interrupted and the shortcut
     // still works from anywhere.
+    // Shortcuts only see a key on its way up from whatever has focus, so
+    // without something focused inside this subtree the event never passes
+    // through here at all. Clicking a field moves focus off this again,
+    // which is fine: the field is inside it.
     return CallbackShortcuts(
       bindings: _workspaceKeys(),
-      child: Stack(children: [
-      Column(children: [
-        Header(
-          flow: _flow,
-          sidebarOpen: _prefs.sidebarOpen,
-          onToggleSidebar: _toggleSidebar,
-          task: showing ? task : null,
-          tab: _tab,
-          onTab: (name) => setState(() => _tab = name),
-          onBack: () => _flow.select(null),
-          accent: _accent,
-          onAccent: (a) => setState(() => _accent = a),
-          onDropped: () {},
-          onDeleted: () => _flow.select(null),
-        ),
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_prefs.sidebarOpen) Sidebar(flow: _flow, onOpen: _open),
-              Expanded(
-                child: showing
-                    ? (_tab == 'review'
-                        ? ReviewScreen(flow: _flow, task: task)
-                        : WorkspaceScreen(flow: _flow, task: task))
-                    : SessionsScreen(flow: _flow, onOpen: _open),
-              ),
-            ],
-          ),
-        ),
-      ]),
-      if (_flow.error != null)
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 22,
-          child: Center(
-            child: Panel(
-              colour: Tern.input,
-              border: const Color(0x80FF8080),
-              radius: 10,
-              padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Flexible(
-                  child: Text(_flow.error!, style: t(12.5, color: Tern.bad)),
+      child: Focus(
+        autofocus: true,
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                Header(
+                  flow: _flow,
+                  sidebarOpen: _prefs.sidebarOpen,
+                  onToggleSidebar: _toggleSidebar,
+                  task: showing ? task : null,
+                  tab: _tab,
+                  onTab: (name) => setState(() => _tab = name),
+                  onBack: () => _flow.select(null),
+                  accent: _accent,
+                  onAccent: (a) => setState(() => _accent = a),
+                  onDropped: () {},
+                  onDeleted: () => _flow.select(null),
                 ),
-                const SizedBox(width: 10),
-                MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    onTap: _flow.clearError,
-                    child: const Icon(Icons.close, size: 14, color: Tern.muted),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_prefs.sidebarOpen)
+                        Sidebar(flow: _flow, onOpen: _open),
+                      Expanded(
+                        child: showing
+                            ? (_tab == 'review'
+                                  ? ReviewScreen(flow: _flow, task: task)
+                                  : WorkspaceScreen(flow: _flow, task: task))
+                            : SessionsScreen(flow: _flow, onOpen: _open),
+                      ),
+                    ],
                   ),
                 ),
-              ]),
+              ],
             ),
-          ),
+            if (_flow.error != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 22,
+                child: Center(
+                  child: Panel(
+                    colour: Tern.input,
+                    border: const Color(0x80FF8080),
+                    radius: 10,
+                    padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            _flow.error!,
+                            style: t(12.5, color: Tern.bad),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: _flow.clearError,
+                            child: const Icon(
+                              Icons.close,
+                              size: 14,
+                              color: Tern.muted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
-      ]),
+      ),
     );
   }
 
@@ -193,40 +224,19 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
     _flow.select(id);
   }
 
-  /// Cmd-1 through Cmd-9 for the workspaces, Cmd-0 for all of them. Switching
-  /// shows the board, because that is what the choice changes.
+  /// Switching shows the board, because that is what the choice changes.
   Map<ShortcutActivator, VoidCallback> _workspaceKeys() {
-    const digits = [
-      LogicalKeyboardKey.digit1,
-      LogicalKeyboardKey.digit2,
-      LogicalKeyboardKey.digit3,
-      LogicalKeyboardKey.digit4,
-      LogicalKeyboardKey.digit5,
-      LogicalKeyboardKey.digit6,
-      LogicalKeyboardKey.digit7,
-      LogicalKeyboardKey.digit8,
-      LogicalKeyboardKey.digit9,
-    ];
-
     void go(String? root) {
       _flow.pickWorkspace(root);
       _flow.select(null);
       _prefs.set(workspace: root, clearWorkspace: root == null);
     }
 
-    return {
-      for (var i = 0; i < digits.length; i++) ...{
-        SingleActivator(digits[i], meta: true): () {
-          if (i < _flow.roots.length) go(_flow.roots[i]);
-        },
-        SingleActivator(digits[i], control: true): () {
-          if (i < _flow.roots.length) go(_flow.roots[i]);
-        },
-      },
-      const SingleActivator(LogicalKeyboardKey.digit0, meta: true): () => go(null),
-      const SingleActivator(LogicalKeyboardKey.digit0, control: true): () => go(null),
-      const SingleActivator(LogicalKeyboardKey.backslash, meta: true): _toggleSidebar,
-      const SingleActivator(LogicalKeyboardKey.backslash, control: true): _toggleSidebar,
-    };
+    return workspaceShortcuts(
+      workspaces: _flow.roots.length,
+      onWorkspace: (i) => go(_flow.roots[i]),
+      onEverything: () => go(null),
+      onToggleSidebar: _toggleSidebar,
+    );
   }
 }

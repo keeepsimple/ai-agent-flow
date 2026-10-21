@@ -92,9 +92,39 @@ Data goes to `~/Library/Application Support/Agent Flow`, not inside the bundle,
 and repos are looked for under your home folder until you add a folder in the
 UI. Starting it when the server is already up just opens the browser.
 
-The bundle is ad-hoc signed, which is what Full Disk Access remembers it by.
-**That identity changes every time you rebuild**, so the permission has to be
-granted again after `npm run app`.
+### Signing, and why it decides whether you grant that twice
+
+macOS remembers a permission against the app's *designated requirement*, and
+what that is depends on how the app was signed:
+
+```
+ad-hoc            designated => cdhash H"dc4872a1..."
+a certificate     designated => identifier "..." and ... leaf[subject.OU] = TEAMID
+```
+
+Ad-hoc costs nothing and needs no account, but its identity is the hash of the
+bundle, so **every rebuild is a different app** and Full Disk Access has to be
+granted again. A certificate fixes the identity to the bundle id and the team,
+which does not change when the contents do, so the grant survives rebuilds and
+survives moving the app.
+
+Any certificate will do — an `Apple Development` one from a free Apple ID is
+enough, and no Developer Program membership is needed for a build you run
+yourself:
+
+```sh
+security find-identity -v -p codesigning
+FLOW_SIGN_IDENTITY="Apple Development: you (TEAMID)" npm run app
+```
+
+Signing this way is for your own machines. Handing the app to someone else
+needs a `Developer ID Application` certificate and notarisation, which is what
+the Developer Program is for.
+
+Re-signing drops whatever entitlements were applied at build time, so the
+build passes `Release.entitlements` back in. Without that the app would lose
+the ones that let it leave the sandbox, which it only survived before because
+*no* entitlements also means no sandbox.
 
 ## Three screens
 
