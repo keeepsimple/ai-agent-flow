@@ -58,6 +58,14 @@ Commits to pick, oldest first:
 {{else}}
 5.  No deploy watcher is configured for this repo. End by saying where the
     human should look to see {{prodBranch}} deploy.
+{{/if}}{{#if hasSmoke}}
+6.  Once the deploy is through (the watcher exited 0, or without a watcher,
+    after the push has had time to deploy), smoke it and quote the output:
+
+        {{smoke}}
+
+    Exit 0: deployed and smoked. Non-zero: say "deployed, smoke failed" with
+    the output, and stop; the deploy is live and that is now the human's call.
 {{/if}}
 Do not touch any other repo, and do not touch the repo's own checkout at
 {{repoPath}}.

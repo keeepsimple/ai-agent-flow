@@ -142,6 +142,9 @@ function phaseContext(ctx) {
     hasFeedback: Boolean(ctx.feedback),
     feedback: ctx.feedback || '',
     titleAsk: titleAsk(ctx),
+    autoApprove: Boolean(ctx.autoApprove),
+    node: ctx.node,
+    askScript: ctx.askScript,
     diffCommands: ctx.trees.map((t) => `    git -C ${t.worktree} diff ${t.baseRef}...HEAD`).join('\n'),
     requestIndented: indent(ctx.request),
   }
@@ -219,5 +222,7 @@ export function buildShipPrompt(tree, ctx) {
     hasJenkins: Boolean(ctx.jenkins),
     jenkinsUrl: ctx.jenkins?.url || '',
     jenkinsJob: ctx.jenkins?.job || '',
+    hasSmoke: Boolean(ctx.smoke),
+    smoke: ctx.smoke || '',
   })
 }

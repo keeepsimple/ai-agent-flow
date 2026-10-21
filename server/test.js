@@ -153,6 +153,11 @@ if (args.includes('--resume') && process.env.STUB_REFUSE_RESUME) {
 } else if (prompt.includes('## What the human asked')) {
   if (prompt.includes('title.txt')) fs.writeFileSync(path.join(art, 'title.txt'), 'Named on the plain route')
   say('read the code, here is the answer')
+} else if (prompt.includes('Phase: implement') && prompt.includes('UNIQUEFILE')) {
+  fs.writeFileSync('unique-' + process.pid + '.md', 'mine')
+  execFileSync('git', ['add', '-A'])
+  execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'impl unique'])
+  say('built in a file of my own')
 } else if (prompt.includes('Phase: implement')) {
   if (prompt.includes('title.txt')) fs.writeFileSync(path.join(art, 'title.txt'), 'Named from the build')
   const ask = ${JSON.stringify(path.join(here, 'ask.mjs'))}
@@ -224,7 +229,7 @@ async function waitFor(id, predicate, what) {
   }
   const last = await (await fetch(`${base}/api/tasks/${id}`)).json()
   throw new Error(`timed out waiting for ${what}\nstatus=${last.status} error=${last.error}\n` +
-    last.log.slice(-6).map((l) => `  [${l.kind}] ${l.text}`).join('\n'))
+    last.log.slice(-12).map((l) => `  [${l.kind}] ${String(l.text).slice(0, 240)}`).join('\n'))
 }
 
 async function up() {
@@ -1075,6 +1080,25 @@ try {
   fs.rmSync(path.join(repos, 'web', 'app', 'services', 'discount.server.ts.bak'), { force: true })
   git('web', 'pull', '-q', '--ff-only', 'origin', 'main') // the person's later `git pull`
 
+  // Land & ship: one click, two runs. With a smoke command configured, the
+  // ship prompt runs it after the deploy and reports it.
+  assert.ok((await fetch(`${base}/api/repos/config?repo=web`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ smoke: 'echo smoke-ok' }) })).ok)
+  const both = await post('/api/tasks', { repos: ['web'], prompt: 'UNIQUEFILE land and ship me', run: 'quick', autoApprove: true })
+  await waitFor(both.id, (t) => t.status === 'done', 'the land&ship run')
+  const prodBeforeBoth = git('web', 'rev-parse', 'prod')
+  await post(`/api/tasks/${both.id}/merge`, { repo: 'web', then: 'ship' })
+  await waitFor(both.id, (t) => t.status === 'failed' || t.log.some((l) => /^Ship to prod/.test(l.text || '') || /could not go on/.test(l.text || '')), 'the ship half to start')
+  const shippedBoth = await waitFor(both.id, (t) => t.status !== 'running' && t.phase === null, 'the ship half to end')
+  assert.equal(shippedBoth.status, 'done', shippedBoth.error)
+  assert.ok(shippedBoth.log.some((l) => l.kind === 'decision' && /land on main/.test(l.text)), 'landed first')
+  assert.ok(shippedBoth.log.some((l) => l.kind === 'decision' && /^Ship to prod/.test(l.text)), 'then shipped: ' + (shippedBoth.log.find((l) => /could not go on/.test(l.text || ''))?.text || ''))
+  assert.notEqual(git('web', 'rev-parse', 'prod'), prodBeforeBoth, 'prod moved')
+  const shipPrompt = fs.readFileSync(path.join(root, 'data', 'tasks', both.id, 'prompt.txt'), 'utf8')
+  assert.match(shipPrompt, /echo smoke-ok/, 'the smoke command is in the ship prompt')
+  assert.match(shipPrompt, /deployed, smoke failed/)
+  await fetch(`${base}/api/repos/config?repo=web`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ smoke: '' }) })
+  console.log('ok: land & ship is one click, and the deploy is smoked')
+
   const putRepo = (name, patch) => fetch(`${base}/api/repos/config?repo=${name}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
   // The guard blames only the task's own commits. The shape from real life: a
   // token committed on origin/main long ago, the local main behind it, and a
@@ -1347,14 +1371,14 @@ try {
   // Per-repo config: where prod is, and how to watch its deploy. The Jenkins
   // token goes to the keychain, and never comes back out through the API.
   const cfg0 = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
-  assert.deepEqual(cfg0, { prodBranch: 'prod', jenkins: null, hasJenkinsToken: false, landTarget: null, setup: '', copy: [], checks: [] }, 'landing on the base remembers nothing')
+  assert.deepEqual(cfg0, { prodBranch: 'prod', jenkins: null, hasJenkinsToken: false, landTarget: null, setup: '', smoke: '', copy: [], checks: [] }, 'landing on the base remembers nothing')
   const putCfg = await fetch(`${base}/api/repos/config?repo=api`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, jenkinsToken: 't' }),
   })
   assert.ok(putCfg.ok, 'config saved')
   const cfg1 = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
-  assert.deepEqual(cfg1, { prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, hasJenkinsToken: true, landTarget: null, setup: '', copy: [], checks: [] })
+  assert.deepEqual(cfg1, { prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, hasJenkinsToken: true, landTarget: null, setup: '', smoke: '', copy: [], checks: [] })
   assert.equal(secrets.read('repo:' + path.join(repos, 'api'), 'JENKINS_TOKEN'), 't')
   assert.ok(!fs.readFileSync(path.join(root, 'data', 'repos.json'), 'utf8').includes('"t"'), 'the token is not in the file')
   const badCfg = await fetch(`${base}/api/repos/config?repo=nope`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' })
@@ -1410,6 +1434,7 @@ try {
   const docPrompt = fs.readFileSync(path.join(root, 'data', 'tasks', doc.id, 'prompt.txt'), 'utf8')
   assert.match(docPrompt, new RegExp(path.join(repos, 'api').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'the repo is named, to read')
   assert.match(docPrompt, /do not modify\s+anything under/i)
+  assert.match(docPrompt, /I read this as:/, 'the brief is restated before writing')
   const docArgv = JSON.parse(fs.readFileSync(path.join(root, 'data', 'tasks', doc.id, 'argv.json'), 'utf8'))
   assert.ok(docArgv.includes(path.join(repos, 'api')), 'and reachable: --add-dir for each repo')
   assert.equal((await fetch(`${base}/api/tasks/${doc.id}/git`)).status, 200)

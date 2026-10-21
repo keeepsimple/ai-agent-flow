@@ -27,15 +27,17 @@ export function get(repoPath) {
     // What a fresh worktree needs: a command to run in it, files to bring
     // over from the checkout (generated, gitignored), and the repo's gate.
     setup: saved.setup || '',
+    smoke: saved.smoke || '',
     copy: Array.isArray(saved.copy) ? saved.copy : [],
     checks: Array.isArray(saved.checks) ? saved.checks : [],
   }
 }
 
-export function set(repoPath, { prodBranch, jenkins, jenkinsToken, landTarget, setup, copy, checks } = {}) {
+export function set(repoPath, { prodBranch, jenkins, jenkinsToken, landTarget, setup, copy, checks, smoke } = {}) {
   const all = load()
   const mine = all[repoPath] || {}
   if (setup !== undefined) mine.setup = String(setup || '').trim()
+  if (smoke !== undefined) mine.smoke = String(smoke || '').trim()
   if (copy !== undefined) {
     const list = (Array.isArray(copy) ? copy : []).map((p) => String(p).trim()).filter(Boolean)
     for (const p of list) {

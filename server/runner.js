@@ -668,12 +668,16 @@ function sideRun(task, label, prompt, cwd, finished, opts = {}) {
   // not continue it in place of what was just asked for.
   update(task.id, { status: 'running', phase: label, error: null, lastSession: null })
 
+  const { after, ...runOpts } = opts
   prepareWorktrees(task)
-    .then(() => (stopped(task) ? null : runClaude(task, prompt, cwd, { ...opts, meta: { kind: 'side', label } })))
+    .then(() => (stopped(task) ? null : runClaude(task, prompt, cwd, { ...runOpts, meta: { kind: 'side', label } })))
     .then(() => {
       if (stopped(task)) return
       update(task.id, { status: previous, phase: null })
       tell(task, finished, task.repos.join(' + '))
+      if (opts.after) {
+        try { opts.after(); return } catch (err) { log(task.id, { kind: 'error', text: `could not go on: ${err.message}` }) }
+      }
       drain(task.id)
     })
     .catch((err) => {
@@ -723,7 +727,7 @@ export function catchUp(id, repo) {
  * one run, in the worktree, and stops rather than guessing when the checkout
  * is somewhere it should not be touched.
  */
-export function mergeViaAgent(id, repo, { target } = {}) {
+export function mergeViaAgent(id, repo, { target, then } = {}) {
   const task = readyForSideRun(id)
   const tree = task.trees?.find((t) => t.repo === repo)
   if (!tree) throw new Error(`unknown repo: ${repo}`)
@@ -742,12 +746,15 @@ export function mergeViaAgent(id, repo, { target } = {}) {
     kind: 'decision',
     text: `Push ${tree.branch}, open a merge request, then land on ${target}`,
   })
+  if (then && then !== 'ship') throw new Error(`unknown follow-on: ${then}`)
   return sideRun(
     task,
     `landing on ${target}`,
     buildMergePrompt(tree, { ...task, target, hasRemote, node: NODE_BIN, askScript: ASK_SCRIPT, guardScript: GUARD_SCRIPT }),
     tree.worktree,
     `Landed on ${target}: ${task.title}`,
+    // One click, two runs: when the landing ends well, ship the same repo.
+    then === 'ship' ? { after: () => shipViaAgent(id, repo) } : {},
   )
 }
 
@@ -781,7 +788,7 @@ export function shipViaAgent(id, repo) {
   const tree = task.trees?.find((t) => t.repo === repo)
   if (!tree) throw new Error(`unknown repo: ${repo}`)
 
-  const { prodBranch, jenkins } = repoConfig.get(tree.repoPath)
+  const { prodBranch, jenkins, smoke } = repoConfig.get(tree.repoPath)
   try { git(tree.repoPath, 'fetch', '-q', 'origin', prodBranch) } catch {} // no remote, or offline: the local branch is what there is
   const { exists, shas } = toPick(tree, prodBranch)
   if (!exists) throw new Error(`${repo} has no ${prodBranch} branch`)
@@ -789,7 +796,22 @@ export function shipViaAgent(id, repo) {
   if (!shas.length) throw new Error(`nothing left to pick onto ${prodBranch}: every commit of this task is already there`)
 
   const prodWorktree = path.join(DATA, 'worktrees', task.id, `${repo}-prod`)
-  if (!fs.existsSync(prodWorktree)) git(tree.repoPath, 'worktree', 'add', prodWorktree, prodBranch)
+  if (!fs.existsSync(prodWorktree)) {
+    // git refuses one branch in two worktrees. An earlier task's prod
+    // worktree is scratch once its ship ended: take it down, never the
+    // person's own checkout.
+    const real = (p) => { try { return fs.realpathSync(p) } catch { return p } } // /var vs /private/var on macOS
+    const ours = real(path.join(DATA, 'worktrees')) + path.sep
+    const listed = quiet(() => git(tree.repoPath, 'worktree', 'list', '--porcelain')).split('\n\n')
+    for (const block of listed) {
+      const where = (/^worktree (.+)$/m.exec(block) || [])[1]
+      const onBranch = (/^branch refs\/heads\/(.+)$/m.exec(block) || [])[1]
+      if (where && onBranch === prodBranch && real(where).startsWith(ours) && real(where) !== real(prodWorktree)) {
+        try { git(tree.repoPath, 'worktree', 'remove', '--force', where) } catch {}
+      }
+    }
+    git(tree.repoPath, 'worktree', 'add', prodWorktree, prodBranch)
+  }
   forgetDiskSize()
 
   log(id, {
@@ -800,7 +822,7 @@ export function shipViaAgent(id, repo) {
     task,
     `shipping to ${prodBranch}`,
     buildShipPrompt(tree, {
-      ...task, prodBranch, shas, prodWorktree, jenkins,
+      ...task, prodBranch, shas, prodWorktree, jenkins, smoke,
       node: NODE_BIN, askScript: ASK_SCRIPT, guardScript: GUARD_SCRIPT, jenkinsScript: JENKINS_SCRIPT,
     }),
     prodWorktree,

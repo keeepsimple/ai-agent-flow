@@ -23,10 +23,10 @@ export const KNOWN = {
   'follow-up': ['preamble', 'artifactDir', 'requestIndented', 'isDoc'],
   'catch-up': ['worktree', 'branch', 'repo', 'baseBranch', 'artifactDir', 'node', 'askScript'],
   land: ['worktree', 'branch', 'repo', 'repoPath', 'baseBranch', 'baseRef', 'target', 'hasRemote', 'artifactDir', 'node', 'askScript', 'guardScript'],
-  ship: ['prodWorktree', 'prodBranch', 'repo', 'repoPath', 'branch', 'baseBranch', 'shaList', 'artifactDir', 'node', 'askScript', 'guardScript', 'jenkinsScript', 'hasJenkins', 'jenkinsUrl', 'jenkinsJob'],
+  ship: ['prodWorktree', 'prodBranch', 'repo', 'repoPath', 'branch', 'baseBranch', 'shaList', 'artifactDir', 'node', 'askScript', 'guardScript', 'jenkinsScript', 'hasJenkins', 'jenkinsUrl', 'jenkinsJob', 'hasSmoke', 'smoke'],
   resume: [],
   'doc-preamble': ['workDir', 'repoList', 'artifactDir', 'secretsNote', 'hasAttachments', 'attachmentList', 'autoApprove', 'node', 'askScript'],
-  write: ['preamble', 'prompt', 'titleAsk'],
+  write: ['preamble', 'prompt', 'titleAsk', 'autoApprove', 'node', 'askScript'],
 }
 
 /** One line each, for the Prompts screen. */
