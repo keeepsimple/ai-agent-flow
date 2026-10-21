@@ -127,6 +127,15 @@ class Header extends StatelessWidget {
                 icon: Icons.refresh,
                 onPressed: () => flow.run(() => flow.api.retry(task!.id)),
               ),
+            if (task!.interrupted)
+              FlowButton(
+                dense: true,
+                label: 'Continue',
+                tone: Tone.primary,
+                icon: Icons.play_arrow,
+                tooltip: 'Picks the session back up where it was cut off',
+                onPressed: () => flow.run(() => flow.api.resume(task!.id)),
+              ),
             if (!task!.active) ...[
               const SizedBox(width: 7),
               if (task!.root != null)

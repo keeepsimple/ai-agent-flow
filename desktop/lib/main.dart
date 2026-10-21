@@ -53,7 +53,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
   }
 
   Future<void> _boot() async {
-    final up = await _server.start();
+    final up = await _server.start(_prefs);
     if (!mounted) return;
     if (!up) {
       setState(() => _trouble = _server.trouble ?? 'The server did not start.');
@@ -181,6 +181,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                           flow: _flow,
                           onOpen: _open,
                           onPick: _pickWorkspace,
+                          prefs: _prefs,
                         ),
                       Expanded(
                         child: showing

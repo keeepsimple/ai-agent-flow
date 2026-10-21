@@ -189,7 +189,7 @@ class _StatusDotState extends State<StatusDot> with SingleTickerProviderStateMix
 
   static Color colourFor(String status, Color accent) => switch (status) {
         'running' || 'queued' => accent,
-        'awaiting_approval' || 'awaiting_answer' => Tern.warn,
+        'awaiting_approval' || 'awaiting_answer' || 'interrupted' => Tern.warn,
         'done' => Tern.ok,
         'failed' => Tern.bad,
         _ => Tern.faint,
@@ -287,6 +287,7 @@ String statusWords(Task2 task) => switch (task.status) {
       'queued' => 'Queued',
       'done' => 'Done',
       'failed' => 'Failed',
+      'interrupted' => 'Interrupted',
       'cancelled' => 'Cancelled',
       _ => task.status,
     };

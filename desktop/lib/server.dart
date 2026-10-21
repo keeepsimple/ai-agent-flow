@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'prefs.dart';
+
 /// Starts and owns the Node server the UI talks to.
 ///
 /// The app is a client. The server is the same one `npm start` runs, carried
@@ -88,17 +90,8 @@ class FlowServer {
     }
   }
 
-  /// Already up means a web-mode server is running; use it rather than
-  /// fighting it for the port.
-  Future<bool> start() async {
-    if (await reachable()) return true;
-
-    final where = _bundled() ?? _fromSource();
-    if (where == null) {
-      trouble = 'Could not find the server, or a Node to run it with.';
-      return false;
-    }
-
+  /// What the server is started with. Separate so a test can read it.
+  static Map<String, String> environment(int port, Prefs prefs) {
     final env = Map<String, String>.from(Platform.environment);
     // A GUI app inherits almost no PATH, and the agent needs git and claude.
     if (!Platform.isWindows) {
@@ -110,8 +103,24 @@ class FlowServer {
     // So a desktop notification raised by the server brings this window
     // forward rather than opening a browser at the same page.
     env['FLOW_ACTIVATE'] = 'dev.agentflow.agentFlow';
+    if (!prefs.autoResume) env['FLOW_AUTO_RESUME'] = '0';
     env.putIfAbsent('FLOW_DATA', () => dataDir());
     env.putIfAbsent('FLOW_REPO_ROOT', () => _home());
+    return env;
+  }
+
+  /// Already up means a web-mode server is running; use it rather than
+  /// fighting it for the port.
+  Future<bool> start(Prefs prefs) async {
+    if (await reachable()) return true;
+
+    final where = _bundled() ?? _fromSource();
+    if (where == null) {
+      trouble = 'Could not find the server, or a Node to run it with.';
+      return false;
+    }
+
+    final env = environment(port, prefs);
     Directory(env['FLOW_DATA']!).createSync(recursive: true);
 
     stderr.writeln('flow: starting ${where.node} ${where.entry}');

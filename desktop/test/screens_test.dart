@@ -14,6 +14,7 @@ import 'package:agent_flow/screens/review.dart';
 import 'package:agent_flow/shortcuts.dart';
 import 'package:agent_flow/screens/sessions.dart';
 import 'package:agent_flow/prefs.dart';
+import 'package:agent_flow/server.dart';
 import 'package:agent_flow/screens/workspace.dart';
 import 'package:agent_flow/theme.dart';
 import 'package:agent_flow/widgets/bits.dart';
@@ -155,6 +156,60 @@ void main() {
         SessionsScreen(flow: flow, onOpen: (_) {}), const Size(1340, 900));
   });
 
+  testWidgets('interrupted tasks sit at the top of the board with one Continue for the lot',
+      (tester) async {
+    final flow = _flow();
+    flow.tasks = [
+      _task({'id': 'i1', 'title': 'Port the email cron', 'status': 'interrupted', 'phase': null}),
+      _task({'id': 'i2', 'title': 'Kiwi size chart polish', 'status': 'interrupted', 'phase': null}),
+      _task({'id': 'c3', 'title': 'Done thing', 'status': 'done', 'phase': null}),
+    ];
+    await _shoot(tester, 'sessions-interrupted',
+        SessionsScreen(flow: flow, onOpen: (_) {}), const Size(1340, 700));
+    expect(find.text('2 interrupted'), findsOneWidget);
+    expect(find.text('Continue all'), findsOneWidget);
+  });
+
+  testWidgets('an interrupted task offers Continue in the header', (tester) async {
+    final flow = _flow();
+    final task = _task({'status': 'interrupted', 'phase': null, 'root': '/w/tree'});
+    tester.view.physicalSize = const Size(1340, 120);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        body: Header(
+          flow: flow,
+          sidebarOpen: true,
+          fullScreen: false,
+          onToggleSidebar: () {},
+          task: task,
+          tab: 'workspace',
+          onTab: (_) {},
+          onBack: () {},
+          accent: Accent.sky,
+          onAccent: (_) {},
+          onDropped: () {},
+          onDeleted: () {},
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  test('continue-on-launch is a preference the server is told about', () {
+    final prefs = Prefs.memory();
+    expect(prefs.autoResume, isTrue);
+    expect(FlowServer.environment(1, prefs).containsKey('FLOW_AUTO_RESUME'), isFalse);
+    prefs.set(autoResume: false);
+    expect(prefs.autoResume, isFalse);
+    expect(FlowServer.environment(1, prefs)['FLOW_AUTO_RESUME'], '0');
+  });
+
   testWidgets('the workspaces, and what has been going on in them', (tester) async {
     final flow = _flow();
     flow.tasks = [
@@ -169,8 +224,14 @@ void main() {
       }),
     ];
     flow.disk = {'total': 3.5 * 1024 * 1024 * 1024, 'reclaimable': 2.2 * 1024 * 1024 * 1024};
-    await _shoot(tester, 'sidebar', Sidebar(flow: flow, onOpen: (_) {}, onPick: (_) {}),
+    final prefs = Prefs.memory();
+    await _shoot(tester, 'sidebar', Sidebar(flow: flow, onOpen: (_) {}, onPick: (_) {}, prefs: prefs),
         const Size(244, 460));
+    // Continue-on-launch lives in the footer, and flipping it is remembered.
+    expect(find.text('Continue on launch'), findsOneWidget);
+    await tester.tap(find.byType(Switch));
+    await tester.pump();
+    expect(prefs.autoResume, isFalse);
   });
 
   testWidgets('clicking a workspace says so, rather than filtering in place',

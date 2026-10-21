@@ -33,13 +33,18 @@ class Prefs {
   bool get changesOpen => _values['changesOpen'] as bool? ?? true;
   double get changesWidth => (_values['changesWidth'] as num?)?.toDouble() ?? 520;
 
+  /// Interrupted tasks are picked up when the app launches, unless this is off.
+  bool get autoResume => _values['autoResume'] as bool? ?? true;
+
   void set({
     bool? sidebarOpen,
     String? workspace,
     bool clearWorkspace = false,
     bool? changesOpen,
     double? changesWidth,
+    bool? autoResume,
   }) {
+    if (autoResume != null) _values['autoResume'] = autoResume;
     if (sidebarOpen != null) _values['sidebarOpen'] = sidebarOpen;
     if (changesOpen != null) _values['changesOpen'] = changesOpen;
     if (changesWidth != null) _values['changesWidth'] = changesWidth;

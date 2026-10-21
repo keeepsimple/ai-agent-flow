@@ -39,6 +39,7 @@ class Task {
   bool get running => status == 'running' || status == 'queued';
   bool get waiting => status == 'awaiting_approval' || status == 'awaiting_answer';
   bool get active => running || waiting;
+  bool get interrupted => status == 'interrupted';
 
   /// The live one, the way the server names it: a question left behind by a
   /// run that died keeps answer == null for ever.
@@ -145,6 +146,7 @@ class Api {
 
   Future<dynamic> cancel(String id) => _send('POST', '/api/tasks/$id/cancel');
   Future<dynamic> retry(String id) => _send('POST', '/api/tasks/$id/retry');
+  Future<dynamic> resume(String id) => _send('POST', '/api/tasks/$id/resume');
   Future<dynamic> followUp(String id, String request) =>
       _send('POST', '/api/tasks/$id/follow-up', {'request': request});
   Future<dynamic> catchUp(String id, String repo) =>

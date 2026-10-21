@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../flow.dart';
+import '../prefs.dart';
 import '../pick.dart';
 import '../theme.dart';
 import 'bits.dart';
@@ -19,10 +20,14 @@ class Sidebar extends StatelessWidget {
     required this.flow,
     required this.onOpen,
     required this.onPick,
+    this.prefs,
     this.recent = 5,
   });
 
   final FlowState flow;
+
+  /// For the continue-on-launch switch; absent means the switch is not shown.
+  final Prefs? prefs;
   final void Function(String id) onOpen;
 
   /// Null for all of them. Not `flow.pickWorkspace` directly: choosing a
@@ -78,6 +83,7 @@ class Sidebar extends StatelessWidget {
             ),
           ),
           const Divider(height: 1, color: Tern.line),
+          if (prefs != null) _AutoResume(prefs: prefs!),
           _Disk(flow: flow),
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
@@ -265,6 +271,41 @@ class _RowState extends State<_Row> {
 /// What the checkouts are costing. Without this, dropping one looks like it
 /// did nothing: the branches stay, the conversation stays, and the only thing
 /// that changed was a number nobody was showing.
+/// Interrupted tasks are picked up when the app launches. Off makes it a button.
+class _AutoResume extends StatefulWidget {
+  const _AutoResume({required this.prefs});
+  final Prefs prefs;
+
+  @override
+  State<_AutoResume> createState() => _AutoResumeState();
+}
+
+class _AutoResumeState extends State<_AutoResume> {
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 10, 0),
+        child: Row(children: [
+          const Icon(Icons.play_circle_outline, size: 13, color: Tern.faint),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Tooltip(
+              message: 'Takes effect the next time the app starts',
+              child: Text('Continue on launch', style: t(11, color: Tern.muted)),
+            ),
+          ),
+          SizedBox(
+            height: 18,
+            child: FittedBox(
+              child: Switch(
+                value: widget.prefs.autoResume,
+                onChanged: (on) => setState(() => widget.prefs.set(autoResume: on)),
+              ),
+            ),
+          ),
+        ]),
+      );
+}
+
 class _Disk extends StatefulWidget {
   const _Disk({required this.flow});
   final FlowState flow;

@@ -42,6 +42,8 @@ class SessionsScreen extends StatelessWidget {
                   style: t(12, color: Tern.muted),
                 ),
                 const SizedBox(height: 10),
+                if (tasks != null && tasks.any((t) => t.interrupted))
+                  _Interrupted(flow: flow, tasks: tasks.where((t) => t.interrupted).toList()),
                 if (tasks == null)
                   Text('Loading…', style: t(12.5, color: Tern.muted))
                 else if (tasks.isEmpty)
@@ -67,6 +69,45 @@ class SessionsScreen extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Runs cut off by a restart or a sleep. One line each, one Continue for the lot.
+class _Interrupted extends StatelessWidget {
+  const _Interrupted({required this.flow, required this.tasks});
+  final FlowState flow;
+  final List<Task> tasks;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+        decoration: BoxDecoration(
+          color: Tern.warnBg,
+          border: Border.all(color: Tern.warnLine),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(children: [
+          const Icon(Icons.pause_circle_outline, size: 15, color: Tern.warn),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              '${tasks.length} interrupted',
+              style: t(12.5, color: Tern.ink, weight: FontWeight.w600),
+            ),
+          ),
+          FlowButton(
+            dense: true,
+            label: 'Continue all',
+            tone: Tone.primary,
+            icon: Icons.play_arrow,
+            onPressed: () => flow.run(() async {
+              for (final task in tasks) {
+                await flow.api.resume(task.id);
+              }
+            }),
+          ),
+        ]),
+      );
 }
 
 class _TaskRow extends StatefulWidget {
