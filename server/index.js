@@ -4,6 +4,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { bus, sse, tasks, readLog, artifact } from './store.js'
 import * as runner from './runner.js'
+import * as secrets from './secrets.js'
 import * as uploads from './uploads.js'
 import * as repoGit from './git.js'
 import * as disk from './disk.js'
@@ -170,6 +171,13 @@ async function api(req, res, url) {
     }
   }
 
+  // What in this text looks like a secret: names and counts, never values.
+  if (section === 'secrets' && id === 'scan' && req.method === 'POST') {
+    const { text } = JSON.parse((await body(req)) || '{}')
+    const found = secrets.detect(String(text || '')).map((f) => ({ name: f.name, count: f.spans.length }))
+    return json(res, 200, { found })
+  }
+
   if (section !== 'tasks') return json(res, 404, { error: 'not found' })
 
   if (req.method === 'POST' && !id) {
@@ -216,8 +224,8 @@ async function api(req, res, url) {
     return json(res, 200, await runner.preview(id, where))
   }
   if (req.method === 'POST' && action === 'follow-up') {
-    const { request } = JSON.parse(await body(req))
-    return json(res, 200, runner.followUp(id, request))
+    const { request, secrets: kept } = JSON.parse(await body(req))
+    return json(res, 200, runner.followUp(id, request, { secrets: kept }))
   }
   if (req.method === 'POST' && action === 'catch-up') {
     const { repo } = JSON.parse((await body(req)) || '{}')

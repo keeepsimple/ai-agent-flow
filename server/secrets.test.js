@@ -7,6 +7,7 @@ const names = (text) => detect(text).map((f) => f.name)
 assert.deepEqual(names('EGO_API_KEY=ck_abc123def456ghi789jkl0\nhello'), ['EGO_API_KEY'])
 assert.deepEqual(names('export DB_PASSWORD="hunter2hunter2"'), ['DB_PASSWORD'])
 assert.deepEqual(names('SMTP_TOKEN: abcdefgh12345678'), ['SMTP_TOKEN'])
+assert.deepEqual(names('set EGO_API_KEY=ck_abc123def456ghi789jkl0 in .env.dev and go'), ['EGO_API_KEY'], 'mid-sentence too')
 
 // Known prefixes, bare in prose.
 assert.deepEqual(names('token glpat-ABCDEFGHIJKLMNOPQRST here'), ['SECRET_1'])

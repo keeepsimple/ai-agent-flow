@@ -69,6 +69,27 @@ gets renamed to match this line, and a branch name has to survive a terminal.
 `
 }
 
+/** Where the kept values are, and the one rule about them. */
+function secretsNote(ctx) {
+  const names = ctx.secrets || []
+  if (!names.length) return ''
+  if (ctx.permissionMode === 'acceptEdits') {
+    return `
+Secrets the human kept out of this transcript: ${names.join(', ')}. They appear in
+the request as {{secret:NAME}}. This run has no shell, so they cannot be used
+here; say so if the work needs them, rather than inventing a value.
+`
+  }
+  const first = names[0]
+  return `
+Secrets the human kept out of this transcript exist only in your shell, as
+environment variables:
+${names.map((n) => `    {{secret:${n}}}  ->  $FLOW_SECRET_${n}`).join('\n')}
+Use them from the shell — printf '%s' "$FLOW_SECRET_${first}" >> .env.prod — and
+never print, echo, or write them anywhere you can read them back.
+`
+}
+
 function preamble(ctx) {
   const many = ctx.trees.length > 1
   return `You are running one phase of an automated workflow on ${
@@ -80,7 +101,7 @@ Working directory: ${ctx.root}
 ${treeTable(ctx)}
 
 Artifacts:  ${ctx.artifactDir}   (spec.md, plan.md, review.md live here, NOT in any repo)
-${
+${secretsNote(ctx)}${
   ctx.attachments?.length
     ? `
 Files the human attached. Open every one with the Read tool before you decide

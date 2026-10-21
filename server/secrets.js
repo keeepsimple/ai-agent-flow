@@ -5,7 +5,7 @@
 // detect(text) -> [{ name, value, spans: [{ start, end }] }], one per distinct value.
 // redact(text, found) -> text with every span replaced by {{secret:NAME}}.
 
-const NAMED = /^[ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*(?:_KEY|_TOKEN|_SECRET|_PASSWORD))[ \t]*[=:][ \t]*(["']?)([^\s"']{8,})\2[ \t]*$/gim
+const NAMED = /(?<![A-Za-z0-9_])(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*(?:_KEY|_TOKEN|_SECRET|_PASSWORD))[ \t]*[=:][ \t]*(["']?)([^\s"']{8,})\2/gi
 const WRAPPED = /<<([^<>\n]+)>>/g
 const PREFIXED = /\b((?:ck_|sk_|ghp_|glpat-|xoxb-|AKIA)[A-Za-z0-9._-]{16,})/g
 const SHAPED = /[A-Za-z0-9+/=]{40,}/g

@@ -58,6 +58,10 @@ process.stdin.setEncoding('utf8')
 for await (const chunk of process.stdin) prompt += chunk
 
 const session = 'stub-' + process.pid
+if (process.env.FLOW_SECRET_EGO_API_KEY) {
+  fs.writeFileSync(path.join(art, 'seen-env.txt'), process.env.FLOW_SECRET_EGO_API_KEY)
+  fs.writeFileSync(path.join(art, 'prompt.txt'), prompt)
+}
 const say = (text) =>
   console.log(JSON.stringify({ type: 'assistant', session_id: session, message: { content: [{ type: 'text', text }] } }))
 
@@ -883,6 +887,63 @@ try {
     '    running the app refuses until the config it may repoint is named,\n' +
     '    and the configs offered come from the repo, paired with their dev stores',
   )
+
+  // Secrets: named on the task, valued only in the agent's shell.
+  process.env.FLOW_DATA = path.join(root, 'data')
+  const secrets = await import('./secrets.js')
+  const scan = await post('/api/secrets/scan', {
+    text: 'EGO_API_KEY=ck_test_value_1234567890 and glpat-ABCDEFGHIJKLMNOPQRST',
+  })
+  assert.deepEqual(scan.found.map((f) => f.name), ['EGO_API_KEY', 'SECRET_1'])
+  assert.ok(!JSON.stringify(scan).includes('ck_test_value'), 'scan names what it found, never the value')
+
+  const envNote = await (
+    await fetch(`${base}/api/uploads`, {
+      method: 'POST',
+      headers: { 'X-Filename': 'notes.txt' },
+      body: Buffer.from('EGO_API_KEY=ck_test_value_1234567890\n'),
+    })
+  ).json()
+  const hush = await post('/api/tasks', {
+    title: 'hush',
+    repos: ['api'],
+    run: 'ask',
+    prompt: 'set EGO_API_KEY={{secret:EGO_API_KEY}} in .env.dev',
+    attachments: [envNote.path],
+    secrets: [{ name: 'EGO_API_KEY', value: 'ck_test_value_1234567890' }],
+  })
+  assert.deepEqual(hush.secrets, ['EGO_API_KEY'], 'the task carries names only')
+  await waitFor(hush.id, (t) => t.status === 'done', 'the secret task')
+  await sleep(300) // the store's save is debounced
+  const hushArt = path.join(root, 'data', 'tasks', hush.id)
+  assert.equal(fs.readFileSync(path.join(hushArt, 'seen-env.txt'), 'utf8'), 'ck_test_value_1234567890', 'the value reaches the shell')
+  assert.match(fs.readFileSync(path.join(hushArt, 'prompt.txt'), 'utf8'), /\$FLOW_SECRET_EGO_API_KEY/, 'and the prompt says where')
+  assert.ok(!fs.readFileSync(path.join(root, 'data', 'tasks.json'), 'utf8').includes('ck_test_value'), 'never in tasks.json')
+  assert.ok(!fs.readFileSync(path.join(root, 'data', 'logs', `${hush.id}.jsonl`), 'utf8').includes('ck_test_value'), 'never in the log')
+  assert.equal(fs.readFileSync(envNote.path, 'utf8'), 'EGO_API_KEY={{secret:EGO_API_KEY}}\n', 'a text attachment is rewritten too')
+  assert.equal(secrets.read(hush.id, 'EGO_API_KEY'), 'ck_test_value_1234567890')
+
+  await post(`/api/tasks/${hush.id}/follow-up`, {
+    request: 'and OTHER_TOKEN={{secret:OTHER_TOKEN}}',
+    secrets: [{ name: 'OTHER_TOKEN', value: 'tok-abcdefgh12345' }],
+  })
+  const hushMore = await waitFor(hush.id, (t) => t.status === 'done' && t.phase === null, 'the secret follow-up')
+  assert.deepEqual(hushMore.secrets, ['EGO_API_KEY', 'OTHER_TOKEN'], 'a follow-up adds to the names')
+
+  // Edits only has no shell, so the prompt says the values cannot be used.
+  const noShell = await post('/api/tasks', {
+    title: 'noshell', repos: ['api'], run: 'ask', permissionMode: 'acceptEdits',
+    prompt: 'set {{secret:EGO_API_KEY}}',
+    secrets: [{ name: 'EGO_API_KEY', value: 'ck_test_value_1234567890' }],
+  })
+  await waitFor(noShell.id, (t) => t.status === 'done', 'the no-shell task')
+  assert.match(fs.readFileSync(path.join(root, 'data', 'tasks', noShell.id, 'prompt.txt'), 'utf8'), /no shell/i)
+
+  await fetch(`${base}/api/tasks/${hush.id}`, { method: 'DELETE' })
+  await fetch(`${base}/api/tasks/${noShell.id}`, { method: 'DELETE' })
+  assert.equal(secrets.read(hush.id, 'EGO_API_KEY'), null, 'deleting the task forgets its secrets')
+  assert.equal(secrets.read(hush.id, 'OTHER_TOKEN'), null)
+  console.log('ok: secrets are named on the task, valued only in the shell, and forgotten with it')
 
   // ---- From here on the server is restarted; nothing above may follow. ----
 

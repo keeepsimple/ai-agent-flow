@@ -15,6 +15,7 @@ import { listRepos, resolveRepo } from './roots.js'
 import * as devServer from './preview.js'
 import { invalidate as forgetDiskSize } from './disk.js'
 import * as browser from './browser.js'
+import * as secrets from './secrets.js'
 
 export const PORT = Number(process.env.FLOW_PORT || 7777)
 export { listRepos, roots, addRoot, removeRoot, browse, DEFAULT_ROOT } from './roots.js'
@@ -143,9 +144,32 @@ function renameBranches(task) {
   }
 }
 
+/**
+ * Keep the values the human chose to keep out of the transcript, and rewrite
+ * any text attachment that still carries one. Returns the names.
+ */
+function keepSecrets(id, given, attached) {
+  const kept = []
+  for (const { name, value } of given || []) {
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name || '')) throw new Error(`bad secret name: ${name}`)
+    if (!value) throw new Error(`secret ${name} has no value`)
+    secrets.keep(id, name, value)
+    kept.push(name)
+  }
+  if (!kept.length) return kept
+  for (const file of attached) {
+    if (!/\.(txt|md|env|json|csv|log|diff|patch)$/i.test(file)) continue
+    const text = fs.readFileSync(file, 'utf8')
+    let out = text
+    for (const { name, value } of given) out = out.split(value).join(`{{secret:${name}}}`)
+    if (out !== text) fs.writeFileSync(file, out)
+  }
+  return kept
+}
+
 export function createTask({
   title, prompt, repos, attachments = [], images = [], autoApprove = false, run, model, effort,
-  permissionMode, shopify,
+  permissionMode, shopify, secrets: given = [],
 }) {
   if (!prompt?.trim()) throw new Error('prompt is required')
   // Repos can live under more than one folder now, so what the human picked is
@@ -157,6 +181,7 @@ export function createTask({
   const attached = [...attachments, ...images].map(verifyUpload)
 
   const id = randomUUID().slice(0, 8)
+  const kept = keepSecrets(id, given, attached)
   // A title is optional: with none, the first line of the prompt stands in
   // until the spec phase has read the code and can name the work properly.
   const named = Boolean(title?.trim())
@@ -168,6 +193,7 @@ export function createTask({
     repos: picked.map((r) => r.name),
     repoPaths: picked.map((r) => r.path),
     attachments: attached,
+    secrets: kept,
     // Which app config and store `shopify app dev` may use for this task.
     shopify: shopify?.config ? { config: shopify.config, store: shopify.store || '' } : null,
     model: pick(model, MODELS, DEFAULTS.model, 'model'),
@@ -543,13 +569,17 @@ function drain(id) {
  * one more thing. Same worktrees, same branches, no new task to lose the
  * context of what this already is.
  */
-export function followUp(id, request) {
+export function followUp(id, request, { secrets: given = [] } = {}) {
   if (!request?.trim()) throw new Error('say what you want changed')
 
   // Busy is not a reason to lose what someone just typed. It waits in line
   // and goes as soon as the run in front of it is done.
   const busy = tasks[id]
   if (!busy) throw new Error('unknown task')
+  if (given?.length) {
+    const kept = keepSecrets(id, given, [])
+    update(id, { secrets: [...new Set([...(busy.secrets || []), ...kept])] })
+  }
   if (busy.status === 'running' || busy.status === 'queued') {
     update(id, { queued: [...(busy.queued || []), request.trim()] })
     log(id, { kind: 'decision', text: `Queued: ${request.trim()}` })
@@ -650,6 +680,7 @@ export function remove(id) {
 
   fs.rmSync(artifactDir(id), { recursive: true, force: true })
   fs.rmSync(path.join(DATA, 'logs', `${id}.jsonl`), { force: true })
+  secrets.forget(id, task.secrets || [])
 
   // The pictures that were sent with it belong to the conversation, so they
   // go with it. Dropping a worktree leaves them alone: the conversation is
@@ -820,6 +851,7 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {} } =
       shell: WIN,
       env: {
         ...process.env,
+        ...secrets.env(task),
         FLOW_URL: `http://127.0.0.1:${PORT}`,
         FLOW_TASK_ID: task.id,
         FLOW_ARTIFACTS: task.artifactDir,
