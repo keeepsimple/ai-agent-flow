@@ -435,10 +435,72 @@ void main() {
           onPushBase: () {},
           onMerge: () {},
           onCatchUp: () {},
+          onShip: () {},
+          onConfigureProd: () {},
         ),
       ),
       const Size(430, 230),
     );
+  });
+
+  testWidgets('a landed repo row, with a prod to ship to', (tester) async {
+    await _shoot(
+      tester,
+      'repo-card-prod',
+      Padding(
+        padding: const EdgeInsets.all(16),
+        child: RepoCard(
+          repo: const {
+            'repo': 'mobile-admin-shopify',
+            'branch': 'flow/discount-names-a1b2c3d4',
+            'base': 'main',
+            'ahead': 0,
+            'behind': 0,
+            'unpushed': 0,
+            'baseUnpushed': 0,
+            'remote': 'origin',
+            'reviewUrl': 'https://gitlab.example.com/x/-/merge_requests/12',
+            'pipeline': {'status': 'success', 'url': 'https://gitlab.example.com/p/1'},
+            'mergeBlockedBy': null,
+            'prod': {
+              'branch': 'prod',
+              'exists': true,
+              'toPick': 2,
+              'picked': 0,
+              'jenkins': {'url': 'https://jenkins.example.com', 'job': 'admin-prod', 'user': 'ci'},
+            },
+          },
+          busy: '',
+          onPush: () {},
+          onPushBase: () {},
+          onMerge: () {},
+          onCatchUp: () {},
+          onShip: () {},
+          onConfigureProd: () {},
+        ),
+      ),
+      const Size(430, 250),
+    );
+    expect(find.text('Ship to prod (2)'), findsOneWidget);
+    expect(find.text('Jenkins admin-prod'), findsOneWidget);
+    expect(find.text('Land on main'), findsOneWidget);
+  });
+
+  testWidgets('prod can be configured per repo', (tester) async {
+    await _shoot(
+      tester,
+      'prod-config-dialog',
+      const Center(
+        child: ProdConfigDialog(
+          repo: 'mobile-admin-shopify',
+          config: {'prodBranch': 'prod', 'jenkins': {'url': 'https://jenkins.example.com', 'job': 'admin-prod', 'user': 'ci'}, 'hasJenkinsToken': true},
+        ),
+      ),
+      const Size(640, 480),
+    );
+    expect(find.text('Prod branch'), findsOneWidget);
+    expect(find.text('Jenkins job'), findsOneWidget);
+    expect(find.textContaining('token is set'), findsOneWidget);
   });
 
   testWidgets('the header with nothing open', (tester) async {

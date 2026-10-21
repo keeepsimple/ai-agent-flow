@@ -533,14 +533,14 @@ try {
 
   // What prod is still missing, counted by patch so a hand cherry-pick counts.
   const webRow = gitState.find((r) => r.repo === 'web')
-  assert.deepEqual(webRow.prod, { branch: 'prod', exists: true, toPick: 1, picked: 0 })
-  assert.deepEqual(gitState.find((r) => r.repo === 'api').prod, { branch: 'prod', exists: false, toPick: 0, picked: 0 })
+  assert.deepEqual(webRow.prod, { branch: 'prod', exists: true, toPick: 1, picked: 0, jenkins: null })
+  assert.deepEqual(gitState.find((r) => r.repo === 'api').prod, { branch: 'prod', exists: false, toPick: 0, picked: 0, jenkins: null })
   const prodTmp = path.join(root, 'prod-tmp')
   git('web', 'worktree', 'add', '-q', prodTmp, 'prod')
   execFileSync('git', ['-C', prodTmp, 'cherry-pick', webRow.branch], { stdio: 'ignore' })
   git('web', 'worktree', 'remove', '--force', prodTmp)
   const picked = (await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()).find((r) => r.repo === 'web')
-  assert.deepEqual(picked.prod, { branch: 'prod', exists: true, toPick: 0, picked: 1 })
+  assert.deepEqual(picked.prod, { branch: 'prod', exists: true, toPick: 0, picked: 1, jenkins: null })
 
   // The diff is the thing you are being asked to approve, so it has to be
   // readable from here rather than from a terminal.
@@ -909,7 +909,7 @@ try {
   assert.ok(fs.existsSync(path.join(root, 'data', 'worktrees', shipping.id, 'web-prod')), 'in a worktree on prod')
   assert.equal(git('web', 'symbolic-ref', '--short', 'HEAD').trim(), 'main', 'the checkout was left alone')
   const shippedRow = (await (await fetch(`${base}/api/tasks/${shipping.id}/git`)).json()).find((r) => r.repo === 'web')
-  assert.deepEqual(shippedRow.prod, { branch: 'prod', exists: true, toPick: 0, picked: 1 })
+  assert.deepEqual(shippedRow.prod, { branch: 'prod', exists: true, toPick: 0, picked: 1, jenkins: null })
   const again = await fetch(`${base}/api/tasks/${shipping.id}/ship`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'web' }),
   })

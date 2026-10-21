@@ -161,6 +161,12 @@ class Api {
       _send('POST', '/api/tasks/$id/push', {'repo': repo, 'base': base});
   Future<dynamic> merge(String id, String repo) =>
       _send('POST', '/api/tasks/$id/merge', {'repo': repo});
+  Future<dynamic> ship(String id, String repo) =>
+      _send('POST', '/api/tasks/$id/ship', {'repo': repo});
+  Future<Map<String, dynamic>> repoConfig(String repo) async =>
+      (await _send('GET', '/api/repos/config?repo=${Uri.encodeQueryComponent(repo)}')) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> saveRepoConfig(String repo, Map<String, dynamic> patch) async =>
+      (await _send('PUT', '/api/repos/config?repo=${Uri.encodeQueryComponent(repo)}', patch)) as Map<String, dynamic>;
   Future<dynamic> preview(String id, String path) =>
       _send('POST', '/api/tasks/$id/preview', {'path': path});
   Future<dynamic> dropWorktree(String id) =>

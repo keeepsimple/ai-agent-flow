@@ -51,6 +51,25 @@ class _ReviewScreenState extends State<ReviewScreen> {
             {...(file as Map).cast<String, dynamic>(), 'repo': repo['repo']},
       ];
 
+  Future<void> _configureProd(String repo) async {
+    Map<String, dynamic> config;
+    try {
+      config = await widget.flow.api.repoConfig(repo);
+    } catch (err) {
+      widget.flow.fail(err);
+      return;
+    }
+    if (!mounted) return;
+    final patch = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => ProdConfigDialog(repo: repo, config: config),
+    );
+    if (patch == null) return;
+    if (await widget.flow.run(() => widget.flow.api.saveRepoConfig(repo, patch), refresh: false)) {
+      await _load();
+    }
+  }
+
   Future<void> _act(String key, Future<dynamic> Function() action) async {
     setState(() => _busy = key);
     await widget.flow.run(action);
@@ -162,6 +181,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
                       () => widget.flow.api.merge(widget.task.id, repo['repo'] as String)),
                   onCatchUp: () => _act('catch:${repo['repo']}',
                       () => widget.flow.api.catchUp(widget.task.id, repo['repo'] as String)),
+                  onShip: () => _act('ship:${repo['repo']}',
+                      () => widget.flow.api.ship(widget.task.id, repo['repo'] as String)),
+                  onConfigureProd: () => _configureProd(repo['repo'] as String),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -187,6 +209,8 @@ class RepoCard extends StatelessWidget {
     required this.onPushBase,
     required this.onMerge,
     required this.onCatchUp,
+    required this.onShip,
+    required this.onConfigureProd,
   });
 
   final Map<String, dynamic> repo;
@@ -195,6 +219,8 @@ class RepoCard extends StatelessWidget {
   final VoidCallback onPushBase;
   final VoidCallback onMerge;
   final VoidCallback onCatchUp;
+  final VoidCallback onShip;
+  final VoidCallback onConfigureProd;
 
   @override
   Widget build(BuildContext context) {
@@ -207,6 +233,10 @@ class RepoCard extends StatelessWidget {
     final blocked = repo['mergeBlockedBy'] as String?;
     final pipeline = repo['pipeline'] as Map?;
     final reviewUrl = repo['reviewUrl'] as String?;
+    final prod = repo['prod'] as Map?;
+    final prodBranch = (prod?['branch'] ?? 'prod') as String;
+    final toPick = (prod?['toPick'] ?? 0) as int;
+    final jenkins = prod?['jenkins'] as Map?;
 
     return Panel(
       child: Column(
@@ -231,6 +261,7 @@ class RepoCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis, style: t(11, color: Tern.muted, code: true)),
           const SizedBox(height: 10),
           if (pipeline != null) _pipeline(pipeline),
+          if (jenkins != null) _jenkins(jenkins, prodBranch),
           Wrap(spacing: 7, runSpacing: 7, children: [
             FlowButton(
               label: unpushed == null
@@ -274,12 +305,62 @@ class RepoCard extends StatelessWidget {
                 icon: Icons.open_in_new,
                 onPressed: () => openExternal(reviewUrl),
               ),
+            // Ship only once the branch is on the base, and only while prod is
+            // still missing something: cherry-picks, never a merge.
+            if (prod?['exists'] == true && toPick > 0 && ahead == 0)
+              FlowButton(
+                label: 'Ship to $prodBranch ($toPick)',
+                tone: Tone.primary,
+                icon: Icons.rocket_launch_outlined,
+                busy: busy == 'ship:$name',
+                onPressed: onShip,
+                tooltip: 'Cherry-pick the $toPick landed commit${toPick == 1 ? '' : 's'} onto '
+                    '$prodBranch in a worktree, run the checks, push'
+                    '${jenkins != null ? ', then watch ${jenkins['job']}' : ''}',
+              ),
+            if (prod?['exists'] == true && toPick == 0 && (prod?['picked'] ?? 0) > 0)
+              Tooltip(
+                message: 'Every commit of this task is on $prodBranch',
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                  child: Text('On $prodBranch', style: t(11, color: Tern.ok)),
+                ),
+              ),
+            FlowButton(
+              label: 'Prod…',
+              icon: Icons.tune,
+              onPressed: onConfigureProd,
+              tooltip: 'Which branch is prod for this repo, and which Jenkins job deploys it',
+            ),
           ]),
           if (blocked != null) ...[
             const SizedBox(height: 8),
             Text(blocked, style: t(11, color: Tern.warn)),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _jenkins(Map jenkins, String prodBranch) {
+    final url = '${jenkins['url']}/job/${Uri.encodeComponent(jenkins['job'] as String)}';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => openExternal(url),
+          child: Row(children: [
+            const Icon(Icons.rocket_launch_outlined, size: 11, color: Tern.muted),
+            const SizedBox(width: 7),
+            Text('Jenkins ${jenkins['job']}', style: t(11, color: Tern.muted)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('deploys $prodBranch',
+                  overflow: TextOverflow.ellipsis, style: t(10.5, color: Tern.faint, code: true)),
+            ),
+          ]),
+        ),
       ),
     );
   }
@@ -319,4 +400,96 @@ class RepoCard extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Where prod is for this repo, and what deploys it. Returns the patch to
+/// save, or null. The Jenkins token is write-only: it goes to the keychain.
+class ProdConfigDialog extends StatefulWidget {
+  const ProdConfigDialog({super.key, required this.repo, required this.config});
+  final String repo;
+  final Map<String, dynamic> config;
+
+  @override
+  State<ProdConfigDialog> createState() => _ProdConfigDialogState();
+}
+
+class _ProdConfigDialogState extends State<ProdConfigDialog> {
+  late final _branch = TextEditingController(text: (widget.config['prodBranch'] ?? 'prod') as String);
+  late final _url = TextEditingController(text: (_jenkins?['url'] ?? '') as String);
+  late final _job = TextEditingController(text: (_jenkins?['job'] ?? '') as String);
+  late final _user = TextEditingController(text: (_jenkins?['user'] ?? '') as String);
+  final _token = TextEditingController();
+
+  Map? get _jenkins => widget.config['jenkins'] as Map?;
+  bool get _hasToken => widget.config['hasJenkinsToken'] == true;
+
+  @override
+  void dispose() {
+    for (final c in [_branch, _url, _job, _user, _token]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Widget _field(String label, TextEditingController controller, {String? hint, bool secret = false}) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: t(11, color: Tern.muted)),
+          const SizedBox(height: 4),
+          TextField(
+            controller: controller,
+            obscureText: secret,
+            style: t(12.5, color: Tern.ink, code: true),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: hint,
+              hintStyle: t(12, color: Tern.faint),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Tern.line)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Tern.line)),
+            ),
+          ),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        backgroundColor: Tern.raised,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('Prod for ${widget.repo}', style: t(14, color: Tern.ink)),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _field('Prod branch', _branch, hint: 'prod'),
+            const SizedBox(height: 4),
+            Text('Jenkins, to watch the deploy after the push (optional)', style: t(11.5, color: Tern.muted)),
+            const SizedBox(height: 8),
+            _field('Jenkins URL', _url, hint: 'https://jenkins.example.com'),
+            _field('Jenkins job', _job, hint: 'admin-prod'),
+            _field('User', _user, hint: 'ci'),
+            _field(
+              _hasToken ? 'API token (a token is set; leave blank to keep it)' : 'API token',
+              _token,
+              secret: true,
+            ),
+          ]),
+          ),
+        ),
+        actions: [
+          FlowButton(label: 'Cancel', onPressed: () => Navigator.pop(context, null)),
+          FlowButton(
+            label: 'Save',
+            tone: Tone.primary,
+            onPressed: () => Navigator.pop(context, <String, dynamic>{
+              'prodBranch': _branch.text.trim().isEmpty ? 'prod' : _branch.text.trim(),
+              'jenkins': _url.text.trim().isEmpty
+                  ? null
+                  : {'url': _url.text.trim(), 'job': _job.text.trim(), 'user': _user.text.trim()},
+              if (_token.text.isNotEmpty) 'jenkinsToken': _token.text,
+            }),
+          ),
+        ],
+      );
 }

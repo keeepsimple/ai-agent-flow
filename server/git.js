@@ -108,9 +108,9 @@ function statusOf(tree) {
 }
 
 function prodOf(tree) {
-  const branch = repoConfig.get(tree.repoPath).prodBranch
+  const { prodBranch: branch, jenkins } = repoConfig.get(tree.repoPath)
   const { exists, shas, picked } = toPick(tree, branch)
-  return { branch, exists, toPick: shas.length, picked }
+  return { branch, exists, toPick: shas.length, picked, jenkins }
 }
 
 export function status(id) {
