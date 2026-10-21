@@ -124,6 +124,7 @@ if (prompt.includes('SLEEPY')) {
 console.log(JSON.stringify({
   type: 'result', subtype: 'success', is_error: false,
   result: 'ok', total_cost_usd: 0.01, num_turns: 2,
+  session_id: 'stub-' + process.pid,
 }))
 `)
 
@@ -422,6 +423,12 @@ try {
     assert.equal(tree.baseBranch, 'main')
   }
   assert.notEqual(task.trees[0].worktree, task.trees[1].worktree, 'the repos must not share a checkout')
+  // Every run reports its session; the task remembers the latest so an
+  // interrupted run can be picked up where it stopped.
+  assert.equal(task.lastSession?.kind, 'phase', 'the spec run should leave its session behind')
+  assert.equal(task.lastSession.phase, 'spec')
+  assert.match(task.lastSession.id, /^stub-\d+$/)
+  assert.equal(task.lastSession.cwd, task.root)
 
   const argv = JSON.parse(fs.readFileSync(path.join(root, 'data', 'tasks', created.id, 'argv.json'), 'utf8'))
   const flag = (name) => argv[argv.indexOf(name) + 1]

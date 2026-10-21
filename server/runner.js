@@ -279,7 +279,7 @@ async function runTask(task) {
 
     let result
     try {
-      result = await runClaude(task, prompt)
+      result = await runClaude(task, prompt, task.root, { meta: { kind: 'phase', phase } })
     } catch (err) {
       task.phases[phase] = { ...task.phases[phase], status: 'failed', endedAt: Date.now() }
       return fail(task, err.message)
@@ -423,7 +423,7 @@ function sideRun(task, label, prompt, cwd, finished) {
   const previous = task.status
   update(task.id, { status: 'running', phase: label, error: null })
 
-  runClaude(task, prompt, cwd)
+  runClaude(task, prompt, cwd, { meta: { kind: 'side', label } })
     .then(() => {
       if (tasks[task.id].status === 'cancelled') return
       update(task.id, { status: previous, phase: null })
@@ -694,7 +694,12 @@ function describeTool(name, input = {}) {
   return text.length > 280 ? text.slice(0, 280) + '…' : text
 }
 
-function runClaude(task, prompt, cwd = task.root) {
+/**
+ * `meta` says which run this is (phase or side run) so the session the CLI
+ * reports can be remembered against it; `resume` continues that session
+ * instead of starting a new one.
+ */
+function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {} } = {}) {
   const args = [
     '-p',
     '--output-format', 'stream-json',
@@ -703,6 +708,7 @@ function runClaude(task, prompt, cwd = task.root) {
     '--add-dir', task.artifactDir,
     '--add-dir', UPLOADS,
   ]
+  if (resume) args.push('--resume', resume)
   if (task.model) args.push('--model', task.model)
   if (task.effort) args.push('--effort', task.effort)
   // Nobody is at a keyboard to answer a permission prompt. Without this, a mode
@@ -746,6 +752,9 @@ function runClaude(task, prompt, cwd = task.root) {
         if (!line.trim()) continue
         let msg
         try { msg = JSON.parse(line) } catch { log(task.id, { kind: 'text', text: line }); continue }
+        if (msg.session_id && tasks[task.id]?.lastSession?.id !== msg.session_id) {
+          update(task.id, { lastSession: { id: msg.session_id, ...meta, cwd, at: Date.now() } })
+        }
         const entry = toLogEntry(task, msg, seen)
         if (entry) log(task.id, entry)
         if (msg.type === 'result') {
