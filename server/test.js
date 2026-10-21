@@ -63,6 +63,7 @@ for await (const chunk of process.stdin) prompt += chunk
 
 const session = 'stub-' + process.pid
 fs.writeFileSync(path.join(art, 'prompt.txt'), prompt)
+fs.writeFileSync(path.join(art, 'argv.json'), JSON.stringify(args))
 if (process.env.FLOW_SECRET_EGO_API_KEY) {
   fs.writeFileSync(path.join(art, 'seen-env.txt'), process.env.FLOW_SECRET_EGO_API_KEY)
 }
@@ -89,7 +90,6 @@ if (args.includes('--resume') && process.env.STUB_REFUSE_RESUME) {
   await new Promise((r) => setTimeout(r, 120000))
 } else if (prompt.includes('Phase: write the spec')) {
   say('spec phase')
-  fs.writeFileSync(path.join(art, 'argv.json'), JSON.stringify(args))
   fs.writeFileSync(path.join(art, 'prompt.txt'), prompt)
   if (prompt.includes('title.txt')) fs.writeFileSync(path.join(art, 'title.txt'), 'Named by the agent')
   fs.writeFileSync(path.join(art, 'spec.md'), '# spec')
@@ -129,6 +129,11 @@ if (args.includes('--resume') && process.env.STUB_REFUSE_RESUME) {
   // Catch-up run: do the merge for real, in the worktree we were started in.
   execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'merge', 'main'])
   say('merged main in')
+} else if (prompt.includes('## Phase: write the document')) {
+  // The document route: no worktree, so the output goes where it was told.
+  fs.writeFileSync('estimate.md', '# Estimate' + String.fromCharCode(10) + 'three days')
+  fs.writeFileSync('seen-cwd.txt', process.cwd())
+  say('wrote the estimate')
 } else if (prompt.includes('## What the human asked')) {
   if (prompt.includes('title.txt')) fs.writeFileSync(path.join(art, 'title.txt'), 'Named on the plain route')
   say('read the code, here is the answer')
@@ -1133,7 +1138,7 @@ try {
   // Prompts: every one the agents are told is listed, editable, and reset-able.
   // An override that names a placeholder the prompt is not given is refused.
   const promptList = await (await fetch(`${base}/api/prompts`)).json()
-  assert.equal(promptList.length, 13)
+  assert.equal(promptList.length, 14)
   const answerEntry = promptList.find((p) => p.name === 'answer')
   assert.ok(answerEntry.default.includes('What the human asked'))
   assert.equal(answerEntry.custom, null)
@@ -1160,6 +1165,29 @@ try {
   assert.doesNotMatch(fs.readFileSync(path.join(root, 'data', 'tasks', told2.id, 'prompt.txt'), 'utf8'), /OVERRIDE/)
   assert.equal((await fetch(`${base}/api/prompts/nothing`)).status, 404)
   console.log('ok: prompts are listed, overridden with a check, kept three deep, and reset')
+
+  // The document route: no worktree, the repos there to read, the output in
+  // a folder of its own under the task.
+  const docRun = (await (await fetch(`${base}/api/state`)).json()).options.runs.find((r) => r.value === 'doc')
+  assert.ok(docRun, 'the route is offered')
+  assert.equal(docRun.label, 'Document')
+  const doc = await post('/api/tasks', { title: 'estimate', repos: ['api'], run: 'doc', prompt: 'estimate the migration' })
+  const written = await waitFor(doc.id, (t) => t.status === 'done' || t.status === 'failed', 'the document run')
+  assert.equal(written.status, 'done', `document run failed: ${written.error}`)
+  assert.deepEqual(written.trees, [], 'no branches')
+  assert.ok(!fs.existsSync(path.join(root, 'data', 'worktrees', doc.id)), 'no worktree')
+  assert.ok(written.root.endsWith(`${path.sep}work`), 'runs in the task folder')
+  const workDir = path.join(root, 'data', 'tasks', doc.id, 'work')
+  assert.equal(fs.readFileSync(path.join(workDir, 'seen-cwd.txt'), 'utf8'), fs.realpathSync(workDir))
+  assert.match(fs.readFileSync(path.join(workDir, 'estimate.md'), 'utf8'), /three days/)
+  const docPrompt = fs.readFileSync(path.join(root, 'data', 'tasks', doc.id, 'prompt.txt'), 'utf8')
+  assert.match(docPrompt, new RegExp(path.join(repos, 'api').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'the repo is named, to read')
+  assert.match(docPrompt, /do not modify\s+anything under/i)
+  const docArgv = JSON.parse(fs.readFileSync(path.join(root, 'data', 'tasks', doc.id, 'argv.json'), 'utf8'))
+  assert.ok(docArgv.includes(path.join(repos, 'api')), 'and reachable: --add-dir for each repo')
+  assert.equal((await fetch(`${base}/api/tasks/${doc.id}/git`)).status, 200)
+  assert.deepEqual(await (await fetch(`${base}/api/tasks/${doc.id}/git`)).json(), [], 'nothing to land')
+  console.log('ok: the document route writes a file, checks nothing out, and can read the repos')
 
   // ---- From here on the server is restarted; nothing above may follow. ----
 

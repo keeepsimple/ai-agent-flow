@@ -254,6 +254,16 @@ export function createTask({
     turns: 0,
     createdAt: Date.now(),
   }
+  // The document route checks nothing out: it works in a folder under the
+  // task, with the repos reachable to read.
+  if (task.run === 'doc') {
+    const work = path.join(artifactDir(id), 'work')
+    fs.mkdirSync(work, { recursive: true })
+    task.root = work
+    task.artifactDir = artifactDir(id)
+    task.trees = []
+    task.readPaths = task.repoPaths
+  }
   tasks[id] = task
   emit(task)
   queue.push(id)
@@ -323,7 +333,8 @@ function setupWorktrees(task) {
 
 async function runTask(task) {
   try {
-    if (!task.root) setupWorktrees(task)
+    if (task.run === 'doc') fs.mkdirSync(task.root, { recursive: true })
+    else if (!task.root) setupWorktrees(task)
   } catch (err) {
     log(task.id, { kind: 'error', text: `worktree setup failed: ${err.message}` })
     return fail(task, err.message)
@@ -875,6 +886,7 @@ setInterval(() => {
 
 export function removeWorktrees(id) {
   const task = tasks[id]
+  if (task?.run === 'doc') throw new Error('a document task has no worktree; delete the task to remove its files')
   if (!task?.root) throw new Error('nothing to remove')
   // Status alone is not enough: cancelling does not instantly stop the process,
   // and pulling the worktree out from under a live agent is how it goes strange.
@@ -923,6 +935,7 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {}, en
     '--add-dir', UPLOADS,
   ]
   if (resume) args.push('--resume', resume)
+  for (const dir of task.readPaths || []) args.push('--add-dir', dir)
   if (task.model) args.push('--model', task.model)
   if (task.effort) args.push('--effort', task.effort)
   // Nobody is at a keyboard to answer a permission prompt. Without this, a mode

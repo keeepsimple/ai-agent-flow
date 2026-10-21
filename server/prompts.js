@@ -27,12 +27,18 @@ export const RUNS = [
     hint: 'Straight to the work, then the same self review. No spec, no plan, no gates.',
     phases: ['implement', 'review'],
   },
+  {
+    value: 'doc',
+    label: 'Document',
+    hint: 'Writes a file, not code. No worktree; the repos are there to read.',
+    phases: ['write'],
+  },
 ]
 
 export const phasesFor = (run) => (RUNS.find((r) => r.value === run) || RUNS[0]).phases
 
 // Phases that stop for a human before the next one starts.
-export const GATES = { spec: true, plan: true, implement: false, review: false, answer: false }
+export const GATES = { spec: true, plan: true, implement: false, review: false, answer: false, write: false }
 
 export const PHASE_LABEL = {
   spec: 'Spec',
@@ -40,6 +46,7 @@ export const PHASE_LABEL = {
   implement: 'Implement',
   review: 'Self review',
   answer: 'Working',
+  write: 'Writing',
 }
 
 import { render, load } from './templates.js'
@@ -114,7 +121,25 @@ function phaseContext(ctx) {
   }
 }
 
+/** The document route has no worktree and no preamble: its own opening instead. */
+function writeContext(ctx) {
+  return {
+    workDir: ctx.root,
+    repoList: (ctx.repoPaths || []).map((p) => `    ${p}`).join('\n') || '    (none)',
+    artifactDir: ctx.artifactDir,
+    secretsNote: secretsNote(ctx),
+    hasAttachments: Boolean(ctx.attachments?.length),
+    attachmentList: (ctx.attachments || []).map((file) => `    ${file}`).join('\n'),
+    autoApprove: Boolean(ctx.autoApprove),
+    node: ctx.node,
+    askScript: ctx.askScript,
+    prompt: ctx.prompt,
+    titleAsk: titleAsk(ctx),
+  }
+}
+
 export function buildPrompt(phase, ctx) {
+  if (phase === 'write') return render(load('write'), writeContext(ctx))
   return render(load(phase), phaseContext(ctx))
 }
 

@@ -25,6 +25,7 @@ export const KNOWN = {
   land: ['worktree', 'branch', 'repo', 'repoPath', 'baseBranch', 'artifactDir', 'node', 'askScript', 'guardScript'],
   ship: ['prodWorktree', 'prodBranch', 'repo', 'repoPath', 'branch', 'baseBranch', 'shaList', 'artifactDir', 'node', 'askScript', 'guardScript', 'jenkinsScript', 'hasJenkins', 'jenkinsUrl', 'jenkinsJob'],
   resume: [],
+  write: ['workDir', 'repoList', 'artifactDir', 'secretsNote', 'hasAttachments', 'attachmentList', 'autoApprove', 'node', 'askScript', 'prompt', 'titleAsk'],
 }
 
 /** One line each, for the Prompts screen. */
@@ -42,6 +43,7 @@ export const ABOUT = {
   land: 'Land: catch up, checks, guard, push, merge request, fast-forward the base.',
   ship: 'Ship to prod: cherry-pick onto the prod branch, checks, guard, push, watch Jenkins.',
   resume: 'What a continued session is told after an interruption.',
+  write: 'The document route: a file, not code; no worktree; the repos there to read.',
 }
 
 const TOKEN = /\{\{(?:(#if)[ \t]+([A-Za-z_][A-Za-z0-9_]*)|(else)|(\/if)|([A-Za-z_][A-Za-z0-9_]*))\}\}/g
