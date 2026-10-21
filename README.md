@@ -271,10 +271,20 @@ commits the base branch is missing and offers two buttons:
 - **Push \<base\>** appears once a local merge has left the base branch ahead of
   its own remote, with the count beside it. Neither push ever forces: if the
   remote has moved, git says so and you get its words.
-- **Merge into \<base\>** merges the branch into the branch it forked from, in
-  your own checkout. It is refused, naming the files, when something uncommitted
-  there would be overwritten by the merge, and when the checkout is on some other
-  branch. Unrelated uncommitted work is not in the way.
+- **Merge into \<base\>** hands the whole landing to an agent, in this order:
+  bring the base in here and resolve what that turns up, run the repo's checks,
+  push the branch, open a merge request against the base, and only then merge
+  into the base in your own checkout and push it.
+
+  The merge request comes first on purpose: it is the record, so if it cannot
+  be opened — no `glab` or `gh`, or not signed in — the run stops there and
+  says so rather than landing anything.
+
+  The merge itself is `--ff-only`. After the catch-up it is a fast-forward, so
+  it cannot conflict and cannot write a merge commit into the base; if git
+  refuses, the base moved underneath and it starts again rather than forcing.
+  A checkout on another branch, or with uncommitted changes to files the merge
+  touches, stops it with those files named.
 - **Catch up with \<base\>** appears when the base has moved on. It runs an agent
   that merges the base *into the task's branch*, inside the worktree, resolving
   conflicts with the spec in hand and asking you when a conflict is a product

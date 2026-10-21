@@ -480,13 +480,16 @@ export function mergeViaAgent(id, repo) {
   const tree = task.trees?.find((t) => t.repo === repo)
   if (!tree) throw new Error(`unknown repo: ${repo}`)
 
-  log(id, { kind: 'decision', text: `Merge ${tree.branch} into ${tree.baseBranch}` })
+  log(id, {
+    kind: 'decision',
+    text: `Push ${tree.branch}, open a merge request, then merge into ${tree.baseBranch}`,
+  })
   return sideRun(
     task,
-    `merging into ${tree.baseBranch}`,
+    `landing on ${tree.baseBranch}`,
     buildMergePrompt(tree, { ...task, node: NODE_BIN, askScript: ASK_SCRIPT }),
     tree.worktree,
-    `Merged: ${task.title}`,
+    `Landed: ${task.title}`,
   )
 }
 

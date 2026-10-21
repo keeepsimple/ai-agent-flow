@@ -248,7 +248,7 @@ class RepoCard extends StatelessWidget {
                 onPressed: onPushBase,
               ),
             FlowButton(
-              label: 'Merge into $base',
+              label: 'Land on $base',
               tone: Tone.primary,
               busy: busy == 'merge:$name',
               // Being behind is no longer a reason to refuse: the agent brings
@@ -257,8 +257,9 @@ class RepoCard extends StatelessWidget {
               onPressed: ahead == 0 ? null : onMerge,
               tooltip: ahead == 0
                   ? 'Nothing on this branch that $base does not have'
-                  : 'The agent brings $base in, runs the checks, then fast-forwards'
-                      '${behind > 0 ? ' — $behind commits to catch up on first' : ''}',
+                  : 'Catch up, run the checks, push, open a merge request, '
+                      'then fast-forward $base'
+                      '${behind > 0 ? ' — $behind commits behind right now' : ''}',
             ),
             if (behind > 0)
               FlowButton(

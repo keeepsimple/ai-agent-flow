@@ -803,7 +803,7 @@ try {
   )
   assert.equal(landed.status, 'done', `merge run failed: ${landed.error}`)
   assert.ok(
-    landed.log.some((l) => l.kind === 'decision' && l.text.startsWith('Merge ')),
+    landed.log.some((l) => l.kind === 'decision' && l.text.includes('merge request')),
     'the conversation should say what was asked for',
   )
   assert.notEqual(git('api', 'rev-parse', 'main'), beforeMerge, 'and main should have moved')
