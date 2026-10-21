@@ -108,7 +108,19 @@ export const DEFAULTS = {
 function tell(task, title, body, urgent = false, { phone = true } = {}) {
   bus.emit('notify', { taskId: task.id, title, body, urgent })
   if (!sse.notifiers) notify(title, body, { urgent, url: `http://127.0.0.1:${PORT}/#${task.id}` })
-  if (phone) telegram.send(body ? `${title}\n${body}` : title)
+  // On the phone the notification carries what the agent said last, so it can
+  // be read there without opening the app.
+  if (phone) telegram.send(withLastSaid(task, body ? `${title}\n${body}` : title))
+}
+
+/** The agent's last message, in full, under the notification's own lines. */
+function lastSaid(task) {
+  const said = readLog(task.id, 200).findLast((e) => e.kind === 'text')
+  return String(said?.text || '').trim()
+}
+const withLastSaid = (task, head) => {
+  const said = lastSaid(task)
+  return said ? `${head}\n\n${said}` : head
 }
 
 // A reply on the phone answers the question it replies to.
@@ -624,7 +636,13 @@ export function askQuestion(id, text) {
   update(id, { status: 'awaiting_answer', openQuestionId: question.id })
   log(id, { kind: 'question', text })
   tell(task, `Question: ${task.title}`, text.slice(0, 180), true, { phone: false })
-  telegram.send(text, { taskId: id, questionId: question.id })
+  // What it said before asking goes first, as context; the question last, so
+  // it is the message at the bottom of the chat to reply to.
+  const before = lastSaid(task)
+  ;(async () => {
+    if (before && before !== text.trim()) await telegram.send(`${task.title} — before the question:\n\n${before}`)
+    await telegram.send(text, { taskId: id, questionId: question.id })
+  })()
   return new Promise((resolve) => questionWaiters.set(question.id, resolve))
 }
 

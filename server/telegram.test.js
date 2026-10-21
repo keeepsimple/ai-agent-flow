@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 process.env.FLOW_DATA = process.env.FLOW_DATA || '/tmp/agent-flow-telegram-test'
-const { handleUpdate } = await import('./telegram.js')
+const { handleUpdate, chunks } = await import('./telegram.js')
 
 const q = 'Q ab12cd34/9f8e7d6c: keep the old column?'
 const bot = { is_bot: true }
@@ -25,4 +25,21 @@ assert.deepEqual(cmd('/help'), { command: 'help', arg: '' })
 assert.deepEqual(cmd('/start'), { command: 'help', arg: '' }, 'the first /start gets the commands, not a scolding')
 assert.deepEqual(cmd('/nope'), { command: 'help', arg: '' }, 'an unknown command shows what there is')
 assert.equal(handleUpdate({ message: { chat: { id: 99 }, text: '/status' } }, '42'), null, 'another chat still gets nothing')
-console.log('ok: a phone reply answers the question it replies to, nothing else; commands are read')
+// Long text is split on paragraph, then line, then word boundaries; nothing is lost.
+const para = (i) => `Paragraph ${i} ` + 'word '.repeat(300).trim()
+const long = Array.from({ length: 12 }, (_, i) => para(i)).join('\n\n')
+const parts = chunks(long, 3800)
+assert.ok(parts.length > 1 && parts.every((p) => p.length <= 3800), 'every part fits')
+assert.equal(parts.join(' ').replace(/\s+/g, ' '), long.replace(/\s+/g, ' '), 'and together they are the whole text')
+assert.ok(parts.every((p) => !p.startsWith(' ') && !p.endsWith(' ')))
+assert.deepEqual(chunks('short'), ['short'])
+assert.deepEqual(chunks(''), [''])
+const oneWord = 'x'.repeat(9000)
+assert.ok(chunks(oneWord, 3800).every((p) => p.length <= 3800), 'even a text with no spaces is cut to size')
+
+// The Show more button: only from the configured chat.
+const tap = (chat, data) => handleUpdate({ callback_query: { id: 'cb1', data, message: { chat: { id: chat }, message_id: 77 } } }, '42')
+assert.deepEqual(tap(42, 'more:ab12cd34'), { more: 'ab12cd34', callbackId: 'cb1', messageId: 77 })
+assert.equal(tap(99, 'more:ab12cd34'), null, 'a tap from another chat is ignored')
+assert.equal(tap(42, 'something-else'), null)
+console.log('ok: a phone reply answers the question it replies to, nothing else; commands are read; long text splits, Show more is ours')

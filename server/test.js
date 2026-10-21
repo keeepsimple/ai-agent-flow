@@ -150,6 +150,12 @@ if (args.includes('--resume') && process.env.STUB_REFUSE_RESUME) {
   fs.writeFileSync('estimate.md', '# Estimate' + String.fromCharCode(10) + 'three days')
   fs.writeFileSync('seen-cwd.txt', process.cwd())
   say('wrote the estimate')
+} else if (prompt.includes('LONGFINAL')) {
+  // A final message far over Telegram's limit, in paragraphs.
+  const NL = String.fromCharCode(10)
+  const paras = []
+  for (let i = 0; i < 12; i++) paras.push('Paragraph ' + i + ' ' + 'word '.repeat(300).trim())
+  say('Here is what I found.' + NL + NL + paras.join(NL + NL))
 } else if (prompt.includes('## What the human asked')) {
   if (prompt.includes('title.txt')) fs.writeFileSync(path.join(art, 'title.txt'), 'Named on the plain route')
   say('read the code, here is the answer')
@@ -1672,6 +1678,7 @@ try {
   // Questions on the phone: a fake Telegram records what the server sends and
   // hands back a reply when the test queues one.
   const sentToPhone = []
+  const phoneCalls = []
   const phoneQueue = []
   const phone = http.createServer(async (req, res) => {
     let raw = ''
@@ -1679,6 +1686,11 @@ try {
     if (/\/bottok\/sendMessage$/.test(req.url)) {
       sentToPhone.push(JSON.parse(raw))
       return res.end(JSON.stringify({ ok: true, result: { message_id: sentToPhone.length } }))
+    }
+    const other = /\/bottok\/(answerCallbackQuery|editMessageReplyMarkup|setMyCommands)$/.exec(req.url)
+    if (other) {
+      phoneCalls.push({ method: other[1], body: JSON.parse(raw || '{}') })
+      return res.end(JSON.stringify({ ok: true, result: true }))
     }
     if (/\/bottok\/getUpdates/.test(req.url)) {
       for (let i = 0; i < 10 && !phoneQueue.length; i++) await sleep(100)
@@ -1728,6 +1740,35 @@ try {
   assert.equal(answeredOnPhone.questions[0].answer, 'B', 'the reply answered the question')
   assert.ok(sentToPhone.some((m) => /Reply to a question message/.test(m.text)), 'the stray message got the hint')
   assert.ok(sentToPhone.some((m) => /^Done: /.test(m.text)), 'and the finish went to the phone too')
+  // A finish carries what the agent said last, so it can be read on the phone.
+  // Too long for one message: split; too many: the first three, then a button.
+  const longOne = await post('/api/tasks', { repos: ['api'], prompt: 'LONGFINAL', run: 'ask' })
+  await waitFor(longOne.id, (t) => t.status === 'done', 'the long-final task')
+  const longParts = () => sentToPhone.filter((m) => /Paragraph \d+/.test(m.text))
+  for (let i = 0; i < 50 && longParts().length < 3; i++) await sleep(100)
+  const firstBatch = longParts()
+  assert.equal(firstBatch.length, 3, 'three messages first')
+  assert.match(firstBatch[0].text, /^Done: /, 'the first is the notification itself')
+  assert.match(firstBatch[0].text, /Here is what I found\./, 'carrying the agent\'s last message')
+  assert.ok(sentToPhone.every((m) => m.text.length <= 4096), 'nothing over Telegram\'s limit')
+  const total = Number((/— 1\/(\d+)$/.exec(firstBatch[0].text) || [])[1])
+  assert.ok(total > 3, `labelled 1/N with N > 3, got ${firstBatch[0].text.slice(-12)}`)
+  const button = firstBatch[2].reply_markup?.inline_keyboard?.[0]?.[0]
+  assert.ok(button && /^Show more \(\d+ more\)$/.test(button.text), 'the third carries Show more')
+  assert.ok(!firstBatch[0].reply_markup && !firstBatch[1].reply_markup, 'only the last of the batch')
+  phoneQueue.push({ update_id: 30, callback_query: { id: 'cb-more', data: button.callback_data, message: { chat: { id: 42 }, message_id: 3 } } })
+  for (let i = 0; i < 50 && longParts().length < total; i++) await sleep(100)
+  const all = longParts()
+  assert.equal(all.length, total, 'a tap sends the rest')
+  assert.match(all.at(-1).text, /Paragraph 11/, 'down to the last paragraph')
+  assert.match(all.at(-1).text, new RegExp(`— ${total}/${total}$`))
+  assert.ok(phoneCalls.some((c) => c.method === 'answerCallbackQuery' && c.body.callback_query_id === 'cb-more'), 'the tap is acknowledged')
+  assert.ok(phoneCalls.some((c) => c.method === 'editMessageReplyMarkup' && c.body.message_id === 3), 'and the spent button is removed')
+  phoneQueue.push({ update_id: 31, callback_query: { id: 'cb-again', data: button.callback_data, message: { chat: { id: 42 }, message_id: 3 } } })
+  let spent
+  for (let i = 0; i < 40 && !spent; i++) { spent = sentToPhone.find((m) => /no longer kept/.test(m.text)); if (!spent) await sleep(100) }
+  assert.ok(spent, 'a second tap on the same button says it is spent')
+
   // A token the API rejects must not become a request storm.
   let badPolls = 0
   phone.on('request', (req) => { if (/\/botbad\/getUpdates/.test(req.url)) badPolls++ })
