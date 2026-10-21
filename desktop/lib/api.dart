@@ -23,6 +23,9 @@ class Task {
   /// File reads the agent did through the shell instead of the Read tool.
   int get shellReads => ((raw['toolMix'] as Map?)?['shellReads'] ?? 0) as int;
   String? get model => raw['model'] as String?;
+  String? get effort => raw['effort'] as String?;
+  List<String> get queued =>
+      (raw['queued'] as List?)?.cast<String>() ?? const [];
   String? get openQuestionId => raw['openQuestionId'] as String?;
   num get cost => (raw['cost'] ?? 0) as num;
   int get createdAt => (raw['createdAt'] ?? 0) as int;
@@ -153,6 +156,12 @@ class Api {
 
   Future<dynamic> setModel(String id, String model) =>
       _send('POST', '/api/tasks/$id/model', {'model': model});
+  Future<dynamic> setEffort(String id, String effort) =>
+      _send('POST', '/api/tasks/$id/effort', {'effort': effort});
+  Future<dynamic> editQueued(String id, int index, String request) =>
+      _send('PATCH', '/api/tasks/$id/queued', {'index': index, 'request': request});
+  Future<dynamic> dropQueued(String id, int index) =>
+      _send('DELETE', '/api/tasks/$id/queued', {'index': index});
   Future<dynamic> cancel(String id) => _send('POST', '/api/tasks/$id/cancel');
   Future<dynamic> retry(String id) => _send('POST', '/api/tasks/$id/retry');
   Future<dynamic> resume(String id) => _send('POST', '/api/tasks/$id/resume');

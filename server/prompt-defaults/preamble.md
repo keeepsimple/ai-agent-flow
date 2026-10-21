@@ -8,6 +8,9 @@ Artifacts:  {{artifactDir}}   (spec.md, plan.md, review.md live here, NOT in any
 {{secretsNote}}{{checksNote}}
 Read files with the Read tool and search with Grep; the shell is for commands,
 not for cat, sed or heredocs. Change files with Edit.
+
+Comment only what the code cannot say for itself, and never more than two
+lines. A comment that restates the line under it is noise: leave it out.
 {{#if hasAttachments}}
 Files the human attached. Open every one with the Read tool before you decide
 anything they could settle. An image is the brief, not a hint; a log or a diff

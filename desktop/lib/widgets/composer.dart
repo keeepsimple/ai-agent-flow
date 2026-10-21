@@ -42,32 +42,44 @@ class _ComposerState extends State<Composer> {
   ///
   /// The CLI args are rebuilt on every spawn, so this cannot reach a run that
   /// is already talking, and the tooltip does not pretend it can.
-  Widget _modelPicker(Task task) {
-    final models =
-        (widget.flow.options?['models'] as List?)?.cast<String>() ?? const [];
-    if (models.isEmpty) return const SizedBox.shrink();
-    final cli = (widget.flow.defaults?['cliModel'] as String?) ?? '';
-    final now = task.model ?? '';
-    String label(String m) =>
-        m.isNotEmpty ? m : (cli.isEmpty ? 'default' : 'default ($cli)');
-
+  /// Model and effort are both read fresh at each spawn, so a pick here lands
+  /// on the next run and never on the one already talking.
+  Widget _picker({
+    required String kind,
+    required List<String> options,
+    required String now,
+    required String Function(String) label,
+    required void Function(String) onPick,
+  }) {
+    if (options.isEmpty) return const SizedBox.shrink();
     return PopupMenuButton<String>(
-      tooltip: 'The model the next run uses',
+      tooltip: 'The $kind the next run uses',
       padding: EdgeInsets.zero,
       color: Tern.raised,
       onSelected: (picked) {
-        if (picked == now) return;
-        widget.flow.run(() => widget.flow.api.setModel(task.id, picked));
+        if (picked != now) onPick(picked);
       },
       itemBuilder: (_) => [
-        for (final m in models)
+        for (final (i, option) in options.indexed)
           PopupMenuItem(
-            value: m,
-            height: 32,
-            child: Text(
-              label(m),
-              style: t(12, color: m == now ? Tern.ink : Tern.ink3),
-            ),
+            value: option,
+            height: 34,
+            child: Row(children: [
+              SizedBox(
+                width: 18,
+                child: Text('${i + 1}', style: t(11, color: Tern.faint, code: true)),
+              ),
+              Expanded(
+                child: Text(
+                  label(option),
+                  style: t(12.5, color: option == now ? Tern.ink : Tern.ink3,
+                      weight: option == now ? FontWeight.w600 : FontWeight.w400),
+                ),
+              ),
+              if (option == now)
+                Icon(Icons.check, size: 14,
+                    color: Theme.of(context).colorScheme.primary),
+            ]),
           ),
       ],
       child: Container(
@@ -89,6 +101,30 @@ class _ComposerState extends State<Composer> {
       ),
     );
   }
+
+  Widget _modelPicker(Task task) {
+    final cli = (widget.flow.defaults?['cliModel'] as String?) ?? '';
+    return _picker(
+      kind: 'model',
+      options:
+          (widget.flow.options?['models'] as List?)?.cast<String>() ?? const [],
+      now: task.model ?? '',
+      label: (m) => m.isNotEmpty
+          ? m
+          : (cli.isEmpty ? 'CLI default' : 'CLI default ($cli)'),
+      onPick: (m) =>
+          widget.flow.run(() => widget.flow.api.setModel(task.id, m)),
+    );
+  }
+
+  Widget _effortPicker(Task task) => _picker(
+    kind: 'effort',
+    options:
+        (widget.flow.options?['efforts'] as List?)?.cast<String>() ?? const [],
+    now: task.effort ?? '',
+    label: (e) => e.isEmpty ? 'default' : e,
+    onPick: (e) => widget.flow.run(() => widget.flow.api.setEffort(task.id, e)),
+  );
 
   Future<void> _send() async {
     final body = _text.text.trim();
@@ -141,7 +177,12 @@ class _ComposerState extends State<Composer> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 10, 24, 18),
-      child: Panel(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+      _Queued(flow: widget.flow, task: task),
+      Panel(
         colour: Tern.input,
         border: Tern.lineStrong,
         radius: 16,
@@ -208,6 +249,8 @@ class _ComposerState extends State<Composer> {
                 Expanded(child: _Repos(task.trees)),
                 const SizedBox(width: 8),
                 _modelPicker(task),
+                const SizedBox(width: 6),
+                _effortPicker(task),
                 const SizedBox(width: 10),
                 Text(sendHint, style: t(10.5, color: Tern.muted, code: true)),
                 const SizedBox(width: 8),
@@ -227,6 +270,8 @@ class _ComposerState extends State<Composer> {
             ),
           ],
         ),
+      ),
+        ],
       ),
     );
   }
@@ -340,6 +385,95 @@ class _Round extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+
+/// What is still waiting in line, with a way to change your mind about it.
+class _Queued extends StatefulWidget {
+  const _Queued({required this.flow, required this.task});
+  final FlowState flow;
+  final Task task;
+
+  @override
+  State<_Queued> createState() => _QueuedState();
+}
+
+class _QueuedState extends State<_Queued> {
+  int? _at;
+  final _draft = TextEditingController();
+
+  @override
+  void dispose() {
+    _draft.dispose();
+    super.dispose();
+  }
+
+  void _save(int i) {
+    final text = _draft.text.trim();
+    setState(() => _at = null);
+    if (text.isEmpty) return;
+    widget.flow.run(() => widget.flow.api.editQueued(widget.task.id, i, text));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final queue = widget.task.queued;
+    if (queue.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (i, text) in queue.indexed)
+          Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+            decoration: BoxDecoration(
+              color: Tern.raised,
+              border: raised(Tern.line),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: e1,
+            ),
+            child: Row(children: [
+              const Icon(Icons.schedule, size: 14, color: Tern.muted),
+              const SizedBox(width: 9),
+              Expanded(
+                child: _at == i
+                    ? TextField(
+                        controller: _draft,
+                        autofocus: true,
+                        style: t(12.5, color: Tern.ink),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        onSubmitted: (_) => _save(i),
+                        onTapOutside: (_) => _save(i),
+                      )
+                    : Text(text, style: t(12.5, color: Tern.ink3)),
+              ),
+              const SizedBox(width: 8),
+              Text('${i + 1}/${queue.length}',
+                  style: t(11, color: Tern.faint, code: true)),
+              _Round(
+                icon: Icons.edit_outlined,
+                tooltip: 'Reword it',
+                onTap: () => setState(() {
+                  _draft.text = text;
+                  _at = i;
+                }),
+              ),
+              _Round(
+                icon: Icons.close,
+                tooltip: 'Take it out of the queue',
+                onTap: () => widget.flow
+                    .run(() => widget.flow.api.dropQueued(widget.task.id, i)),
+              ),
+            ]),
+          ),
+      ],
     );
   }
 }

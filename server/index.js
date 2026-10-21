@@ -358,6 +358,16 @@ async function api(req, res, url) {
     const { repo } = JSON.parse((await body(req)) || '{}')
     return json(res, 200, { done: repoGit.merge(id, repo), git: repoGit.status(id) })
   }
+  if (req.method === 'POST' && action === 'effort') {
+    const { effort } = JSON.parse((await body(req)) || '{}')
+    return json(res, 200, runner.setEffort(id, effort))
+  }
+  if (action === 'queued' && (req.method === 'PATCH' || req.method === 'DELETE')) {
+    const { index, request } = JSON.parse((await body(req)) || '{}')
+    return json(res, 200, req.method === 'DELETE'
+      ? runner.dropQueued(id, index)
+      : runner.editQueued(id, index, request))
+  }
   if (req.method === 'POST' && action === 'model') {
     const { model } = JSON.parse((await body(req)) || '{}')
     return json(res, 200, runner.setModel(id, model))

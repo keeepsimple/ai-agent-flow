@@ -895,6 +895,40 @@ export function shipViaAgent(id, repo) {
  * transcript because reading a conversation later and wondering why the
  * answers changed shape is exactly the question this has to answer.
  */
+/** Same as the model: read fresh at every spawn, so it lands on the next run. */
+export function setEffort(id, effort) {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  const next = pick(effort, EFFORTS, DEFAULTS.effort, 'effort')
+  if (next === (task.effort || '')) return task
+  log(id, { kind: 'decision', text: `Effort: ${task.effort || 'default'} \u2192 ${next || 'default'}` })
+  return update(id, { effort: next })
+}
+
+function queueOf(id) {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  return [...(task.queued || [])]
+}
+
+/** Reword something still waiting in line. */
+export function editQueued(id, index, request) {
+  const queue = queueOf(id)
+  if (!(index >= 0 && index < queue.length)) throw new Error('that is no longer in the queue')
+  const text = String(request ?? '').trim()
+  if (!text) throw new Error('say what you want changed')
+  queue[index] = text
+  return update(id, { queued: queue })
+}
+
+/** Take it out of the line before the run that would have picked it up. */
+export function dropQueued(id, index) {
+  const queue = queueOf(id)
+  if (!(index >= 0 && index < queue.length)) throw new Error('that is no longer in the queue')
+  queue.splice(index, 1)
+  return update(id, { queued: queue })
+}
+
 export function setModel(id, model) {
   const task = tasks[id]
   if (!task) throw new Error('unknown task')

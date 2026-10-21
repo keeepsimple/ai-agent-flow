@@ -1,7 +1,70 @@
 import { useEffect, useState } from 'react'
-import { IconArrowUp, IconPaperclip } from '@tabler/icons-react'
-import { AttachStrip, selectChip, useAttachments } from './bits.jsx'
+import { IconArrowUp, IconClock, IconPaperclip, IconPencil, IconX } from '@tabler/icons-react'
+import { AttachStrip, inputClass, selectChip, useAttachments } from './bits.jsx'
 import { api } from '../api.js'
+
+function Queued({ task, onError }) {
+  const queue = task.queued || []
+  const [at, setAt] = useState(null)
+  const [draft, setDraft] = useState('')
+  if (!queue.length) return null
+
+  const save = async (i) => {
+    const text = draft.trim()
+    if (!text) return setAt(null)
+    setAt(null)
+    try {
+      await api.editQueued(task.id, i, text)
+    } catch (err) {
+      onError(err.message)
+    }
+  }
+
+  return (
+    <ul className="mb-2.5 flex list-none flex-col gap-1.5 p-0">
+      {queue.map((text, i) => (
+        <li
+          key={i}
+          className="flex items-start gap-2.5 rounded-xl border border-line bg-raised px-3.5 py-2.5 shadow-e1"
+        >
+          <IconClock size={14} className="mt-0.5 shrink-0 text-muted" />
+          {at === i ? (
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => save(i)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') save(i)
+                if (e.key === 'Escape') setAt(null)
+              }}
+              className={`${inputClass} flex-1 py-1 text-[13px]`}
+            />
+          ) : (
+            <span className="flex-1 text-[13px] break-words text-ink-3">{text}</span>
+          )}
+          <span className="font-mono text-[11px] text-muted">{i + 1}/{queue.length}</span>
+          <button
+            type="button"
+            aria-label="Edit"
+            onClick={() => { setDraft(text); setAt(i) }}
+            className="cursor-pointer text-muted transition-colors duration-200 ease-smooth hover:text-ink"
+          >
+            <IconPencil size={13} />
+          </button>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => api.dropQueued(task.id, i).catch((e) => onError(e.message))}
+            className="cursor-pointer text-muted transition-colors duration-200 ease-smooth hover:text-bad"
+          >
+            <IconX size={13} />
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 /** The prompt box at the foot of the workspace: a follow-up on this task. */
 export default function Composer({ task, flow, onError }) {
@@ -11,18 +74,21 @@ export default function Composer({ task, flow, onError }) {
   // Optimistic: the select should move under the pointer, not a round trip
   // later. It goes back if the server will not have it.
   const [model, setModel] = useState(task.model || '')
+  const [effort, setEffort] = useState(task.effort || '')
   useEffect(() => setModel(task.model || ''), [task.model])
+  useEffect(() => setEffort(task.effort || ''), [task.effort])
 
-  const changeModel = async (next) => {
-    const was = model
-    setModel(next)
+  const change = (set, was, send) => async (next) => {
+    set(next)
     try {
-      await api.setModel(task.id, next)
+      await send(next)
     } catch (err) {
-      setModel(was)
+      set(was)
       onError(err.message)
     }
   }
+  const changeModel = change(setModel, model, (m) => api.setModel(task.id, m))
+  const changeEffort = change(setEffort, effort, (e) => api.setEffort(task.id, e))
   // The worktree being dropped no longer blocks this: asking for one more
   // thing checks the branches back out.
   const dropped = !task.root
@@ -44,6 +110,7 @@ export default function Composer({ task, flow, onError }) {
 
   return (
     <div className="mx-auto w-full max-w-[720px] shrink-0 px-6 pt-3 pb-5">
+      <Queued task={task} onError={onError} />
       <div
         onDrop={attach.onDrop}
         onDragOver={attach.onDragOver}
@@ -99,6 +166,19 @@ export default function Composer({ task, flow, onError }) {
                 <option key={m} value={m}>
                   {m || (flow.defaults?.cliModel ? `default (${flow.defaults.cliModel})` : 'default')}
                 </option>
+              ))}
+            </select>
+          )}
+          {flow?.options?.efforts && (
+            <select
+              value={effort}
+              onChange={(e) => changeEffort(e.target.value)}
+              title="How hard the next run thinks"
+              aria-label="Effort"
+              className={selectChip}
+            >
+              {flow.options.efforts.map((e) => (
+                <option key={e} value={e}>{e || 'default'} effort</option>
               ))}
             </select>
           )}
