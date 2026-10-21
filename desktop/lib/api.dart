@@ -33,7 +33,6 @@ class Task {
       (raw['docs'] as Map?)?.cast<String, dynamic>() ?? const {};
   Map<String, dynamic> get phases =>
       (raw['phases'] as Map?)?.cast<String, dynamic>() ?? const {};
-  Map<String, dynamic>? get git => (raw['git'] as Map?)?.cast<String, dynamic>();
   List<String> get attachments =>
       ((raw['attachments'] ?? raw['images']) as List?)?.cast<String>() ?? const [];
 
@@ -174,10 +173,10 @@ class Api {
     return data as Map<String, dynamic>;
   }
 
-  /// `notify=0`: this client cannot raise a desktop notification, so the
-  /// server has to. Saying so is what stops them disappearing.
-  Stream<({String event, Map<String, dynamic> data})> events() async* {
-    final request = await _client.getUrl(_url('/api/events?notify=0'));
+  /// `notify` says whether this client will raise a desktop notification
+  /// itself. When it will not, the server has to, or they disappear.
+  Stream<({String event, Map<String, dynamic> data})> events({bool notifies = false}) async* {
+    final request = await _client.getUrl(_url('/api/events?notify=${notifies ? 1 : 0}'));
     final response = await request.close();
     var name = 'message';
     await for (final line

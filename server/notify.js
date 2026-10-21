@@ -31,12 +31,23 @@ function osascript(title, message, urgent) {
 
 function mac(title, message, urgent, url) {
   // An osascript notification belongs to Script Editor, so clicking it opens
-  // Script Editor. terminal-notifier can point the click at a URL instead, so
+  // Script Editor. terminal-notifier can point the click somewhere useful, so
   // it is tried first and osascript is the fallback when it is not installed.
   const args = ['-title', title, '-message', message, '-group', 'agent-flow']
-  if (url) args.push('-open', url)
+
+  // Started by the app, the click belongs to the app. Opening the URL instead
+  // put a browser on screen showing the same thing the window behind it was
+  // already showing.
+  const app = process.env.FLOW_ACTIVATE
+  if (app) args.push('-activate', app)
+  else if (url) args.push('-open', url)
   if (urgent) args.push('-sound', 'Basso')
   execFile('terminal-notifier', args, (err) => {
+    // Any failure, not just a missing binary: terminal-notifier exits 3 when
+    // its own notification permission has been turned off, and shows nothing
+    // when it does. The fallback is worth having because of that, even though
+    // an osascript notification belongs to Script Editor and opens it when
+    // clicked.
     if (err) osascript(title, message, urgent)
   })
 }

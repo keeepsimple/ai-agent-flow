@@ -559,6 +559,17 @@ export function retry(id) {
   for (const p of phasesFor(task.run)) {
     if (task.phases[p].status === 'failed') task.phases[p] = { status: 'pending' }
   }
+
+  // A run that failed during a follow-up leaves every phase done: the failure
+  // was not in one. Retrying walked straight past all of them and announced
+  // that the task had finished, which it had, hours ago.
+  if (phasesFor(task.run).every((p) => task.phases[p].status === 'done')) {
+    throw new Error(
+      'every phase of this task already finished, so there is nothing to run again. ' +
+        'Ask for what you want in the box at the bottom instead.',
+    )
+  }
+
   update(id, { status: 'queued', error: null, openQuestionId: null })
   queue.push(id)
   pump()

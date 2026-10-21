@@ -122,9 +122,12 @@ class FlowState extends ChangeNotifier {
   /// The stream drops when the server restarts, and everything that happened
   /// in between is missed. Reloading on every open is what keeps a question
   /// nobody is waiting on any more from staying on screen.
+  /// Set once the app has somewhere to put a notification of its own.
+  void Function(Map<String, dynamic> event)? onNotify;
+
   void listen() {
     _events?.cancel();
-    _events = api.events().listen(
+    _events = api.events(notifies: onNotify != null).listen(
       (message) {
         if (!live) {
           live = true;
@@ -136,6 +139,8 @@ class FlowState extends ChangeNotifier {
             _onTask(message.data);
           case 'log':
             _onLog(message.data);
+          case 'notify':
+            onNotify?.call(message.data);
         }
       },
       onError: (_) => _dropped(),

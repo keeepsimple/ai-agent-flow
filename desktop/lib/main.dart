@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'api.dart';
 import 'flow.dart';
+import 'notifier.dart';
 import 'screens/review.dart';
 import 'screens/sessions.dart';
 import 'screens/workspace.dart';
@@ -38,6 +39,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
 
   final _prefs = Prefs.load();
   final _window = WindowState();
+  late final _notifier = Notifier(onOpened: _open);
   Accent _accent = Accent.sky;
   bool _ready = false;
   String? _trouble;
@@ -57,6 +59,14 @@ class _AgentFlowAppState extends State<AgentFlowApp>
       setState(() => _trouble = _server.trouble ?? 'The server did not start.');
       return;
     }
+    // Before listening: it decides whether the server keeps raising its own.
+    _flow.onNotify = (event) => _notifier.show(
+          title: (event['title'] ?? 'Agent Flow') as String,
+          body: (event['body'] ?? '') as String,
+          taskId: event['taskId'] as String?,
+          urgent: event['urgent'] == true,
+        );
+
     await _flow.loadState();
     // Only after the roots are known: a remembered workspace that has since
     // been removed would otherwise filter the board down to nothing.

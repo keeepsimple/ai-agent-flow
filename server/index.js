@@ -60,7 +60,11 @@ function taskView(id) {
     const text = artifact(id, name)
     if (text) docs[name] = text
   }
-  return { ...task, log: readLog(id), docs, git: repoGit.status(id) }
+  // No git status here. It is eight git calls per repo, which on a task that
+  // spans a whole workspace is a hundred processes and the better part of two
+  // seconds — paid every time someone opens a conversation. The one screen
+  // that needs it asks for it on its own.
+  return { ...task, log: readLog(id), docs }
 }
 
 async function api(req, res, url) {

@@ -297,6 +297,17 @@ try {
   let quietTask = await waitFor(quiet.id, (t) => t.status === 'done' || t.status === 'failed', 'the quiet run')
   assert.equal(quietTask.status, 'done', `unattended run stalled: ${quietTask.error}`)
   assert.equal(quietTask.title, 'Named by the agent', 'the spec phase should have renamed it')
+
+  // Retrying a task with nothing left to run used to walk past every finished
+  // phase and announce that it was done, which it had been for hours.
+  const pointless = await fetch(`${base}/api/tasks/${quiet.id}/retry`, { method: 'POST' })
+  assert.equal(pointless.status, 400)
+  assert.match((await pointless.json()).error, /nothing to run again/)
+  assert.equal(
+    (await (await fetch(`${base}/api/tasks/${quiet.id}`)).json()).status,
+    'done',
+    'and it is left alone rather than queued',
+  )
   assert.equal(
     quietTask.trees[0].branch,
     `flow/named-by-the-agent-${quiet.id}`,
@@ -754,6 +765,7 @@ try {
     '    push covers the task branch and the base branch after it is merged,\n' +
     '    unattended answers its own questions and the agent names an untitled task,\n' +
     '    the branch follows that name and a request in Vietnamese still slugs readably,\n' +
+    '    retrying a finished task is refused rather than silently repeated,\n' +
     '    @ finds a tracked file, name matches first,\n' +
     '    choosing no run shape is the plain one: no documents, no review,\n' +
     '    a quick run skips spec and plan but still reviews itself,\n' +

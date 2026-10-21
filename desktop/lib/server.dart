@@ -107,6 +107,9 @@ class FlowServer {
           '$home/.local/bin:/opt/homebrew/bin:/usr/local/bin:${env['PATH'] ?? '/usr/bin:/bin'}';
     }
     env['FLOW_PORT'] = '$port';
+    // So a desktop notification raised by the server brings this window
+    // forward rather than opening a browser at the same page.
+    env['FLOW_ACTIVATE'] = 'dev.agentflow.agentFlow';
     env.putIfAbsent('FLOW_DATA', () => dataDir());
     env.putIfAbsent('FLOW_REPO_ROOT', () => _home());
     Directory(env['FLOW_DATA']!).createSync(recursive: true);
