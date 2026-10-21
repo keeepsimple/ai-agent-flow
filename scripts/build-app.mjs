@@ -167,6 +167,14 @@ async function build() {
     carry(path.join(app, 'Contents', 'Resources', 'flow'), binary)
 
     sign(app)
+
+    // ditto keeps the source's timestamps, and an incremental Flutter build
+    // never touches the top of the bundle, so the folder carries whatever
+    // date it had when it was first created. Finder shows that date, which
+    // is how a fresh build reads as days old. Touching the directory does not
+    // disturb the signature: the seal covers the files, not the folder.
+    fs.utimesSync(app, new Date(), new Date())
+
     console.log(`\n${app}  (${run('du', ['-sh', app]).split('\t')[0]})`)
     console.log('Move it to /Applications, then grant it Full Disk Access.')
   } else {
