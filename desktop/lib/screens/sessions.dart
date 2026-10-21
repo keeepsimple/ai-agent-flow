@@ -62,7 +62,7 @@ class SessionsScreen extends StatelessWidget {
                   for (final task in tasks)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: _TaskRow(task: task, onTap: () => onOpen(task.id)),
+                      child: _TaskRow(task: task, flow: flow, onTap: () => onOpen(task.id)),
                     ),
               ],
             ),
@@ -113,8 +113,9 @@ class _Interrupted extends StatelessWidget {
 }
 
 class _TaskRow extends StatefulWidget {
-  const _TaskRow({required this.task, required this.onTap});
+  const _TaskRow({required this.task, required this.flow, required this.onTap});
   final Task task;
+  final FlowState flow;
   final VoidCallback onTap;
 
   @override
@@ -172,6 +173,27 @@ class _TaskRowState extends State<_TaskRow> {
             if (task.cost > 0)
               Text('\$${task.cost.toStringAsFixed(2)}',
                   style: t(11.5, color: Tern.muted, code: true)),
+            // Free the checkout from here, without opening the conversation.
+            // The branches stay, so there is nothing to confirm.
+            if (task.root != null && !task.active) ...[
+              const SizedBox(width: 10),
+              Tooltip(
+                message: 'Drop the worktree. The conversation and the branches stay.',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () async {
+                    if (await widget.flow.run(() => widget.flow.api.dropWorktree(task.id), refresh: false)) {
+                      await widget.flow.loadState();
+                      widget.flow.loadDisk();
+                    }
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.folder_off_outlined, size: 15, color: Tern.faint),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(width: 10),
             const Icon(Icons.chevron_right, size: 16, color: Tern.faint),
           ]),

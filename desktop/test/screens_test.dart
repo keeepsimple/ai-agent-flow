@@ -159,6 +159,29 @@ void main() {
         SessionsScreen(flow: flow, onOpen: (_) {}), const Size(1340, 900));
   });
 
+  testWidgets('a finished task on the board can drop its worktree without opening it', (tester) async {
+    final flow = _flow();
+    var opened = 0;
+    flow.tasks = [
+      _task({'id': 'd1', 'title': 'Done, checkout still there', 'status': 'done', 'phase': null, 'root': '/w/tree'}),
+      _task({'id': 'd2', 'title': 'Done, already dropped', 'status': 'done', 'phase': null, 'root': null}),
+      _task({'id': 'r1', 'title': 'Still running', 'status': 'running', 'root': '/w/tree2'}),
+    ];
+    tester.view.physicalSize = const Size(1340, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(body: SessionsScreen(flow: flow, onOpen: (_) => opened++)),
+    ));
+    await tester.pump();
+    expect(find.byIcon(Icons.folder_off_outlined), findsOneWidget, reason: 'only the finished task with a checkout');
+    await tester.tap(find.byIcon(Icons.folder_off_outlined));
+    await tester.pump();
+    expect(opened, 0, reason: 'dropping is not opening');
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('interrupted tasks sit at the top of the board with one Continue for the lot',
       (tester) async {
     final flow = _flow();
