@@ -1053,6 +1053,36 @@ try {
   fs.rmSync(path.join(repos, 'web', 'CLUTTER.md'), { force: true })
   fs.rmSync(path.join(repos, 'web', 'app', 'services', 'discount.server.ts.bak'), { force: true })
   git('web', 'pull', '-q', '--ff-only', 'origin', 'main') // the person's later `git pull`
+
+  // The guard blames only the task's own commits. The shape from real life: a
+  // token committed on origin/main long ago, the local main behind it, and a
+  // landing that merges origin/main into the branch. The branch did not add it.
+  const landing5 = await post('/api/tasks', { repos: ['web'], prompt: 'land me over a token on main', run: 'quick', autoApprove: true })
+  await waitFor(landing5.id, (t) => t.status === 'done', 'the fifth landing run')
+  fs.writeFileSync(path.join(repos, 'web', '.env.dev'), 'DB_PASSWORD=hunter2hunter2\n')
+  git('web', 'add', '.env.dev')
+  git('web', 'commit', '-qm', 'chore(env): token on main, by someone else')
+  git('web', 'push', '-q', 'origin', 'main')
+  git('web', 'reset', '-q', '--hard', 'HEAD~1') // the local checkout never pulled it
+  const tree5 = (await (await fetch(`${base}/api/tasks/${landing5.id}`)).json()).trees[0]
+  execFileSync('git', ['-C', tree5.worktree, 'fetch', '-q', 'origin'])
+  execFileSync('git', ['-C', tree5.worktree, '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'merge', '-q', 'origin/main'])
+  const pushOverToken = await fetch(`${base}/api/tasks/${landing5.id}/push`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'web' }),
+  })
+  assert.equal(pushOverToken.status, 200, 'a token that came in from main is not this branch\'s to answer for: ' + (await pushOverToken.text()).slice(0, 200))
+  assert.doesNotThrow(() => execFileSync(process.execPath, [path.join(here, 'guard-secrets.mjs'), tree5.repoPath, 'main', tree5.branch], { stdio: 'pipe' }), 'the guard the agent runs agrees')
+  fs.writeFileSync(path.join(tree5.worktree, 'notes.txt'), 'OTHER_TOKEN=abcdefgh12345678\n')
+  execFileSync('git', ['-C', tree5.worktree, 'add', 'notes.txt'])
+  execFileSync('git', ['-C', tree5.worktree, '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'oops'])
+  const pushOwnToken = await fetch(`${base}/api/tasks/${landing5.id}/push`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'web' }),
+  })
+  assert.equal(pushOwnToken.status, 400, 'its own token still is')
+  assert.match((await pushOwnToken.json()).error, /notes\.txt:1/)
+  assert.throws(() => execFileSync(process.execPath, [path.join(here, 'guard-secrets.mjs'), tree5.repoPath, 'main', tree5.branch], { stdio: 'pipe' }), (e) => e.status === 1 && /notes\.txt:1/.test(String(e.stderr)))
+  git('web', 'pull', '-q', '--ff-only', 'origin', 'main')
+  console.log('ok: the guard blames only the task\'s own commits')
   assert.equal(
     git('api', 'rev-parse', 'main'),
     git('api', 'rev-parse', landed.trees[0].branch),

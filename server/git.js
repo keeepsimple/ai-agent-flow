@@ -177,7 +177,10 @@ export function toPick(tree, prodBranch) {
 
 /** Added lines on this branch that carry a kept value or look like a secret. */
 export function scanForSecrets(tree, values) {
-  const diff = quiet(() => git(tree.repoPath, 'diff', `${tree.baseBranch}...${tree.branch}`)) || ''
+  // The task's own commits only. A three-dot diff against a stale local base
+  // blamed the branch for everything main gained since; a merge's diff is
+  // main's too. First-parent, no merges: what this task typed.
+  const diff = quiet(() => git(tree.repoPath, 'log', '--first-parent', '--no-merges', '-p', '--format=', `${tree.baseBranch}..${tree.branch}`)) || ''
   return secrets.scanDiff(diff, values)
 }
 

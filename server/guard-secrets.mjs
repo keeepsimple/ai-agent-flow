@@ -14,7 +14,9 @@ if (!repo || !base || !branch) {
 const values = Object.entries(process.env)
   .filter(([k]) => k.startsWith('FLOW_SECRET_'))
   .map(([, v]) => v)
-const diff = execFileSync('git', ['-C', repo, 'diff', `${base}...${branch}`], { encoding: 'utf8', maxBuffer: 64 << 20 })
+// The task's own commits only (first-parent, no merges): a token that came in
+// from the base is the base's problem, not a reason to stop this push.
+const diff = execFileSync('git', ['-C', repo, 'log', '--first-parent', '--no-merges', '-p', '--format=', `${base}..${branch}`], { encoding: 'utf8', maxBuffer: 64 << 20 })
 const hits = scanDiff(diff, values)
 if (hits.length) {
   console.error('this diff carries something that looks like a secret; do not push it:')
