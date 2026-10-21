@@ -8,9 +8,12 @@ import 'markdown_view.dart';
 /// The transcript. Tool calls arrive in runs of dozens, so they are collapsed
 /// to a line saying how many; the rest reads as what it is.
 class Conversation extends StatefulWidget {
-  const Conversation({super.key, required this.task, this.footer});
+  const Conversation({super.key, required this.task, this.footer, this.jumpToEnd});
   final Task task;
   final Widget? footer;
+
+  /// Bump it to scroll to the end: the status line is a shortcut to the last message.
+  final ValueNotifier<int>? jumpToEnd;
 
   @override
   State<Conversation> createState() => _ConversationState();
@@ -25,6 +28,7 @@ class _ConversationState extends State<Conversation> {
   @override
   void initState() {
     super.initState();
+    widget.jumpToEnd?.addListener(_jump);
     _scroll.addListener(() {
       if (!_scroll.hasClients) return;
       _pinned =
@@ -32,8 +36,14 @@ class _ConversationState extends State<Conversation> {
     });
   }
 
+  void _jump() {
+    _pinned = true;
+    if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+  }
+
   @override
   void dispose() {
+    widget.jumpToEnd?.removeListener(_jump);
     _scroll.dispose();
     super.dispose();
   }

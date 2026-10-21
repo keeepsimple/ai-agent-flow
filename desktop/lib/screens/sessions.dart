@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/bits.dart';
 import '../widgets/mentions.dart';
 import '../widgets/secrets.dart';
+import '../status.dart';
 import '../widgets/sidebar.dart';
 
 /// The board: start a task, and see every one at a glance.
@@ -127,6 +128,7 @@ class _TaskRowState extends State<_TaskRow> {
   Widget build(BuildContext context) {
     final task = widget.task;
     final words = statusWords(Task2(task.status, task.phase, task.awaitingPhase));
+    final needs = needsOf(task);
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -154,8 +156,12 @@ class _TaskRowState extends State<_TaskRow> {
                       overflow: TextOverflow.ellipsis,
                       style: t(13, color: Tern.ink, weight: FontWeight.w500)),
                   const SizedBox(height: 3),
-                  Text(
-                    '${task.repos.join(' + ')}  ·  $words',
+                  Text.rich(
+                    TextSpan(children: [
+                      TextSpan(text: '${task.repos.join(' + ')}  ·  $words'),
+                      if (needs != null && needs != words)
+                        TextSpan(text: '  ·  $needs', style: t(11.5, color: Tern.warn)),
+                    ]),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: t(11.5, color: Tern.muted),

@@ -25,6 +25,7 @@ import 'package:agent_flow/widgets/markdown_view.dart';
 import 'package:agent_flow/widgets/header.dart';
 import 'package:agent_flow/widgets/secrets.dart';
 import 'package:agent_flow/widgets/sidebar.dart';
+import 'package:agent_flow/widgets/status_line.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -531,6 +532,30 @@ void main() {
     expect(find.text('Reset to default'), findsOneWidget);
     expect(find.text('spec'), findsOneWidget);
     expect(find.textContaining('{{preamble}}, {{prompt}}, {{titleAsk}}'), findsOneWidget);
+  });
+
+  testWidgets('the status line says what it did and what it needs', (tester) async {
+    final task = _task({
+      'status': 'awaiting_answer',
+      'phase': null,
+      'questions': [
+        {'id': 'q1', 'text': 'Keep the old column or drop it?', 'answer': null},
+      ],
+      'log': [
+        {'kind': 'text', 'text': 'Found that the migration drops a column still read by the cron. Stopping here.'},
+      ],
+    });
+    var jumped = 0;
+    await _shoot(
+      tester,
+      'status-line',
+      StatusLine(task: task, onJump: () => jumped++),
+      const Size(900, 60),
+    );
+    expect(find.textContaining('Found that the migration'), findsOneWidget);
+    expect(find.textContaining('Keep the old column'), findsOneWidget);
+    await tester.tap(find.byType(StatusLine));
+    expect(jumped, 1);
   });
 
   testWidgets('the header with nothing open', (tester) async {
