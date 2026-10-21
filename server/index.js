@@ -8,6 +8,7 @@ import * as secrets from './secrets.js'
 import * as repoConfig from './repo-config.js'
 import * as templates from './templates.js'
 import * as settings from './settings.js'
+import * as telegram from './telegram.js'
 import { randomBytes } from 'node:crypto'
 import { resolveRepo } from './roots.js'
 import * as uploads from './uploads.js'
@@ -185,8 +186,17 @@ async function api(req, res, url) {
     if (req.method === 'GET') return json(res, 200, settings.get())
     if (req.method === 'PUT') {
       const patch = JSON.parse((await body(req)) || '{}')
-      try { return json(res, 200, settings.set(patch)) } catch (err) { return json(res, 400, { error: err.message }) }
+      try {
+        const out = settings.set(patch)
+        telegram.reload()
+        return json(res, 200, out)
+      } catch (err) { return json(res, 400, { error: err.message }) }
     }
+  }
+  if (section === 'settings' && id === 'telegram-test' && req.method === 'POST') {
+    telegram.reload()
+    if (!telegram.enabled()) return json(res, 400, { error: 'set the chat id and the bot token first' })
+    return json(res, 200, { ok: (await telegram.send('Agent Flow is here.')) === true })
   }
 
   // Task templates: the form, saved. One file, whole list.

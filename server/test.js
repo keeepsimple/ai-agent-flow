@@ -1644,6 +1644,52 @@ try {
   assert.ok(oldLog.some((l) => l.text === 'ok I used {{secret:EGO_API_KEY}}\nthen ran it'), 'the log line is intact around the placeholder')
   await fetch(`${base}/api/tasks/${old.id}`, { method: 'DELETE' })
 
+  // Questions on the phone: a fake Telegram records what the server sends and
+  // hands back a reply when the test queues one.
+  const sentToPhone = []
+  const phoneQueue = []
+  const phone = http.createServer(async (req, res) => {
+    let raw = ''
+    for await (const c of req) raw += c
+    if (/\/bottok\/sendMessage$/.test(req.url)) {
+      sentToPhone.push(JSON.parse(raw))
+      return res.end(JSON.stringify({ ok: true, result: { message_id: sentToPhone.length } }))
+    }
+    if (/\/bottok\/getUpdates/.test(req.url)) {
+      for (let i = 0; i < 10 && !phoneQueue.length; i++) await sleep(100)
+      const batch = phoneQueue.splice(0)
+      return res.end(JSON.stringify({ ok: true, result: batch }))
+    }
+    res.statusCode = 404
+    res.end('{}')
+  })
+  await new Promise((r) => phone.listen(0, '127.0.0.1', r))
+  await restart({ FLOW_AUTO_RESUME: '0', FLOW_TELEGRAM_API: `http://127.0.0.1:${phone.address().port}` })
+  const putSettingsR = (patch) => fetch(`${base}/api/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
+  assert.equal((await fetch(`${base}/api/settings/telegram-test`, { method: 'POST' })).status, 400, 'nothing configured yet')
+  await putSettingsR({ telegram: { chatId: '42' }, telegramToken: 'tok' })
+  const withPhone = await (await fetch(`${base}/api/settings`)).json()
+  assert.deepEqual([withPhone.telegram.chatId, withPhone.hasTelegramToken], ['42', true])
+  assert.ok(!fs.readFileSync(path.join(root, 'data', 'settings.json'), 'utf8').includes('tok'), 'the token is not in the file')
+  assert.deepEqual(await (await fetch(`${base}/api/settings/telegram-test`, { method: 'POST' })).json(), { ok: true })
+  assert.ok(sentToPhone.some((m) => m.chat_id === '42' && /Agent Flow is here/.test(m.text)))
+  const onPhone = await post('/api/tasks', { repos: ['api'], prompt: 'ask me on the phone', run: 'quick', autoApprove: false })
+  await waitFor(onPhone.id, (t) => t.status === 'awaiting_answer', 'the question')
+  let qMsg
+  for (let i = 0; i < 50 && !qMsg; i++) { qMsg = sentToPhone.find((m) => new RegExp(`^Q ${onPhone.id}/[0-9a-f]{8}: `).test(m.text)); if (!qMsg) await sleep(100) }
+  assert.ok(qMsg, 'the question went to the phone with its id')
+  phoneQueue.push({ update_id: 1, message: { text: 'hello?' } })
+  phoneQueue.push({ update_id: 2, message: { text: 'B', reply_to_message: { text: qMsg.text } } })
+  const answeredOnPhone = await waitFor(onPhone.id, (t) => t.status === 'done', 'the phone answer to land')
+  assert.equal(answeredOnPhone.questions[0].answer, 'B', 'the reply answered the question')
+  assert.ok(sentToPhone.some((m) => /Reply to a question message/.test(m.text)), 'the stray message got the hint')
+  assert.ok(sentToPhone.some((m) => /^Done: /.test(m.text)), 'and the finish went to the phone too')
+  await putSettingsR({ telegram: { chatId: '' }, telegramToken: '' })
+  assert.equal((await (await fetch(`${base}/api/settings`)).json()).hasTelegramToken, false)
+  phone.closeAllConnections()
+  phone.close()
+  console.log('ok: questions reach the phone, and a reply answers them')
+
   // A setup that never ends is capped, said so, and the run still starts.
   await restart({ FLOW_AUTO_RESUME: '0', FLOW_SETUP_MAX_MS: '500' })
   await putRepo('api', { setup: 'sleep 30' })

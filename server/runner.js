@@ -19,6 +19,7 @@ import * as browser from './browser.js'
 import * as secrets from './secrets.js'
 import * as repoConfig from './repo-config.js'
 import * as settings from './settings.js'
+import * as telegram from './telegram.js'
 import { toPick, statusRow, targetsOf } from './git.js'
 
 export const PORT = Number(process.env.FLOW_PORT || 7777)
@@ -104,10 +105,20 @@ export const DEFAULTS = {
  * A tab that was never granted permission is watching and silent, and so is
  * the app's own window, which has no Notification API at all.
  */
-function tell(task, title, body, urgent = false) {
+function tell(task, title, body, urgent = false, { phone = true } = {}) {
   bus.emit('notify', { taskId: task.id, title, body, urgent })
   if (!sse.notifiers) notify(title, body, { urgent, url: `http://127.0.0.1:${PORT}/#${task.id}` })
+  if (phone) telegram.send(body ? `${title}\n${body}` : title)
 }
+
+// A reply on the phone answers the question it replies to.
+telegram.configure({
+  onAnswer: ({ taskId, questionId, text }) => {
+    const id = taskId || Object.values(tasks).find((t) => (t.questions || []).some((q) => q.id === questionId))?.id
+    if (!id || !tasks[id]) throw new Error(`no task has question ${questionId}`)
+    return answerQuestion(id, questionId, text)
+  },
+})
 
 const children = new Map() // taskId -> ChildProcess
 const lastHeard = new Map() // taskId -> when the agent last streamed anything
@@ -610,7 +621,8 @@ export function askQuestion(id, text) {
   // answer === null for ever, and the UI used to offer the oldest of those.
   update(id, { status: 'awaiting_answer', openQuestionId: question.id })
   log(id, { kind: 'question', text })
-  tell(task, `Question: ${task.title}`, text.slice(0, 180), true)
+  tell(task, `Question: ${task.title}`, text.slice(0, 180), true, { phone: false })
+  telegram.send(text, { taskId: id, questionId: question.id })
   return new Promise((resolve) => questionWaiters.set(question.id, resolve))
 }
 
