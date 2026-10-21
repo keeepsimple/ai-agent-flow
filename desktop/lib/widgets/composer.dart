@@ -61,12 +61,26 @@ class _ComposerState extends State<Composer> {
     await _upload(File(path));
   }
 
-  /// Flutter's clipboard is text only, so an image is fetched the way the OS
-  /// will give it: written out by the shell and read back.
-  Future<void> _pasteImage() async {
+  /// Cmd-V, for whatever is on the clipboard.
+  ///
+  /// Flutter's own clipboard is text only, so an image has to be fetched the
+  /// way the OS will give it: written out by the shell and read back. Binding
+  /// the key for that alone swallowed it, so pasting text into this box did
+  /// nothing at all.
+  Future<void> _paste() async {
     final file = await Pick.clipboardImage();
-    if (file == null) return;
-    await _upload(file);
+    if (file != null) return _upload(file);
+
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+    if (text == null || text.isEmpty) return;
+
+    final value = _text.value;
+    final at = value.selection.isValid
+        ? value.selection
+        : TextSelection.collapsed(offset: value.text.length);
+    _text.value = value.replaced(at, text).copyWith(
+          selection: TextSelection.collapsed(offset: at.start + text.length),
+        );
   }
 
   Future<void> _upload(File file) async {
@@ -113,7 +127,7 @@ class _ComposerState extends State<Composer> {
                       control: true,
                     ): _send,
                     const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
-                        _pasteImage,
+                        _paste,
                   },
                   child: TextField(
                     controller: _text,

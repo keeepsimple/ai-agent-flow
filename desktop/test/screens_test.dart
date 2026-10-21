@@ -166,8 +166,38 @@ void main() {
         'repoPaths': ['/w/logistek/warehouse-api'],
       }),
     ];
-    await _shoot(tester, 'sidebar', Sidebar(flow: flow, onOpen: (_) {}),
+    await _shoot(tester, 'sidebar', Sidebar(flow: flow, onOpen: (_) {}, onPick: (_) {}),
         const Size(244, 460));
+  });
+
+  testWidgets('clicking a workspace says so, rather than filtering in place',
+      (tester) async {
+    // It used to call flow.pickWorkspace itself, which changed the board
+    // without leaving the task that was covering it.
+    final flow = _flow();
+    flow.tasks = [_task({})];
+    final picked = <Object?>[];
+
+    tester.view.physicalSize = const Size(244, 520);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        backgroundColor: Tern.page,
+        body: Sidebar(flow: flow, onOpen: (_) {}, onPick: picked.add),
+      ),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('logistek'));
+    await tester.tap(find.text('Everything'));
+    await tester.pump();
+
+    expect(picked, ['/w/logistek', null]);
+    expect(flow.workspace, isNull,
+        reason: 'the sidebar reports the choice; it does not apply it alone');
   });
 
   testWidgets('the workspace, mid-run', (tester) async {

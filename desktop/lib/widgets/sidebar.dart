@@ -18,11 +18,17 @@ class Sidebar extends StatelessWidget {
     super.key,
     required this.flow,
     required this.onOpen,
+    required this.onPick,
     this.recent = 5,
   });
 
   final FlowState flow;
   final void Function(String id) onOpen;
+
+  /// Null for all of them. Not `flow.pickWorkspace` directly: choosing a
+  /// workspace also means leaving whatever task is open, or the choice
+  /// changes a board you are not looking at.
+  final void Function(String? root) onPick;
   final int recent;
 
   static String nameOf(String root) =>
@@ -48,7 +54,7 @@ class Sidebar extends StatelessWidget {
                 _AllRow(
                   selected: flow.workspace == null,
                   count: (flow.tasks ?? const []).length,
-                  onTap: () => flow.pickWorkspace(null),
+                  onTap: () => onPick(null),
                 ),
                 const SizedBox(height: 10),
                 for (var i = 0; i < roots.length; i++) ...[
@@ -57,7 +63,7 @@ class Sidebar extends StatelessWidget {
                     path: roots[i],
                     index: i,
                     selected: flow.workspace == roots[i],
-                    onTap: () => flow.pickWorkspace(roots[i]),
+                    onTap: () => onPick(roots[i]),
                   ),
                   ..._conversations(roots[i]),
                   const SizedBox(height: 12),

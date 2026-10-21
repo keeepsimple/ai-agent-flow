@@ -151,7 +151,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                 Header(
                   flow: _flow,
                   sidebarOpen: _prefs.sidebarOpen,
-          fullScreen: _window.fullScreen,
+                  fullScreen: _window.fullScreen,
                   onToggleSidebar: _toggleSidebar,
                   task: showing ? task : null,
                   tab: _tab,
@@ -167,12 +167,20 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (_prefs.sidebarOpen)
-                        Sidebar(flow: _flow, onOpen: _open),
+                        Sidebar(
+                          flow: _flow,
+                          onOpen: _open,
+                          onPick: _pickWorkspace,
+                        ),
                       Expanded(
                         child: showing
                             ? (_tab == 'review'
                                   ? ReviewScreen(flow: _flow, task: task)
-                                  : WorkspaceScreen(flow: _flow, task: task, prefs: _prefs))
+                                  : WorkspaceScreen(
+                                      flow: _flow,
+                                      task: task,
+                                      prefs: _prefs,
+                                    ))
                             : SessionsScreen(flow: _flow, onOpen: _open),
                       ),
                     ],
@@ -229,17 +237,20 @@ class _AgentFlowAppState extends State<AgentFlowApp>
   }
 
   /// Switching shows the board, because that is what the choice changes.
-  Map<ShortcutActivator, VoidCallback> _workspaceKeys() {
-    void go(String? root) {
-      _flow.pickWorkspace(root);
-      _flow.select(null);
-      _prefs.set(workspace: root, clearWorkspace: root == null);
-    }
+  /// Choosing a workspace shows the board: that is what the choice changes.
+  /// The sidebar and the shortcuts both come through here, so clicking a name
+  /// and pressing its key cannot drift apart.
+  void _pickWorkspace(String? root) {
+    _flow.pickWorkspace(root);
+    _flow.select(null);
+    _prefs.set(workspace: root, clearWorkspace: root == null);
+  }
 
+  Map<ShortcutActivator, VoidCallback> _workspaceKeys() {
     return workspaceShortcuts(
       workspaces: _flow.roots.length,
-      onWorkspace: (i) => go(_flow.roots[i]),
-      onEverything: () => go(null),
+      onWorkspace: (i) => _pickWorkspace(_flow.roots[i]),
+      onEverything: () => _pickWorkspace(null),
       onToggleSidebar: _toggleSidebar,
     );
   }
