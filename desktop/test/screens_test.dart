@@ -168,6 +168,7 @@ void main() {
         'repoPaths': ['/w/logistek/warehouse-api'],
       }),
     ];
+    flow.disk = {'total': 3.5 * 1024 * 1024 * 1024, 'reclaimable': 2.2 * 1024 * 1024 * 1024};
     await _shoot(tester, 'sidebar', Sidebar(flow: flow, onOpen: (_) {}, onPick: (_) {}),
         const Size(244, 460));
   });

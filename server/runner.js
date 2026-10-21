@@ -12,6 +12,7 @@ import { UPLOADS, verify as verifyUpload } from './uploads.js'
 import { notify } from './notify.js'
 import { listRepos, resolveRepo } from './roots.js'
 import * as devServer from './preview.js'
+import { invalidate as forgetDiskSize } from './disk.js'
 import * as browser from './browser.js'
 
 export const PORT = Number(process.env.FLOW_PORT || 7777)
@@ -240,6 +241,7 @@ function setupWorktrees(task) {
 
   // With one repo, run inside it, so the CLI finds its CLAUDE.md the usual way.
   // With several, run one level up and let the prompt name each worktree.
+  forgetDiskSize()
   update(task.id, {
     trees,
     root: trees.length === 1 ? trees[0].worktree : base,
@@ -616,6 +618,16 @@ export function remove(id) {
 
   fs.rmSync(artifactDir(id), { recursive: true, force: true })
   fs.rmSync(path.join(DATA, 'logs', `${id}.jsonl`), { force: true })
+
+  // The pictures that were sent with it belong to the conversation, so they
+  // go with it. Dropping a worktree leaves them alone: the conversation is
+  // still there and still shows them.
+  const uploads = path.resolve(DATA, 'uploads')
+  for (const file of [...(task.attachments || []), ...(task.images || [])]) {
+    const full = path.resolve(file)
+    // Only inside the uploads folder, so a stored path cannot reach out.
+    if (full.startsWith(`${uploads}${path.sep}`)) fs.rmSync(full, { force: true })
+  }
   delete tasks[id]
   bus.emit('task', { id, removed: true })
   save()
@@ -663,6 +675,7 @@ export function removeWorktrees(id) {
   // The branches stay. Dropping the checkout is not the same as throwing the
   // work away, and setupWorktrees knows how to pick them back up.
   update(id, { root: null, droppedAt: Date.now() })
+  forgetDiskSize()
   return task
 }
 

@@ -22,7 +22,25 @@ function bytesOf(dir) {
   }
 }
 
+// `du` over a few gigabytes of worktrees takes seconds, and the answer only
+// changes when a checkout appears or goes. Measured once, then kept until
+// something makes it wrong.
+let cached = null
+let measuredAt = 0
+const TTL = 60_000
+
+export function invalidate() {
+  cached = null
+}
+
 export function usage() {
+  if (cached && Date.now() - measuredAt < TTL) return cached
+  cached = measure()
+  measuredAt = Date.now()
+  return cached
+}
+
+function measure() {
   const entries = Object.values(tasks)
     .filter((task) => task.root)
     .map((task) => ({

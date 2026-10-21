@@ -78,8 +78,9 @@ class Sidebar extends StatelessWidget {
             ),
           ),
           const Divider(height: 1, color: Tern.line),
+          _Disk(flow: flow),
           Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
             child: _AddFolder(flow: flow),
           ),
         ],
@@ -259,6 +260,57 @@ class _RowState extends State<_Row> {
           ),
         ),
       );
+}
+
+/// What the checkouts are costing. Without this, dropping one looks like it
+/// did nothing: the branches stay, the conversation stays, and the only thing
+/// that changed was a number nobody was showing.
+class _Disk extends StatefulWidget {
+  const _Disk({required this.flow});
+  final FlowState flow;
+
+  @override
+  State<_Disk> createState() => _DiskState();
+}
+
+class _DiskState extends State<_Disk> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => widget.flow.loadDisk());
+  }
+
+  static String _size(num bytes) {
+    if (bytes >= 1 << 30) return '${(bytes / (1 << 30)).toStringAsFixed(1)} GB';
+    if (bytes >= 1 << 20) return '${(bytes / (1 << 20)).round()} MB';
+    return '${(bytes / 1024).round()} KB';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final disk = widget.flow.disk;
+    final total = (disk?['total'] as num?) ?? 0;
+    final free = (disk?['reclaimable'] as num?) ?? 0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 8),
+      child: Row(children: [
+        const Icon(Icons.save_outlined, size: 13, color: Tern.faint),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            disk == null ? 'measuring…' : '${_size(total)} in worktrees',
+            style: t(11, color: Tern.muted),
+          ),
+        ),
+        if (free > 0)
+          Tooltip(
+            message: 'Droppable from finished tasks',
+            child: Text(_size(free), style: t(10.5, color: Tern.faint, code: true)),
+          ),
+      ]),
+    );
+  }
 }
 
 class _AddFolder extends StatefulWidget {

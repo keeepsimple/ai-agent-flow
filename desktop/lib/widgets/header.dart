@@ -138,6 +138,7 @@ class Header extends StatelessWidget {
                   onPressed: () async {
                     if (await flow.run(() => flow.api.dropWorktree(task!.id))) {
                       onDropped();
+                      flow.loadDisk();
                     }
                   },
                 ),

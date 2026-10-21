@@ -20,6 +20,10 @@ class FlowState extends ChangeNotifier {
   bool live = false;
   String? error;
 
+  /// What the worktrees are costing, measured by the server. Null until it
+  /// has been asked for: the measurement walks gigabytes and takes seconds.
+  Map<String, dynamic>? disk;
+
   /// Which workspace the board is showing. Null means all of them.
   String? workspace;
 
@@ -95,6 +99,17 @@ class FlowState extends ChangeNotifier {
     final all = tasks ?? const <Task>[];
     if (workspace == null) return all;
     return all.where((t) => rootOf(t) == workspace).toList();
+  }
+
+  Future<void> loadDisk() async {
+    try {
+      final found = await api.disk();
+      if (_gone) return;
+      disk = found;
+      notifyListeners();
+    } catch (_) {
+      // A number on a footer is not worth a banner.
+    }
   }
 
   Future<void> select(String? id) async {

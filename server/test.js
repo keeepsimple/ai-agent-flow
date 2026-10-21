@@ -655,12 +655,18 @@ try {
   // touches a branch.
   // Its own task: the other checks count the ones above and this one ends by
   // deleting what it made.
+  const keepsake = await (await fetch(`${base}/api/uploads`, {
+    method: 'POST',
+    headers: { 'X-Filename': 'keepsake.png' },
+    body: png,
+  })).json()
   const doomed = await post('/api/tasks', {
     repos: ['api'],
     prompt: 'throwaway',
     title: 'Đổi nút Create with AI',
     run: 'quick',
     autoApprove: true,
+    attachments: [keepsake.path],
   })
   await waitFor(doomed.id, (t) => t.status === 'done' || t.status === 'failed', 'the throwaway run')
 
@@ -691,6 +697,10 @@ try {
 
   const branch = after.trees[0].branch
   assert.match(git('api', 'log', '--oneline', branch), /impl|ok/, 'nor the branch')
+  assert.ok(
+    fs.existsSync(keepsake.path),
+    'and not the picture that was sent with it: the conversation still shows it',
+  )
 
   // Dropping is tidying, not finishing. Asking for one more thing has to put
   // the checkout back rather than making someone rebuild it by hand.
@@ -717,6 +727,10 @@ try {
     !fs.existsSync(path.join(root, 'data', 'logs', `${doomed.id}.jsonl`)) &&
       !fs.existsSync(path.join(root, 'data', 'tasks', doomed.id)),
     'with its log and its documents',
+  )
+  assert.ok(
+    !fs.existsSync(keepsake.path),
+    'and the picture it was sent, which nothing else was going to clean up',
   )
   assert.doesNotThrow(
     () => git('api', 'rev-parse', '--verify', branch),
@@ -833,7 +847,7 @@ try {
     '    the diff is readable from the app and an enormous file is only described,\n' +
     '    reclaiming worktree space never reclaims the work,\n' +
     '    a second folder can be added and an ambiguous repo name is refused,\n' +
-    '    dropping a worktree keeps the conversation, deleting keeps the branch,\n' +
+    '    dropping keeps the conversation and its pictures, deleting takes both,\n' +
     '    a follow-up on a dropped task checks the same branch back out,\n' +
     '    running the app refuses until the config it may repoint is named,\n' +
     '    and the configs offered come from the repo, paired with their dev stores',
