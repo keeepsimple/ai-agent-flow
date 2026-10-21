@@ -86,6 +86,8 @@ function tell(task, title, body, urgent = false) {
 }
 
 const children = new Map() // taskId -> ChildProcess
+const lastHeard = new Map() // taskId -> when the agent last streamed anything
+const stopped = (task) => ['cancelled', 'interrupted'].includes(tasks[task.id]?.status)
 const gateWaiters = new Map() // taskId -> resolve(feedbackOrNull)
 const questionWaiters = new Map() // questionId -> resolve(answer)
 const queue = []
@@ -261,7 +263,7 @@ async function runTask(task) {
 
   let feedback = null
   for (const phase of phasesFor(task.run)) {
-    if (task.status === 'cancelled') return
+    if (stopped(task)) return
     if (task.phases[phase].status === 'done') continue
 
     update(task.id, { status: 'running', phase, error: null })
@@ -285,7 +287,7 @@ async function runTask(task) {
       task.phases[phase] = { ...task.phases[phase], status: 'failed', endedAt: Date.now() }
       return fail(task, err.message)
     }
-    if (task.status === 'cancelled') return
+    if (stopped(task)) return
 
     task.phases[phase] = {
       status: 'done',
@@ -435,7 +437,7 @@ async function runPhase(task, phase, prompt) {
   try {
     return await runClaude(task, RESUME_PROMPT, task.root, { meta, resume: from.id })
   } catch (err) {
-    if (err.streamed || task.status === 'cancelled') throw err
+    if (err.streamed || stopped(task)) throw err
     log(task.id, { kind: 'text', text: 'resume refused; running the phase again' })
     return runClaude(task, prompt, task.root, { meta })
   }
@@ -447,13 +449,13 @@ function sideRun(task, label, prompt, cwd, finished, opts = {}) {
 
   runClaude(task, prompt, cwd, { ...opts, meta: { kind: 'side', label } })
     .then(() => {
-      if (tasks[task.id].status === 'cancelled') return
+      if (stopped(task)) return
       update(task.id, { status: previous, phase: null })
       tell(task, finished, task.repos.join(' + '))
       drain(task.id)
     })
     .catch((err) => {
-      if (tasks[task.id].status === 'cancelled') return
+      if (stopped(task)) return
       fail(task, `${label}: ${err.message}`)
     })
 
@@ -702,6 +704,7 @@ export function resume(id) {
   if (!task.lastSession?.id) throw new Error('no session to continue; retry instead')
 
   log(id, { kind: 'decision', text: 'Continuing the interrupted session' })
+  if (!task.root) setupWorktrees(task)
   if (task.lastSession.kind === 'side') {
     // A side run started from a finished task; that is what it goes back to.
     update(id, { status: 'done', error: null })
@@ -724,6 +727,35 @@ export function resumeInterrupted() {
   }
   return picked.map((t) => t.id)
 }
+
+/** Stop a run whose agent is not coming back, keeping the session so it can be continued. */
+export function markInterrupted(id, why) {
+  const task = tasks[id]
+  if (!task || task.status !== 'running') return
+  log(id, { kind: 'error', text: why })
+  update(id, { status: 'interrupted', interruptedAt: Date.now(), phase: null, error: why })
+  killTree(children.get(id))
+}
+
+// The machine sleeping does not kill the agent, but the CLI's connection often
+// does not survive it. A tick that arrives far later than scheduled means a
+// sleep happened; after one, a run that has been quiet for a while is treated
+// as interrupted rather than left spinning until someone notices.
+export const WATCHDOG_MS = Number(process.env.FLOW_WATCHDOG_MS || 60_000)
+export const SLEEP_JUMP_MS = Number(process.env.FLOW_SLEEP_JUMP_MS || 180_000)
+export const SILENT_MS = Number(process.env.FLOW_SILENT_MS || 600_000)
+let lastTick = Date.now()
+setInterval(() => {
+  const now = Date.now()
+  const slept = now - lastTick > WATCHDOG_MS + SLEEP_JUMP_MS
+  lastTick = now
+  if (!slept) return
+  for (const [id, heard] of lastHeard) {
+    if (now - heard > SILENT_MS && tasks[id]?.lastSession?.id) {
+      markInterrupted(id, 'Interrupted: the machine slept and the agent went quiet. Continue picks up the session.')
+    }
+  }
+}, WATCHDOG_MS).unref()
 
 export function removeWorktrees(id) {
   const task = tasks[id]
@@ -798,6 +830,7 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {} } =
       detached: !WIN,
     })
     children.set(task.id, child)
+    lastHeard.set(task.id, Date.now())
     child.stdin.on('error', () => {}) // the child can die before the prompt lands
     child.stdin.end(prompt, 'utf8')
 
@@ -821,6 +854,7 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {} } =
           update(task.id, { lastSession: { id: msg.session_id, ...meta, cwd, at: Date.now() } })
         }
         streamed++
+        lastHeard.set(task.id, Date.now())
         const entry = toLogEntry(task, msg, seen)
         if (entry) log(task.id, entry)
         if (msg.type === 'result') {
@@ -845,7 +879,8 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {} } =
 
     child.on('close', (code) => {
       children.delete(task.id)
-      if (task.status === 'cancelled') return resolve({ summary })
+      lastHeard.delete(task.id)
+      if (stopped(task)) return resolve({ summary })
       if (resultError) return reject(Object.assign(new Error(`${task.phase}: ${resultError}`), { streamed }))
       if (code === 0) return resolve({ summary })
       reject(Object.assign(new Error(`claude exited with code ${code} during ${task.phase}`), { streamed }))

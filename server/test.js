@@ -931,8 +931,35 @@ try {
   assert.equal(fs.readFileSync(resumedWith, 'utf8'), woke.lastSession.id, '"tiếp tục" resumes the last session')
   assert.ok(carried.log.some((l) => l.text === 'picked up where I was'))
 
+  // A machine that slept does not kill the agent, but the CLI's connection may
+  // not survive it. After a sleep, a run that has gone quiet counts as
+  // interrupted too. The thresholds are tunable so the test can be quick.
+  await restart({ FLOW_WATCHDOG_MS: '200', FLOW_SLEEP_JUMP_MS: '0', FLOW_SILENT_MS: '500' })
+  const dozy = await post('/api/tasks', { title: 'dozy', repos: ['api'], prompt: 'SLEEPY', run: 'ask' })
+  const dozyPid = path.join(root, 'data', 'tasks', dozy.id, 'pid')
+  for (let i = 0; i < 100 && !fs.existsSync(dozyPid); i++) await sleep(100)
+  const dozed = await waitFor(dozy.id, (t) => t.status === 'interrupted', 'the watchdog to notice')
+  assert.ok(dozed.lastSession?.id, 'the session survives the interruption')
+  let dozyGone = false
+  for (let i = 0; i < 70; i++) {
+    try { process.kill(Number(fs.readFileSync(dozyPid, 'utf8')), 0) } catch { dozyGone = true; break }
+    await sleep(100)
+  }
+  assert.ok(dozyGone, 'the stalled agent is stopped, not left running blind')
+
+  // Dropping the worktree of an interrupted task is allowed, and continuing it
+  // checks the branch back out before the session resumes.
+  await restart({ FLOW_AUTO_RESUME: '0' })
+  await fetch(`${base}/api/tasks/${dozy.id}/worktree`, { method: 'DELETE' }).then((r) => assert.ok(r.ok, 'drop allowed'))
+  assert.equal((await (await fetch(`${base}/api/tasks/${dozy.id}`)).json()).root, null)
+  await post(`/api/tasks/${dozy.id}/resume`)
+  const back = await waitFor(dozy.id, (t) => t.status === 'done', 'the dropped task to resume')
+  assert.ok(back.root && fs.existsSync(back.root), 'the worktree is back on disk')
+  assert.equal(fs.readFileSync(path.join(root, 'data', 'tasks', dozy.id, 'resumed.txt'), 'utf8'), dozed.lastSession.id)
+
   console.log(
     'ok: a restart mid-run leaves the task interrupted and resume continues its session,\n' +
+    '    a run gone quiet after a sleep is interrupted and stopped, a dropped worktree is rebuilt on resume,\n' +
     '    interrupted work resumes on launch, a refused session re-runs fresh out loud,\n' +
     '    and "tiếp tục" continues the last session',
   )
