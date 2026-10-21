@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { IconArrowUp, IconClock, IconPaperclip, IconPencil, IconX } from '@tabler/icons-react'
-import { AttachStrip, inputClass, selectChip, useAttachments } from './bits.jsx'
+import { AttachStrip, Picker, inputClass, useAttachments } from './bits.jsx'
 import { api } from '../api.js'
 
 function Queued({ task, onError }) {
@@ -153,34 +153,24 @@ export default function Composer({ task, flow, onError }) {
             </span>
           ))}
           {flow?.options?.models && (
-            <select
+            <Picker
               value={model}
-              onChange={(e) => changeModel(e.target.value)}
-              // It is the next run that reads this: the args are rebuilt each
-              // spawn, and nothing can reach a process already talking.
+              options={flow.options.models}
+              onPick={changeModel}
               title="The model the next run uses"
-              aria-label="Model"
-              className={selectChip}
-            >
-              {flow.options.models.map((m) => (
-                <option key={m} value={m}>
-                  {m || (flow.defaults?.cliModel ? `default (${flow.defaults.cliModel})` : 'default')}
-                </option>
-              ))}
-            </select>
+              label={(m) =>
+                m || (flow.defaults?.cliModel ? `CLI default (${flow.defaults.cliModel})` : 'CLI default')
+              }
+            />
           )}
           {flow?.options?.efforts && (
-            <select
+            <Picker
               value={effort}
-              onChange={(e) => changeEffort(e.target.value)}
+              options={flow.options.efforts}
+              onPick={changeEffort}
               title="How hard the next run thinks"
-              aria-label="Effort"
-              className={selectChip}
-            >
-              {flow.options.efforts.map((e) => (
-                <option key={e} value={e}>{e || 'default'} effort</option>
-              ))}
-            </select>
+              label={(e) => (e ? `${e} effort` : 'default effort')}
+            />
           )}
           <div className="flex-1" />
           <span className="font-mono text-[10px] text-muted">⌘↵</span>

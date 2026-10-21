@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from 'react'
-import { IconFileText, IconX } from '@tabler/icons-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { IconCheck, IconChevronDown, IconFileText, IconX } from '@tabler/icons-react'
 import { api } from '../api.js'
 
 // Four columns on the Sessions board, in the order the artboard puts them:
@@ -113,6 +113,68 @@ export function Chip({ mono = false, active = false, className = '', as: As = 'b
                   ${mono ? 'font-mono' : ''} ${className}`}
       {...props}
     />
+  )
+}
+
+/**
+ * A chip that opens its own list: numbered, with the current one ticked. Opens
+ * upward because the things that use it sit at the foot of a pane.
+ */
+export function Picker({ value, options, label, onPick, title, className = '' }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const away = (e) => !box.current?.contains(e.target) && setOpen(false)
+    const key = (e) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', away)
+    document.addEventListener('keydown', key)
+    return () => {
+      document.removeEventListener('mousedown', away)
+      document.removeEventListener('keydown', key)
+    }
+  }, [open])
+
+  return (
+    <div ref={box} className={`relative ${className}`}>
+      <Chip active={open} onClick={() => setOpen((v) => !v)} title={title} aria-expanded={open}>
+        {label(value)}
+        <IconChevronDown
+          size={12}
+          className={`shrink-0 transition-transform duration-200 ease-smooth ${open ? 'rotate-180' : ''}`}
+        />
+      </Chip>
+
+      {open && (
+        <ul
+          role="listbox"
+          className="animate-rise absolute right-0 bottom-full z-30 mb-2 flex min-w-[13rem] list-none
+                     flex-col gap-0.5 rounded-xl border border-line-strong bg-raised p-1.5 shadow-e3"
+        >
+          {options.map((option, i) => (
+            <li key={option}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={option === value}
+                onClick={() => {
+                  setOpen(false)
+                  if (option !== value) onPick(option)
+                }}
+                className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5
+                            text-left text-[13px] transition-colors duration-150
+                            ${option === value ? 'bg-selected text-ink' : 'text-ink-3 hover:bg-selected/60 hover:text-ink'}`}
+              >
+                <span className="w-3 shrink-0 font-mono text-[11px] text-faint">{i + 1}</span>
+                <span className="flex-1 truncate">{label(option)}</span>
+                {option === value && <IconCheck size={13} className="shrink-0 text-accent" />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
