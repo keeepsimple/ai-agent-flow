@@ -5,7 +5,7 @@ import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { DATA, bus, sse, tasks, artifactDir, emit, update, log, save, flush } from './store.js'
 import {
-  RESUME_PROMPT,
+  resumePrompt,
   buildShipPrompt,
   RUNS, GATES, PHASE_LABEL, phasesFor, buildPrompt, buildCatchUpPrompt, buildFollowUpPrompt,
   buildMergePrompt,
@@ -503,7 +503,7 @@ async function runPhase(task, phase, prompt) {
 
   update(task.id, { resumeFrom: null })
   try {
-    return await runClaude(task, RESUME_PROMPT, task.root, { meta, resume: from.id })
+    return await runClaude(task, resumePrompt(), task.root, { meta, resume: from.id })
   } catch (err) {
     if (err.streamed || stopped(task)) throw err
     log(task.id, { kind: 'text', text: 'resume refused; running the phase again' })
@@ -676,7 +676,7 @@ export function followUp(id, request, { secrets: given = [], hideSecrets = false
   // "Continue" means continue: the same session, not a new run told the story again.
   if (CONTINUE.test(request.trim()) && task.lastSession?.id) {
     log(id, { kind: 'decision', text: `Follow-up: ${request.trim()}` })
-    return sideRun(task, 'follow-up', RESUME_PROMPT, task.lastSession.cwd || task.root, `Follow-up done: ${task.title}`, {
+    return sideRun(task, 'follow-up', resumePrompt(), task.lastSession.cwd || task.root, `Follow-up done: ${task.title}`, {
       resume: task.lastSession.id,
     })
   }
@@ -824,7 +824,7 @@ export function resume(id) {
   if (task.lastSession.kind === 'side') {
     // A side run started from a finished task; that is what it goes back to.
     update(id, { status: 'done', error: null })
-    return sideRun(task, task.lastSession.label, RESUME_PROMPT, task.lastSession.cwd, `Done: ${task.title}`, {
+    return sideRun(task, task.lastSession.label, resumePrompt(), task.lastSession.cwd, `Done: ${task.title}`, {
       resume: task.lastSession.id,
     })
   }
