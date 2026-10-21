@@ -150,6 +150,14 @@ class Api {
   Future<dynamic> followUp(String id, String request, {bool hideSecrets = false}) =>
       _send('POST', '/api/tasks/$id/follow-up', {'request': request, 'hideSecrets': hideSecrets});
 
+  Future<List<Map<String, dynamic>>> prompts() async =>
+      ((await _send('GET', '/api/prompts')) as List).cast<Map<String, dynamic>>();
+  Future<dynamic> savePrompt(String name, String text) =>
+      _send('PUT', '/api/prompts/$name', {'text': text});
+  Future<dynamic> resetPrompt(String name) => _send('DELETE', '/api/prompts/$name');
+  Future<List<Map<String, dynamic>>> promptHistory(String name) async =>
+      ((await _send('GET', '/api/prompts/$name/history')) as List).cast<Map<String, dynamic>>();
+
   /// What in this text and these attachments looks like a secret: names, never values.
   Future<List<Map<String, dynamic>>> scanSecrets(String text, List<String> attachments) async {
     final out = await _send('POST', '/api/secrets/scan', {'text': text, 'attachments': attachments});

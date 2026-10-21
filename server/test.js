@@ -62,9 +62,9 @@ process.stdin.setEncoding('utf8')
 for await (const chunk of process.stdin) prompt += chunk
 
 const session = 'stub-' + process.pid
+fs.writeFileSync(path.join(art, 'prompt.txt'), prompt)
 if (process.env.FLOW_SECRET_EGO_API_KEY) {
   fs.writeFileSync(path.join(art, 'seen-env.txt'), process.env.FLOW_SECRET_EGO_API_KEY)
-  fs.writeFileSync(path.join(art, 'prompt.txt'), prompt)
 }
 const say = (text) =>
   console.log(JSON.stringify({ type: 'assistant', session_id: session, message: { content: [{ type: 'text', text }] } }))
@@ -1129,6 +1129,37 @@ try {
   assert.equal(badCfg.status, 400)
   secrets.forget('repo:' + path.join(repos, 'api'), ['JENKINS_TOKEN'])
   console.log('ok: a repo remembers its prod branch and Jenkins job, with the token in the keychain')
+
+  // Prompts: every one the agents are told is listed, editable, and reset-able.
+  // An override that names a placeholder the prompt is not given is refused.
+  const promptList = await (await fetch(`${base}/api/prompts`)).json()
+  assert.equal(promptList.length, 13)
+  const answerEntry = promptList.find((p) => p.name === 'answer')
+  assert.ok(answerEntry.default.includes('What the human asked'))
+  assert.equal(answerEntry.custom, null)
+  assert.deepEqual(answerEntry.placeholders, ['preamble', 'prompt', 'titleAsk'])
+  assert.ok(answerEntry.about.length > 10)
+  const putPrompt = (text) => fetch(`${base}/api/prompts/answer`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
+  })
+  const badPrompt = await putPrompt('hello {{nope}}')
+  assert.equal(badPrompt.status, 400)
+  assert.match((await badPrompt.json()).error, /nope/)
+  for (const v of ['v1', 'v2', 'v3']) assert.ok((await putPrompt(`OVERRIDE ${v} {{preamble}}\n\n## What the human asked\n\n{{prompt}}`)).ok)
+  assert.ok((await putPrompt('OVERRIDE v4 {{preamble}}\n\n## What the human asked\n\n{{prompt}}')).ok)
+  const history = await (await fetch(`${base}/api/prompts/answer/history`)).json()
+  assert.deepEqual(history.map((h) => h.text.slice(0, 11)), ['OVERRIDE v3', 'OVERRIDE v2', 'OVERRIDE v1'], 'the last three saves, newest first')
+  const told = await post('/api/tasks', { title: 'told', repos: ['api'], run: 'ask', prompt: 'plain question' })
+  await waitFor(told.id, (t) => t.status === 'done', 'the overridden run')
+  assert.match(fs.readFileSync(path.join(root, 'data', 'tasks', told.id, 'prompt.txt'), 'utf8'), /^OVERRIDE v4 You are running/, 'the agent gets the override')
+  assert.equal((await fetch(`${base}/api/prompts/answer`, { method: 'DELETE' })).status, 200)
+  const afterReset = (await (await fetch(`${base}/api/prompts`)).json()).find((p) => p.name === 'answer')
+  assert.equal(afterReset.custom, null, 'reset drops the override')
+  const told2 = await post('/api/tasks', { title: 'told2', repos: ['api'], run: 'ask', prompt: 'plain question' })
+  await waitFor(told2.id, (t) => t.status === 'done', 'the default run')
+  assert.doesNotMatch(fs.readFileSync(path.join(root, 'data', 'tasks', told2.id, 'prompt.txt'), 'utf8'), /OVERRIDE/)
+  assert.equal((await fetch(`${base}/api/prompts/nothing`)).status, 404)
+  console.log('ok: prompts are listed, overridden with a check, kept three deep, and reset')
 
   // ---- From here on the server is restarted; nothing above may follow. ----
 

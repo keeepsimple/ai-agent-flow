@@ -12,6 +12,7 @@ import 'package:agent_flow/api.dart';
 import 'package:agent_flow/flow.dart';
 import 'package:agent_flow/screens/review.dart';
 import 'package:agent_flow/shortcuts.dart';
+import 'package:agent_flow/screens/prompts.dart';
 import 'package:agent_flow/screens/sessions.dart';
 import 'package:agent_flow/prefs.dart';
 import 'package:agent_flow/server.dart';
@@ -501,6 +502,35 @@ void main() {
     expect(find.text('Prod branch'), findsOneWidget);
     expect(find.text('Jenkins job'), findsOneWidget);
     expect(find.textContaining('token is set'), findsOneWidget);
+  });
+
+  testWidgets('the prompts, listed and editable', (tester) async {
+    final flow = _flow();
+    await _shoot(
+      tester,
+      'prompts',
+      PromptsScreen(flow: flow, initial: [
+        {
+          'name': 'answer',
+          'about': 'The plain route: one run, no documents, no review.',
+          'placeholders': ['preamble', 'prompt', 'titleAsk'],
+          'default': '{{preamble}}\n\n## What the human asked\n\n{{prompt}}\n\nDo this, and nothing around it.',
+          'custom': '{{preamble}}\n\n## What the human asked\n\n{{prompt}}\n\nDo this, and say so in Vietnamese.',
+        },
+        {
+          'name': 'spec',
+          'about': 'The spec phase of the full route.',
+          'placeholders': ['preamble', 'prompt', 'artifactDir', 'many', 'titleAsk'],
+          'default': '{{preamble}}\n\n## Phase: write the spec',
+          'custom': null,
+        },
+      ]),
+      const Size(1100, 600),
+    );
+    expect(find.text('Save'), findsOneWidget);
+    expect(find.text('Reset to default'), findsOneWidget);
+    expect(find.text('spec'), findsOneWidget);
+    expect(find.textContaining('{{preamble}}, {{prompt}}, {{titleAsk}}'), findsOneWidget);
   });
 
   testWidgets('the header with nothing open', (tester) async {

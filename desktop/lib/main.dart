@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'api.dart';
 import 'flow.dart';
 import 'notifier.dart';
+import 'screens/prompts.dart';
 import 'screens/review.dart';
 import 'screens/sessions.dart';
 import 'screens/workspace.dart';
@@ -44,6 +45,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
   bool _ready = false;
   String? _trouble;
   String _tab = 'workspace';
+  bool _prompts = false;
 
   @override
   void initState() {
@@ -171,6 +173,8 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                   onAccent: (a) => setState(() => _accent = a),
                   onDropped: () {},
                   onDeleted: () => _flow.select(null),
+                  onPrompts: () => setState(() => _prompts = !_prompts),
+                  promptsOpen: _prompts,
                 ),
                 Expanded(
                   child: Row(
@@ -192,7 +196,9 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                                       task: task,
                                       prefs: _prefs,
                                     ))
-                            : SessionsScreen(flow: _flow, onOpen: _open),
+                            : (_prompts
+                                  ? PromptsScreen(flow: _flow)
+                                  : SessionsScreen(flow: _flow, onOpen: _open)),
                       ),
                     ],
                   ),
@@ -243,6 +249,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
   }
 
   void _open(String id) {
+    _prompts = false;
     setState(() => _tab = 'workspace');
     _flow.select(id);
   }
@@ -252,6 +259,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
   /// The sidebar and the shortcuts both come through here, so clicking a name
   /// and pressing its key cannot drift apart.
   void _pickWorkspace(String? root) {
+    _prompts = false;
     _flow.pickWorkspace(root);
     _flow.select(null);
     _prefs.set(workspace: root, clearWorkspace: root == null);

@@ -6,6 +6,7 @@ import { bus, sse, tasks, readLog, artifact } from './store.js'
 import * as runner from './runner.js'
 import * as secrets from './secrets.js'
 import * as repoConfig from './repo-config.js'
+import * as templates from './templates.js'
 import { resolveRepo } from './roots.js'
 import * as uploads from './uploads.js'
 import * as repoGit from './git.js'
@@ -171,6 +172,48 @@ async function api(req, res, url) {
       res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' })
       return fs.createReadStream(file).pipe(res)
     }
+  }
+
+  // The prompts: what every agent is told, with the person's overrides.
+  if (section === 'prompts') {
+    if (req.method === 'GET' && !id) {
+      return json(res, 200, Object.keys(templates.KNOWN).map((name) => ({
+        name,
+        about: templates.ABOUT[name],
+        placeholders: templates.KNOWN[name],
+        default: templates.defaultOf(name),
+        custom: templates.overrideOf(name),
+      })))
+    }
+    if (!templates.KNOWN[id]) return json(res, 404, { error: `unknown prompt: ${id}` })
+    const file = (n = 0) => path.join(templates.OVERRIDES_DIR, n ? `${id}.${n}.md` : `${id}.md`)
+    if (req.method === 'GET' && action === 'history') {
+      const kept = []
+      for (const n of [1, 2, 3]) if (fs.existsSync(file(n))) kept.push({ n, text: fs.readFileSync(file(n), 'utf8') })
+      return json(res, 200, kept)
+    }
+    if (req.method === 'PUT' && !action) {
+      const { text } = JSON.parse((await body(req)) || '{}')
+      if (typeof text !== 'string' || !text.trim()) return json(res, 400, { error: 'the prompt is empty' })
+      const unknown = templates.placeholders(text).filter((p) => !templates.KNOWN[id].includes(p))
+      if (unknown.length) {
+        return json(res, 400, { error: `{{${unknown[0]}}} is not something the ${id} prompt is given. It gets: ${templates.KNOWN[id].join(', ') || 'nothing'}` })
+      }
+      try { templates.render(text, {}) } catch (err) { return json(res, 400, { error: err.message }) }
+      fs.mkdirSync(templates.OVERRIDES_DIR, { recursive: true })
+      // Keep the last three saves: .1 is the newest of them.
+      if (fs.existsSync(file())) {
+        for (const n of [3, 2]) if (fs.existsSync(file(n - 1))) fs.renameSync(file(n - 1), file(n))
+        fs.renameSync(file(), file(1))
+      }
+      fs.writeFileSync(file(), text)
+      return json(res, 200, { name: id, custom: text })
+    }
+    if (req.method === 'DELETE' && !action) {
+      for (const n of [0, 1, 2, 3]) fs.rmSync(file(n), { force: true })
+      return json(res, 200, { name: id, custom: null })
+    }
+    return json(res, 404, { error: 'not found' })
   }
 
   // Per-repo: where prod is and what deploys it. The token never comes back out.

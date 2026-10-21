@@ -25,7 +25,13 @@ class Header extends StatelessWidget {
     required this.onAccent,
     required this.onDropped,
     required this.onDeleted,
+    this.onPrompts,
+    this.promptsOpen = false,
   });
+
+  /// Opens the Prompts screen; absent where there is nowhere to open it.
+  final VoidCallback? onPrompts;
+  final bool promptsOpen;
 
   final FlowState flow;
   final bool sidebarOpen;
@@ -162,6 +168,16 @@ class Header extends StatelessWidget {
               ),
             ],
           ] else ...[
+            if (onPrompts != null) ...[
+              FlowButton(
+                dense: true,
+                label: promptsOpen ? 'Board' : 'Prompts',
+                icon: promptsOpen ? Icons.view_agenda_outlined : Icons.edit_note,
+                tooltip: promptsOpen ? 'Back to the board' : 'What each agent is told, editable',
+                onPressed: onPrompts,
+              ),
+              const SizedBox(width: 8),
+            ],
             FlowButton(
               dense: true,
               label: 'Test browser',
