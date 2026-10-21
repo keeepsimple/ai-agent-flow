@@ -324,6 +324,80 @@ of the checks you ran.`
  * one run is what makes the second one safe — after the base has been merged
  * in, the merge the other way is a fast-forward, which cannot conflict.
  */
+export function buildShipPrompt(tree, ctx) {
+  const prod = ctx.prodBranch
+  const jenkins = ctx.jenkins
+  return `You are in ${ctx.prodWorktree}, a worktree on ${prod} of the ${tree.repo} repo.
+Read this repo's CLAUDE.md and follow it.
+
+The work on ${tree.branch} has landed on ${tree.baseBranch}. The human asked for it
+to reach ${prod} as well. ${prod} only ever receives cherry-picks of individual
+commits: never merge ${tree.baseBranch} into ${prod}, and never rebase or force
+anything. Do these in order and stop at the first thing that is not yours to
+decide.
+
+1.  Make sure ${prod} here is current:
+
+        git pull --ff-only origin ${prod}
+
+    If that is not a fast-forward, or there is no remote, say so and stop.
+
+2.  Cherry-pick these, one at a time, in this order. They are the commits this
+    task put on ${tree.baseBranch}, oldest first.
+
+Commits to pick, oldest first:
+${ctx.shas.map((s) => `    ${s}`).join('\n')}
+
+        git cherry-pick <sha>
+
+    If one conflicts, resolve it. Read ${ctx.artifactDir}/spec.md first where
+    it exists: it says what this work was for, which is what tells you which
+    side of a conflict carries intent. Where the two sides changed different
+    things, keep both. Never take one side wholesale because it is shorter.
+
+    A conflict where both sides changed the same behaviour on purpose is a
+    product decision, not a mechanical one. Do not guess:
+
+        "${ctx.node}" "${ctx.askScript}" "your question"
+
+3.  Run this repo's own checks on the result and fix what the pick broke.
+    Never report a check as passing without having run it and read the
+    output. If something is still failing, stop here and say what: do not
+    push a ${prod} you know is broken.
+
+4.  Check the diff for secrets, then push:
+
+        "${ctx.node}" "${ctx.guardScript}" "${tree.repoPath}" origin/${prod} ${prod}
+        git push origin ${prod}
+
+    If the guard exits non-zero it names file:line of something that looks
+    like a secret. Do not push. Take it out of the history, run the guard
+    again, and say what you found. Never force. If the remote rejects the
+    push, say what git said and stop.
+${
+  jenkins
+    ? `
+5.  Watch the deploy. This job deploys ${prod}; the watcher waits for the build
+    the push starts and reports how it went:
+
+        "${ctx.node}" "${ctx.jenkinsScript}" "${jenkins.url}" "${jenkins.job}"
+
+    Exit 0 means it deployed. Exit 1 means the build failed: quote the lines
+    it printed and stop; do not try to fix the deploy from here. Exit 2 means
+    it could not tell: say so.
+`
+    : `
+5.  No deploy watcher is configured for this repo. End by saying where the
+    human should look to see ${prod} deploy.
+`
+}
+Do not touch any other repo, and do not touch the repo's own checkout at
+${tree.repoPath}.
+
+End with: what you picked, what conflicted and how you resolved it, what you
+ran and its real output, what ${prod} points at now, and how the deploy went.`
+}
+
 export function buildMergePrompt(tree, ctx) {
   return `You are in ${tree.worktree}, on ${tree.branch}, in the ${tree.repo} repo.
 Read this repo's CLAUDE.md and follow it.

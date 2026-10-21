@@ -257,6 +257,10 @@ async function api(req, res, url) {
   if (req.method === 'POST' && action === 'cancel') return json(res, 200, runner.cancel(id))
   if (req.method === 'POST' && action === 'retry') return json(res, 200, runner.retry(id))
   if (req.method === 'POST' && action === 'resume') return json(res, 200, runner.resume(id))
+  if (req.method === 'POST' && action === 'ship') {
+    const { repo } = JSON.parse((await body(req)) || '{}')
+    return json(res, 200, runner.shipViaAgent(id, repo))
+  }
   if (req.method === 'DELETE' && action === 'worktree') return json(res, 200, runner.removeWorktrees(id))
   if (req.method === 'DELETE' && !action) return json(res, 200, runner.remove(id))
 

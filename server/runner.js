@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { DATA, bus, sse, tasks, artifactDir, emit, update, log, save, flush } from './store.js'
 import {
   RESUME_PROMPT,
+  buildShipPrompt,
   RUNS, GATES, PHASE_LABEL, phasesFor, buildPrompt, buildCatchUpPrompt, buildFollowUpPrompt,
   buildMergePrompt,
 } from './prompts.js'
@@ -16,6 +17,8 @@ import * as devServer from './preview.js'
 import { invalidate as forgetDiskSize } from './disk.js'
 import * as browser from './browser.js'
 import * as secrets from './secrets.js'
+import * as repoConfig from './repo-config.js'
+import { toPick, statusRow } from './git.js'
 
 export const PORT = Number(process.env.FLOW_PORT || 7777)
 export { listRepos, roots, addRoot, removeRoot, browse, DEFAULT_ROOT } from './roots.js'
@@ -30,6 +33,7 @@ const NODE_BIN = process.execPath
 const ASK_SCRIPT = path.join(import.meta.dirname, 'ask.mjs')
 const PREVIEW_SCRIPT = path.join(import.meta.dirname, 'preview.mjs')
 const GUARD_SCRIPT = path.join(import.meta.dirname, 'guard-secrets.mjs')
+const JENKINS_SCRIPT = path.join(import.meta.dirname, 'jenkins.mjs')
 
 // These three end up on a command line, which on Windows goes through cmd.exe,
 // so they are allowlisted rather than trusted. Each list is the CLI's own enum;
@@ -603,6 +607,44 @@ function drain(id) {
 }
 
 /**
+ * Ship to prod: the task's commits, cherry-picked onto the prod branch in a
+ * worktree of their own, by an agent, then pushed and watched. Refused when
+ * the branch has not landed on its base yet, when the repo has no prod
+ * branch, and when there is nothing left to pick.
+ */
+export function shipViaAgent(id, repo) {
+  const task = readyForSideRun(id)
+  const tree = task.trees?.find((t) => t.repo === repo)
+  if (!tree) throw new Error(`unknown repo: ${repo}`)
+
+  const { prodBranch, jenkins } = repoConfig.get(tree.repoPath)
+  const { exists, shas } = toPick(tree, prodBranch)
+  if (!exists) throw new Error(`${repo} has no ${prodBranch} branch`)
+  if (statusRow(tree).ahead > 0) throw new Error(`land ${tree.branch} on ${tree.baseBranch} first`)
+  if (!shas.length) throw new Error(`nothing left to pick onto ${prodBranch}: every commit of this task is already there`)
+
+  const prodWorktree = path.join(DATA, 'worktrees', task.id, `${repo}-prod`)
+  if (!fs.existsSync(prodWorktree)) git(tree.repoPath, 'worktree', 'add', prodWorktree, prodBranch)
+  forgetDiskSize()
+
+  log(id, {
+    kind: 'decision',
+    text: `Ship to ${prodBranch}: cherry-pick ${shas.length} commit${shas.length === 1 ? '' : 's'} of ${tree.branch} onto ${prodBranch}, push it${jenkins ? `, and watch ${jenkins.job}` : ''}`,
+  })
+  return sideRun(
+    task,
+    `shipping to ${prodBranch}`,
+    buildShipPrompt(tree, {
+      ...task, prodBranch, shas, prodWorktree, jenkins,
+      node: NODE_BIN, askScript: ASK_SCRIPT, guardScript: GUARD_SCRIPT, jenkinsScript: JENKINS_SCRIPT,
+    }),
+    prodWorktree,
+    `Shipped to ${prodBranch}: ${task.title}`,
+    { env: repoConfig.jenkinsEnv(tree.repoPath) },
+  )
+}
+
+/**
  * Keep working on a finished task: the build broke, the fix was not quite it,
  * one more thing. Same worktrees, same branches, no new task to lose the
  * context of what this already is.
@@ -840,6 +882,8 @@ export function removeWorktrees(id) {
   if (task.status === 'running') throw new Error('task is still running')
   for (const tree of task.trees) {
     git(tree.repoPath, 'worktree', 'remove', '--force', tree.worktree)
+    const prodWorktree = path.join(DATA, 'worktrees', task.id, `${tree.repo}-prod`)
+    if (fs.existsSync(prodWorktree)) git(tree.repoPath, 'worktree', 'remove', '--force', prodWorktree)
   }
   fs.rmSync(path.join(DATA, 'worktrees', task.id), { recursive: true, force: true })
   // The branches stay. Dropping the checkout is not the same as throwing the
@@ -869,7 +913,7 @@ function describeTool(name, input = {}) {
  * reports can be remembered against it; `resume` continues that session
  * instead of starting a new one.
  */
-function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {} } = {}) {
+function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {}, env: extraEnv = {} } = {}) {
   const args = [
     '-p',
     '--output-format', 'stream-json',
@@ -895,6 +939,7 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {} } =
       env: {
         ...process.env,
         ...secrets.env(task),
+        ...extraEnv,
         FLOW_URL: `http://127.0.0.1:${PORT}`,
         FLOW_TASK_ID: task.id,
         FLOW_ARTIFACTS: task.artifactDir,

@@ -5,6 +5,7 @@
 // Windows alike.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
@@ -105,6 +106,15 @@ if (args.includes('--resume') && process.env.STUB_REFUSE_RESUME) {
     execFileSync('git', ['-C', where, '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'fix build'])
   }
   say('reproduced it, fixed it, checks pass')
+} else if (prompt.includes('Commits to pick, oldest first:')) {
+  // The ship run: cherry-pick what it was told, in order, then push prod.
+  const NL = String.fromCharCode(10)
+  const listed = prompt.split('Commits to pick, oldest first:' + NL)[1].split(NL + NL)[0]
+  const shas = listed.split(NL).map((l) => l.trim()).filter(Boolean)
+  for (const sha of shas) execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'cherry-pick', sha])
+  const target = prompt.split('git push origin ')[1].split(NL)[0].trim()
+  execFileSync('git', ['push', '-q', 'origin', target])
+  say('picked ' + shas.length + ', checks pass, pushed ' + target)
 } else if (prompt.includes('--ff-only')) {
   // The merge run: catch the branch up here, then fast-forward the base in
   // the repo itself.
@@ -876,6 +886,85 @@ try {
     'the conversation should say what was asked for',
   )
   assert.notEqual(git('api', 'rev-parse', 'main'), beforeMerge, 'and main should have moved')
+
+  // Ship: once a branch is on the base, its commits go to prod by cherry-pick,
+  // in a worktree on prod, never by merging the base in. Refused when there
+  // is nothing left to pick, or when the branch has not landed yet.
+  const shipping = await post('/api/tasks', { repos: ['web'], prompt: 'ship me', run: 'quick', autoApprove: true })
+  await waitFor(shipping.id, (t) => t.status === 'done', 'the run to ship')
+  const early = await fetch(`${base}/api/tasks/${shipping.id}/ship`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'web' }),
+  })
+  assert.equal(early.status, 400, 'not before it has landed')
+  assert.match((await early.json()).error, /land/i)
+  await post(`/api/tasks/${shipping.id}/merge-now`, {})
+  const prodBefore = git('web', 'rev-parse', 'prod')
+  await post(`/api/tasks/${shipping.id}/ship`, { repo: 'web' })
+  const shipped = await waitFor(shipping.id, (t) => t.status === 'done' || t.status === 'failed', 'the ship run')
+  assert.equal(shipped.status, 'done', `ship run failed: ${shipped.error}\n` + shipped.log.slice(-6).map((l) => `  [${l.kind}] ${l.text}`).join('\n'))
+  assert.ok(shipped.log.some((l) => l.kind === 'decision' && /cherry-pick/.test(l.text)), 'the conversation says what was asked')
+  assert.notEqual(git('web', 'rev-parse', 'prod'), prodBefore, 'prod moved')
+  assert.equal(git('web', 'rev-parse', 'prod'), execFileSync('git', ['-C', origin, 'rev-parse', 'prod'], { encoding: 'utf8' }), 'and was pushed')
+  assert.ok(!git('web', 'log', '--merges', '--oneline', 'prod').trim(), 'by cherry-pick, never by merge')
+  assert.ok(fs.existsSync(path.join(root, 'data', 'worktrees', shipping.id, 'web-prod')), 'in a worktree on prod')
+  assert.equal(git('web', 'symbolic-ref', '--short', 'HEAD').trim(), 'main', 'the checkout was left alone')
+  const shippedRow = (await (await fetch(`${base}/api/tasks/${shipping.id}/git`)).json()).find((r) => r.repo === 'web')
+  assert.deepEqual(shippedRow.prod, { branch: 'prod', exists: true, toPick: 0, picked: 1 })
+  const again = await fetch(`${base}/api/tasks/${shipping.id}/ship`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'web' }),
+  })
+  assert.equal(again.status, 400)
+  assert.match((await again.json()).error, /nothing left to pick/)
+  const noProd = await fetch(`${base}/api/tasks/${landing.id}/ship`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'api' }),
+  })
+  assert.equal(noProd.status, 400, 'a repo with no prod branch cannot ship')
+  assert.ok(!fs.existsSync(path.join(root, 'data', 'worktrees', landing.id, 'api-prod')), 'and no worktree was made for it')
+
+  // The deploy watcher: waits for a build newer than the one it found, then
+  // for it to finish, and says how it went. It runs as a child because the
+  // fake Jenkins lives in this process and has to be free to answer.
+  let jenkinsHits = 0
+  let jenkinsMode = 'ok' // ok | fail | stuck
+  const jenkins = http.createServer((req, res) => {
+    jenkinsHits++
+    if (req.url.endsWith('/consoleText')) return res.end('line one\nline two\nBUILD FAILED\n')
+    assert.equal(req.headers.authorization, 'Basic ' + Buffer.from('ci:tok').toString('base64'))
+    if (jenkinsMode === 'stuck') return res.end(JSON.stringify({ number: 7, building: false, result: 'SUCCESS' }))
+    const number = jenkinsHits === 1 ? 7 : 8
+    const building = jenkinsHits === 2
+    res.end(JSON.stringify({ number, building, result: building ? null : jenkinsMode === 'fail' ? 'FAILURE' : 'SUCCESS' }))
+  })
+  await new Promise((r) => jenkins.listen(0, '127.0.0.1', r))
+  const jurl = `http://127.0.0.1:${jenkins.address().port}`
+  const watch = (extra = {}) =>
+    new Promise((resolve) => {
+      const child = spawn(process.execPath, [path.join(here, 'jenkins.mjs'), jurl, 'web-prod'], {
+        env: { ...process.env, FLOW_JENKINS_USER: 'ci', FLOW_JENKINS_TOKEN: 'tok', FLOW_JENKINS_POLL_MS: '20', ...extra },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      let out = ''
+      child.stdout.on('data', (d) => { out += d })
+      child.stderr.on('data', (d) => { out += d })
+      child.on('close', (code) => resolve({ code, out }))
+    })
+  const good = await watch()
+  assert.equal(good.code, 0, good.out)
+  assert.match(good.out, /#8: SUCCESS/)
+  assert.equal(jenkinsHits, 3, 'found #7, saw #8 building, saw #8 finish')
+  jenkinsHits = 0
+  jenkinsMode = 'fail'
+  const bad = await watch()
+  assert.equal(bad.code, 1, bad.out)
+  assert.match(bad.out, /#8: FAILURE/)
+  assert.match(bad.out, /BUILD FAILED/, 'the console tail is in the report')
+  jenkinsHits = 0
+  jenkinsMode = 'stuck'
+  const never = await watch({ FLOW_JENKINS_START_MS: '60', FLOW_JENKINS_POLL_MS: '30' })
+  assert.equal(never.code, 2, never.out)
+  assert.match(never.out, /no new build/i)
+  jenkins.closeAllConnections()
+  jenkins.close()
   assert.equal(
     git('api', 'rev-parse', 'main'),
     git('api', 'rev-parse', landed.trees[0].branch),

@@ -24,6 +24,8 @@ const lines = (text) => (text || '').split('\n').filter(Boolean)
  * What shipping this branch would involve, per repo. Everything here is a read:
  * the buttons it drives are the only things that write.
  */
+export function statusRow(tree) { return statusOf(tree) }
+
 function statusOf(tree) {
   // Everything is read through the repo and the branch name, never the
   // worktree: dropping a checkout does not throw the branch away, and the work
