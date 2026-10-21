@@ -48,11 +48,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
     super.dispose();
   }
 
-  Map<String, dynamic> _patch() => {
-        'costWarnUsd': double.tryParse(_cost.text.trim()) ?? 20,
-        'telegram': {'chatId': _chat.text.trim()},
-        if (_token.text.isNotEmpty) 'telegramToken': _token.text,
-      };
+  /// The patch to send, or null with the problem shown when the cost is not a number.
+  Map<String, dynamic>? _patch() {
+    final cost = double.tryParse(_cost.text.trim());
+    if (cost == null || !cost.isFinite || cost < 0) {
+      setState(() => _note = 'The cost line must be a number, 0 for none.');
+      return null;
+    }
+    return {
+      'costWarnUsd': cost,
+      'telegram': {'chatId': _chat.text.trim()},
+      if (_token.text.isNotEmpty) 'telegramToken': _token.text,
+    };
+  }
 
   Widget _field(String label, TextEditingController c, {String? hint, bool secret = false}) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
@@ -103,10 +111,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
                       onPressed: _busy
                           ? null
                           : () async {
+                              final patch = _patch();
+                              if (patch == null) return;
                               setState(() => _busy = true);
                               // Save first, so the test uses what is typed.
                               final ok = await widget.flow.run(() async {
-                                await widget.flow.api.saveSettings(_patch());
+                                _take(await widget.flow.api.saveSettings(patch));
                                 return widget.flow.api.telegramTest();
                               }, refresh: false);
                               if (!mounted) return;
@@ -128,7 +138,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
           label: 'Save',
           tone: Tone.primary,
           onPressed: () async {
-            if (await widget.flow.run(() => widget.flow.api.saveSettings(_patch()), refresh: false) && context.mounted) {
+            final patch = _patch();
+            if (patch == null) return;
+            if (await widget.flow.run(() => widget.flow.api.saveSettings(patch), refresh: false) && context.mounted) {
               Navigator.pop(context);
             }
           },

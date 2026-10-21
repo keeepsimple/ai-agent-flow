@@ -1054,6 +1054,7 @@ try {
   const landed2 = await waitFor(landing2.id, (t) => t.status === 'done' || t.status === 'failed', 'landing on release')
   assert.equal(landed2.status, 'done', `landing on release failed: ${landed2.error}`)
   assert.ok(landed2.log.some((l) => l.kind === 'decision' && /land on release/.test(l.text)))
+  assert.ok(landed2.log.some((l) => l.kind === 'decision' && l.text === 'Landed on release'), 'the outcome is written once it is checked, not when it is asked for')
   const landPrompt = fs.readFileSync(path.join(root, 'data', 'tasks', landing2.id, 'prompt.txt'), 'utf8')
   assert.ok(landPrompt.includes(`"${webRow2.baseRef || (await (await fetch(`${base}/api/tasks/${landing2.id}`)).json()).trees[0].baseRef}" ${webRow2.branch}`), 'the guard is run against the task\'s own base, never the target')
   assert.throws(
@@ -1097,6 +1098,25 @@ try {
   assert.equal(shippedBoth.status, 'done', shippedBoth.error)
   assert.ok(shippedBoth.log.some((l) => l.kind === 'decision' && /land on main/.test(l.text)), 'landed first')
   assert.ok(shippedBoth.log.some((l) => l.kind === 'decision' && /^Ship to prod/.test(l.text)), 'then shipped: ' + (shippedBoth.log.find((l) => /could not go on/.test(l.text || ''))?.text || ''))
+  assert.ok(shippedBoth.log.some((l) => l.kind === 'decision' && l.text === 'Shipped to prod'), 'and the ship outcome is written once checked')
+  // Another task shipping right now keeps its prod worktree.
+  const shipper = await post('/api/tasks', { repos: ['web'], prompt: 'SLEEPY', run: 'ask' })
+  const shipperPid = path.join(root, 'data', 'tasks', shipper.id, 'pid')
+  for (let i = 0; i < 100 && !fs.existsSync(shipperPid); i++) await sleep(100)
+  // prod is already checked out in the last ship's scratch worktree; hand that checkout to the sleeper.
+  const liveProd = path.join(root, 'data', 'worktrees', shipper.id, 'web-prod')
+  git('web', 'worktree', 'remove', '--force', path.join(root, 'data', 'worktrees', both.id, 'web-prod'))
+  fs.mkdirSync(path.dirname(liveProd), { recursive: true })
+  git('web', 'worktree', 'add', liveProd, 'prod')
+  const landedAgain = await post('/api/tasks', { repos: ['web'], prompt: 'UNIQUEFILE ship me too', run: 'quick', autoApprove: true })
+  await waitFor(landedAgain.id, (t) => t.status === 'done', 'the second shippable task')
+  await post(`/api/tasks/${landedAgain.id}/merge-now`, {})
+  const blockedShip = await fetch(`${base}/api/tasks/${landedAgain.id}/ship`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'web' }) })
+  assert.equal(blockedShip.status, 400, 'a live ship of another task is not swept away')
+  assert.match((await blockedShip.json()).error, /shipping to prod/)
+  await post(`/api/tasks/${shipper.id}/cancel`)
+  for (let i = 0; i < 70; i++) { try { process.kill(Number(fs.readFileSync(shipperPid, 'utf8')), 0) } catch { break } await sleep(100) }
+  git('web', 'worktree', 'remove', '--force', liveProd)
   assert.notEqual(git('web', 'rev-parse', 'prod'), prodBeforeBoth, 'prod moved')
   const shipPrompt = fs.readFileSync(path.join(root, 'data', 'tasks', both.id, 'prompt.txt'), 'utf8')
   assert.match(shipPrompt, /echo smoke-ok/, 'the smoke command is in the ship prompt')
@@ -1118,6 +1138,11 @@ try {
   await post(`/api/tasks/${pricey.id}/follow-up`, { request: 'and more' })
   const pricedMore = await waitFor(pricey.id, (t) => t.status === 'done' && t.phase === null && t.cost > priced.cost, 'the pricey follow-up')
   assert.equal(costLines(pricedMore).length, 1, 'not again as it keeps growing')
+  // A new, higher line is a new line: crossing it is said again.
+  await putSettings({ costWarnUsd: 0.025 })
+  await post(`/api/tasks/${pricey.id}/follow-up`, { request: 'and even more' })
+  const pricedAgain = await waitFor(pricey.id, (t) => t.status === 'done' && t.phase === null && t.cost > pricedMore.cost, 'the third pricey run')
+  assert.equal(pricedAgain.log.filter((l) => l.kind === 'decision' && /^Cost passed \$0\.025/.test(l.text)).length, 1, 'the raised line is said once too')
   await putSettings({ costWarnUsd: 20 })
   console.log('ok: cost has a line, crossed once and said once')
 
@@ -1678,12 +1703,19 @@ try {
   let qMsg
   for (let i = 0; i < 50 && !qMsg; i++) { qMsg = sentToPhone.find((m) => new RegExp(`^Q ${onPhone.id}/[0-9a-f]{8}: `).test(m.text)); if (!qMsg) await sleep(100) }
   assert.ok(qMsg, 'the question went to the phone with its id')
-  phoneQueue.push({ update_id: 1, message: { text: 'hello?' } })
-  phoneQueue.push({ update_id: 2, message: { text: 'B', reply_to_message: { text: qMsg.text } } })
+  phoneQueue.push({ update_id: 1, message: { chat: { id: 42 }, text: 'hello?' } })
+  phoneQueue.push({ update_id: 2, message: { chat: { id: 7 }, text: 'A', reply_to_message: { text: qMsg.text, from: { is_bot: true } } } }) // someone else's chat: ignored
+  phoneQueue.push({ update_id: 3, message: { chat: { id: 42 }, text: 'B', reply_to_message: { text: qMsg.text, from: { is_bot: true } } } })
   const answeredOnPhone = await waitFor(onPhone.id, (t) => t.status === 'done', 'the phone answer to land')
   assert.equal(answeredOnPhone.questions[0].answer, 'B', 'the reply answered the question')
   assert.ok(sentToPhone.some((m) => /Reply to a question message/.test(m.text)), 'the stray message got the hint')
   assert.ok(sentToPhone.some((m) => /^Done: /.test(m.text)), 'and the finish went to the phone too')
+  // A token the API rejects must not become a request storm.
+  let badPolls = 0
+  phone.on('request', (req) => { if (/\/botbad\/getUpdates/.test(req.url)) badPolls++ })
+  await putSettingsR({ telegramToken: 'bad' })
+  await sleep(1500)
+  assert.ok(badPolls <= 2, `a rejected token polls at most twice in 1.5 s, not ${badPolls} times`)
   await putSettingsR({ telegram: { chatId: '' }, telegramToken: '' })
   assert.equal((await (await fetch(`${base}/api/settings`)).json()).hasTelegramToken, false)
   phone.closeAllConnections()

@@ -6,7 +6,7 @@ import * as secrets from './secrets.js'
 
 const DATA = process.env.FLOW_DATA || path.join(import.meta.dirname, '..', 'data')
 const FILE = path.join(DATA, 'settings.json')
-export const TELEGRAM_OWNER = 'app:telegram'
+export const TELEGRAM_OWNER = `app:telegram@${DATA}`
 
 const DEFAULTS = { costWarnUsd: 20, telegram: { chatId: '' } }
 
@@ -21,6 +21,12 @@ export function get() {
     telegram: { chatId: String(saved.telegram?.chatId || '') },
     hasTelegramToken: secrets.read(TELEGRAM_OWNER, 'TOKEN') !== null,
   }
+}
+
+/** Just the cost line: read on every run result, so no keychain call here. */
+export function costLine() {
+  const saved = load()
+  return typeof saved.costWarnUsd === 'number' ? saved.costWarnUsd : DEFAULTS.costWarnUsd
 }
 
 export function set({ costWarnUsd, telegram, telegramToken } = {}) {

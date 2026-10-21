@@ -25,6 +25,7 @@ class SessionsScreen extends StatelessWidget {
     final repoNames = (flow.repos)
         .where((r) => flow.workspace == null || r['root'] == flow.workspace)
         .map((r) => r['name'] as String)
+        .toSet()
         .toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
@@ -288,7 +289,10 @@ class _TaskRowState extends State<_TaskRow>
                 ],
                 if (task.cost > 0)
                   Text(
-                    '\$${task.cost.toStringAsFixed(2)} · ${elapsedWords((task.active ? DateTime.now().millisecondsSinceEpoch : task.activeAt) - task.createdAt)}',
+                    // Elapsed only once it is over: a live clock on the board would never sit still.
+                    task.active
+                        ? '\$${task.cost.toStringAsFixed(2)}'
+                        : '\$${task.cost.toStringAsFixed(2)} · ${elapsedWords(task.activeAt - task.createdAt)}',
                     style: t(11.5, color: Tern.muted, code: true),
                   ),
                 // Free the checkout from here, without opening the conversation.

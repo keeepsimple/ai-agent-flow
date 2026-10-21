@@ -20,7 +20,9 @@ export function configure({ onAnswer: cb }) {
 export function reload() {
   const s = settings.get()
   chatId = s.telegram.chatId
-  token = secrets.read(settings.TELEGRAM_OWNER, 'TOKEN')
+  const next = secrets.read(settings.TELEGRAM_OWNER, 'TOKEN')
+  if (next !== token) offset = 0 // another bot's updates start from the top
+  token = next
   if (enabled() && !running) loop()
 }
 
@@ -44,10 +46,14 @@ export async function send(text, { taskId, questionId } = {}) {
  * a question message, or a message that starts with the question id, answers
  * that question; anything else gets a hint back.
  */
-export function handleUpdate(update) {
+export function handleUpdate(update, forChat = null) {
   const m = update?.message
   if (!m || typeof m.text !== 'string') return null
-  const quoted = /Q ([0-9a-f]{8})\/([0-9a-f]{8}):/.exec(m.reply_to_message?.text || '')
+  // Only the configured chat: anyone else who finds the bot is ignored outright.
+  if (forChat && String(m.chat?.id) !== String(forChat)) return null
+  // A reply counts only when it replies to something the bot itself said: a
+  // quoted question line typed by hand is not a question.
+  const quoted = m.reply_to_message?.from?.is_bot ? /Q ([0-9a-f]{8})\/([0-9a-f]{8}):/.exec(m.reply_to_message.text || '') : null
   if (quoted) return { answered: { taskId: quoted[1], questionId: quoted[2], text: m.text.trim() } }
   const lead = /^([0-9a-f]{8})\s+([\s\S]+)$/.exec(m.text.trim())
   if (lead) return { answered: { taskId: null, questionId: lead[1], text: lead[2].trim() } }
@@ -63,6 +69,11 @@ async function loop() {
       let updates = []
       try {
         const r = await fetch(`${API}/bot${token}/getUpdates?offset=${offset}&timeout=20`)
+        if (!r.ok) {
+          // A wrong token, a webhook set elsewhere, another poller: not a reason to hammer.
+          await sleep(3000)
+          continue
+        }
         updates = (await r.json()).result || []
       } catch {
         await sleep(3000)
@@ -70,7 +81,7 @@ async function loop() {
       }
       for (const u of updates) {
         offset = u.update_id + 1
-        const out = handleUpdate(u)
+        const out = handleUpdate(u, chatId)
         if (out?.answered) {
           try { await onAnswer?.(out.answered) } catch (err) { await send(`Could not answer: ${err.message}`) }
         } else if (out?.hint) {

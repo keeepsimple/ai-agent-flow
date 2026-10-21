@@ -10,7 +10,8 @@ const BARE = /^\s*(?:(?:cat|head|tail|less|more|bat)(?:\s+-[A-Za-z0-9]+)*|sed\s+
 
 export function isBareRead(command) {
   const c = String(command || '')
-  if (/[|;&<>]/.test(c)) return false
+  if (/[|;&<>\n]/.test(c)) return false
+  if (/^\s*tail\s+(?:-\S*\s+)*-[fF]\b/.test(c)) return false // following a log is not a read
   return BARE.test(c)
 }
 

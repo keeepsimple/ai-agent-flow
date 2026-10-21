@@ -6,7 +6,7 @@ import { isBareRead } from './hook-reads.mjs'
 for (const c of ['cat a.ts', 'cat "a b.ts"', 'sed -n 1,40p a.ts', 'sed -n 12p x', 'head -20 a', 'tail -n 5 a', 'less a', 'bat src/x.js', '  cat a.ts  ']) {
   assert.ok(isBareRead(c), `bare read: ${c}`)
 }
-for (const c of ['cat a | grep x', "cat > f <<'EOF'", 'cat a && ls', "sed -i '' 's/a/b/' f", 'grep -n foo a', 'cat a > b', 'cat a; ls', 'ls -la', 'sed -n 1p a | head', 'cat < a', 'node x.js', 'git diff', 'catalog list']) {
+for (const c of ['cat a.ts\nnpm test', 'tail -f log.txt', 'tail -F x', 'cat a | grep x', "cat > f <<'EOF'", 'cat a && ls', "sed -i '' 's/a/b/' f", 'grep -n foo a', 'cat a > b', 'cat a; ls', 'ls -la', 'sed -n 1p a | head', 'cat < a', 'node x.js', 'git diff', 'catalog list']) {
   assert.ok(!isBareRead(c), `not a bare read: ${c}`)
 }
 

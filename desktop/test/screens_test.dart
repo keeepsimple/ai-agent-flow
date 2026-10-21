@@ -72,6 +72,12 @@ Future<void> loadFonts() async {
 class _CapturingApi extends Api {
   _CapturingApi() : super(0);
   final sent = <String>[];
+  final savedSettings = <Map<String, dynamic>>[];
+  @override
+  Future<Map<String, dynamic>> saveSettings(Map<String, dynamic> patch) async {
+    savedSettings.add(patch);
+    return patch;
+  }
   @override
   Future<dynamic> followUp(
     String id,
@@ -1405,7 +1411,10 @@ void main() {
         'id': 'f1', 'title': 'Landed one', 'status': 'done', 'phase': null, 'cost': 1.42,
         'createdAt': 1000, 'updatedAt': 1000 + 5 * 60 * 1000,
         'toolMix': {'bash': 40, 'shellReads': 12, 'read': 3, 'edit': 2},
-        'log': [{'kind': 'decision', 'text': 'Push flow/x, open a merge request, then land on main'}],
+        'log': [
+          {'kind': 'decision', 'text': 'Push flow/x, open a merge request, then land on main'},
+          {'kind': 'decision', 'text': 'Landed on main'},
+        ],
       }),
     ];
     tester.view.physicalSize = const Size(1340, 700);
@@ -1549,6 +1558,46 @@ void main() {
     await tester.pump();
     expect(find.text('No screenshot yet'), findsOneWidget);
     expect(find.text('Open in browser'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('repo chips across every workspace do not repeat a name', (tester) async {
+    final flow = _flow();
+    flow.repos = [
+      ...flow.repos,
+      {'name': 'notify-service', 'path': '/w/logistek/notify-service', 'root': '/w/logistek'},
+    ];
+    flow.tasks = [_task({'status': 'done', 'phase': null})];
+    tester.view.physicalSize = const Size(1340, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(body: SessionsScreen(flow: flow, onOpen: (_) {})),
+    ));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('repo-chip:notify-service')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('a cost line that is not a number is refused in place', (tester) async {
+    final api = _CapturingApi();
+    final flow = FlowState(api);
+    addTearDown(flow.dispose);
+    tester.view.physicalSize = const Size(640, 520);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(body: Center(child: SettingsDialog(flow: flow, initial: const {'costWarnUsd': 20, 'telegram': {'chatId': ''}, 'hasTelegramToken': false}))),
+    ));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField).first, 'abc');
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    expect(find.text('The cost line must be a number, 0 for none.'), findsOneWidget);
+    expect(api.savedSettings, isEmpty, reason: 'nothing was sent');
     await tester.pump(const Duration(seconds: 6));
   });
 

@@ -113,10 +113,11 @@ function tell(task, title, body, urgent = false, { phone = true } = {}) {
 
 // A reply on the phone answers the question it replies to.
 telegram.configure({
-  onAnswer: ({ taskId, questionId, text }) => {
-    const id = taskId || Object.values(tasks).find((t) => (t.questions || []).some((q) => q.id === questionId))?.id
-    if (!id || !tasks[id]) throw new Error(`no task has question ${questionId}`)
-    return answerQuestion(id, questionId, text)
+  onAnswer: ({ questionId, text }) => {
+    // The question id is what counts; the task id in the message is only a label.
+    const owner = Object.values(tasks).find((t) => (t.questions || []).some((q) => q.id === questionId && q.answer === null))
+    if (!owner) throw new Error(`no open question ${questionId}`)
+    return answerQuestion(owner.id, questionId, text)
   },
 })
 
@@ -681,15 +682,25 @@ function sideRun(task, label, prompt, cwd, finished, opts = {}) {
   // not continue it in place of what was just asked for.
   update(task.id, { status: 'running', phase: label, error: null, lastSession: null })
 
-  const { after, ...runOpts } = opts
+  const { after, outcome, ...runOpts } = opts
   prepareWorktrees(task)
     .then(() => (stopped(task) ? null : runClaude(task, prompt, cwd, { ...runOpts, meta: { kind: 'side', label } })))
     .then(() => {
       if (stopped(task)) return
       update(task.id, { status: previous, phase: null })
-      tell(task, finished, task.repos.join(' + '))
-      if (opts.after) {
-        try { opts.after(); return } catch (err) { log(task.id, { kind: 'error', text: `could not go on: ${err.message}` }) }
+      // The outcome is checked, not assumed: the agent may have stopped at a
+      // guard, a failing check or a refused push and still exited cleanly.
+      let outcome = null
+      if (opts.outcome) {
+        try { outcome = opts.outcome() } catch (err) { outcome = { ok: false, line: `Could not check the outcome: ${err.message}`, title: finished } }
+        log(task.id, { kind: 'decision', text: outcome.line })
+      }
+      tell(task, outcome ? outcome.title : finished, task.repos.join(' + '), outcome ? !outcome.ok : false)
+      if (opts.after && (!outcome || outcome.ok)) {
+        try { opts.after(); return } catch (err) {
+          log(task.id, { kind: 'error', text: `could not go on: ${err.message}` })
+          tell(task, `Could not go on: ${task.title}`, err.message.slice(0, 180), true)
+        }
       }
       drain(task.id)
     })
@@ -745,6 +756,7 @@ export function mergeViaAgent(id, repo, { target, then } = {}) {
   const tree = task.trees?.find((t) => t.repo === repo)
   if (!tree) throw new Error(`unknown repo: ${repo}`)
   target = String(target || tree.baseBranch).trim()
+  if (then && then !== 'ship') throw new Error(`unknown follow-on: ${then}`)
   if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(target)) throw new Error(`not a branch name: ${target}`)
   // A branch that exists somewhere, or at least a name git would accept: the
   // push creates a new one, which is a thing people ask for (a release branch).
@@ -759,15 +771,24 @@ export function mergeViaAgent(id, repo, { target, then } = {}) {
     kind: 'decision',
     text: `Push ${tree.branch}, open a merge request, then land on ${target}`,
   })
-  if (then && then !== 'ship') throw new Error(`unknown follow-on: ${then}`)
   return sideRun(
     task,
     `landing on ${target}`,
     buildMergePrompt(tree, { ...task, target, hasRemote, node: NODE_BIN, askScript: ASK_SCRIPT, guardScript: GUARD_SCRIPT }),
     tree.worktree,
     `Landed on ${target}: ${task.title}`,
-    // One click, two runs: when the landing ends well, ship the same repo.
-    then === 'ship' ? { after: () => shipViaAgent(id, repo) } : {},
+    {
+      // What actually happened, checked rather than assumed: is the branch on the target now?
+      outcome: () => {
+        const ref = quiet(() => git(tree.repoPath, 'rev-parse', '--verify', '--quiet', `origin/${target}`)) ? `origin/${target}` : target
+        const left = Number(quiet(() => git(tree.repoPath, 'rev-list', '--count', `${ref}..${tree.branch}`)).trim() || '0')
+        return left === 0
+          ? { ok: true, line: `Landed on ${target}`, title: `Landed on ${target}: ${task.title}` }
+          : { ok: false, line: `Landing on ${target} stopped: ${left} commit${left === 1 ? '' : 's'} still not on ${target}`, title: `Landing on ${target} stopped: ${task.title}` }
+      },
+      // One click, two runs: when the landing really landed, ship the same repo.
+      ...(then === 'ship' ? { after: () => shipViaAgent(id, repo) } : {}),
+    },
   )
 }
 
@@ -820,6 +841,13 @@ export function shipViaAgent(id, repo) {
       const where = (/^worktree (.+)$/m.exec(block) || [])[1]
       const onBranch = (/^branch refs\/heads\/(.+)$/m.exec(block) || [])[1]
       if (where && onBranch === prodBranch && real(where).startsWith(ours) && real(where) !== real(prodWorktree)) {
+        // Whose is it? A task still shipping keeps its worktree; a ship that
+        // ended left scratch behind.
+        const owner = real(where).slice(ours.length).split(path.sep)[0]
+        const theirs = tasks[owner]
+        if (theirs && (['running', 'queued', 'awaiting_approval', 'awaiting_answer'].includes(theirs.status) || children.has(owner))) {
+          throw new Error(`task ${owner} (${theirs.title}) is shipping to ${prodBranch} right now; wait for it`)
+        }
         try { git(tree.repoPath, 'worktree', 'remove', '--force', where) } catch {}
       }
     }
@@ -840,7 +868,16 @@ export function shipViaAgent(id, repo) {
     }),
     prodWorktree,
     `Shipped to ${prodBranch}: ${task.title}`,
-    { env: repoConfig.jenkinsEnv(tree.repoPath) },
+    {
+      env: repoConfig.jenkinsEnv(tree.repoPath),
+      outcome: () => {
+        try { git(tree.repoPath, 'fetch', '-q', 'origin', prodBranch) } catch {}
+        const left = toPick(tree, prodBranch).shas.length
+        return left === 0
+          ? { ok: true, line: `Shipped to ${prodBranch}`, title: `Shipped to ${prodBranch}: ${task.title}` }
+          : { ok: false, line: `Shipping to ${prodBranch} stopped: ${left} commit${left === 1 ? '' : 's'} still to pick`, title: `Shipping to ${prodBranch} stopped: ${task.title}` }
+      },
+    },
   )
 }
 
@@ -1145,9 +1182,9 @@ export function reveal(id, name) {
 
 /** The cost line from settings: crossed once, said once, in the conversation and as a notification. */
 function warnOnCost(task) {
-  const line = settings.get().costWarnUsd
-  if (!line || task.costWarned || !(task.cost >= line)) return
-  update(task.id, { costWarned: true })
+  const line = settings.costLine()
+  if (!line || task.costWarnedAt === line || !(task.cost >= line)) return
+  update(task.id, { costWarned: true, costWarnedAt: line })
   log(task.id, { kind: 'decision', text: `Cost passed $${line}: this task is at $${task.cost.toFixed(2)}` })
   tell(task, `Cost passed $${line}: ${task.title}`, `at $${task.cost.toFixed(2)}`, true)
 }
