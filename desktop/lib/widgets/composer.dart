@@ -1,11 +1,9 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api.dart';
 import '../flow.dart';
-import '../pick.dart';
+import '../paste.dart';
 import '../theme.dart';
 import 'bits.dart';
 import 'mentions.dart';
@@ -57,46 +55,18 @@ class _ComposerState extends State<Composer> {
     setState(() => _busy = false);
   }
 
-  Future<void> _attachFile() async {
-    final path = await Pick.file();
-    if (path == null) return;
-    await _upload(File(path));
-  }
-
-  /// Cmd-V, for whatever is on the clipboard.
-  ///
-  /// Flutter's own clipboard is text only, so an image has to be fetched the
-  /// way the OS will give it: written out by the shell and read back. Binding
-  /// the key for that alone swallowed it, so pasting text into this box did
-  /// nothing at all.
-  Future<void> _paste() async {
-    final file = await Pick.clipboardImage();
-    if (file != null) return _upload(file);
-
-    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
-    if (text == null || text.isEmpty) return;
-
-    final value = _text.value;
-    final at = value.selection.isValid
-        ? value.selection
-        : TextSelection.collapsed(offset: value.text.length);
-    _text.value = value.replaced(at, text).copyWith(
-          selection: TextSelection.collapsed(offset: at.start + text.length),
-        );
-  }
-
-  Future<void> _upload(File file) async {
-    try {
-      final saved = await widget.flow.api.upload(
-        file.uri.pathSegments.last,
-        await file.readAsBytes(),
+  Future<void> _attachFile() => attachInto(
+        api: widget.flow.api,
+        onAttached: (path) => setState(() => _attached.add(path)),
+        onError: widget.flow.fail,
       );
-      if (!mounted) return;
-      setState(() => _attached.add(saved['path'] as String));
-    } catch (err) {
-      widget.flow.fail(err);
-    }
-  }
+
+  Future<void> _paste() => pasteInto(
+        controller: _text,
+        api: widget.flow.api,
+        onAttached: (path) => setState(() => _attached.add(path)),
+        onError: widget.flow.fail,
+      );
 
   @override
   Widget build(BuildContext context) {

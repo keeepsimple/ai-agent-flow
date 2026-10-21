@@ -1,11 +1,10 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api.dart';
 import '../flow.dart';
-import '../pick.dart';
+import '../paste.dart';
 import '../theme.dart';
 import '../widgets/bits.dart';
 import '../widgets/mentions.dart';
@@ -208,19 +207,20 @@ class _NewTaskState extends State<NewTask> {
     }
   }
 
-  Future<void> _attach() async {
-    final path = await Pick.file();
-    if (path == null) return;
-    try {
-      final file = File(path);
-      final saved =
-          await widget.flow.api.upload(file.uri.pathSegments.last, await file.readAsBytes());
-      if (!mounted) return;
-      setState(() => _attached.add(saved['path'] as String));
-    } catch (err) {
-      widget.flow.fail(err);
-    }
-  }
+  Future<void> _attach() => attachInto(
+        api: widget.flow.api,
+        onAttached: (path) => setState(() => _attached.add(path)),
+        onError: widget.flow.fail,
+      );
+
+  /// The same Cmd-V as the follow-up box: a screenshot becomes an attachment,
+  /// anything else is pasted as text. This box had neither.
+  Future<void> _paste() => pasteInto(
+        controller: _prompt,
+        api: widget.flow.api,
+        onAttached: (path) => setState(() => _attached.add(path)),
+        onError: widget.flow.fail,
+      );
 
   /// Which repos a task would run against. Ticking none means the whole
   /// workspace: every repo in the folder being shown, one worktree each.
@@ -300,6 +300,7 @@ class _NewTaskState extends State<NewTask> {
                 bindings: {
                   const SingleActivator(LogicalKeyboardKey.enter, meta: true): _start,
                   const SingleActivator(LogicalKeyboardKey.enter, control: true): _start,
+                  const SingleActivator(LogicalKeyboardKey.keyV, meta: true): _paste,
                 },
                 child: TextField(
                   controller: _prompt,
