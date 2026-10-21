@@ -845,6 +845,47 @@ export function resume(id) {
   return task
 }
 
+/** Files a task produced under <artifacts>/work, newest first, capped. */
+export function output(id, { cap = 200 } = {}) {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  const dir = path.join(task.artifactDir || artifactDir(id), 'work')
+  let names = []
+  try { names = fs.readdirSync(dir) } catch { return { files: [], truncated: false } }
+  const files = names
+    .map((name) => {
+      try {
+        const st = fs.statSync(path.join(dir, name))
+        return st.isFile() ? { name, bytes: st.size, mtime: st.mtimeMs } : null
+      } catch { return null }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.mtime - a.mtime)
+  return { files: files.slice(0, cap), truncated: files.length > cap }
+}
+
+/** One produced file, by name only: nothing outside work/ is reachable. */
+export function outputFile(id, name) {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  if (!name || name !== path.basename(name) || name.startsWith('.')) {
+    throw Object.assign(new Error('a file name, not a path'), { status: 400 })
+  }
+  const file = path.join(task.artifactDir || artifactDir(id), 'work', name)
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw Object.assign(new Error('no such file'), { status: 404 })
+  return file
+}
+
+/** A plain task that produced a document is offered the Document route: only the route changes. */
+export function switchRun(id, run) {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  if (run !== 'doc') throw new Error('only a switch to the Document route is offered')
+  if (task.status === 'running' || task.status === 'queued') throw new Error('wait for the run to finish')
+  update(id, { run: 'doc', readPaths: task.repoPaths })
+  return task
+}
+
 /** On launch: pick every interrupted task back up, unless told to leave them for the button. */
 export function resumeInterrupted() {
   if (process.env.FLOW_AUTO_RESUME === '0') return []

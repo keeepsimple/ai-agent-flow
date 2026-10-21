@@ -558,6 +558,58 @@ void main() {
     expect(jumped, 1);
   });
 
+  testWidgets('a document task shows what it produced instead of a diff', (tester) async {
+    final flow = _flow();
+    final task = _task({
+      'run': 'doc',
+      'status': 'done',
+      'phase': null,
+      'trees': const [],
+      'root': '/data/tasks/a1b2c3d4/work',
+      'artifactDir': '/data/tasks/a1b2c3d4',
+      'phases': {'write': {'status': 'done'}},
+      'log': [
+        {'kind': 'text', 'text': 'Wrote estimate.md and the figures as a CSV.'},
+      ],
+    });
+    await _shoot(
+      tester,
+      'workspace-doc',
+      WorkspaceScreen(
+        flow: flow,
+        task: task,
+        prefs: Prefs.memory(),
+        outputInitial: const [
+          {'name': 'estimate.md', 'bytes': 1832, 'mtime': 2},
+          {'name': 'figures.csv', 'bytes': 410, 'mtime': 1},
+        ],
+        outputTextInitial: '# Estimate\n\nThree days, give or take.',
+      ),
+      const Size(1340, 700),
+    );
+    expect(find.text('Output'), findsOneWidget);
+    expect(find.text('estimate.md'), findsOneWidget);
+    expect(find.text('figures.csv'), findsOneWidget);
+    expect(find.text('Three days, give or take.'), findsOneWidget);
+    expect(find.text('Changes'), findsNothing);
+  });
+
+  testWidgets('a plain task that wrote a document is offered the Document route', (tester) async {
+    final flow = _flow();
+    final task = _task({'status': 'done', 'phase': null, 'hasOutput': true});
+    tester.view.physicalSize = const Size(1340, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(body: WorkspaceScreen(flow: flow, task: task, prefs: Prefs.memory())),
+    ));
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(find.textContaining('Document route'), findsOneWidget);
+    expect(find.text('Switch'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('the header with nothing open', (tester) async {
     final flow = _flow();
     await _shoot(

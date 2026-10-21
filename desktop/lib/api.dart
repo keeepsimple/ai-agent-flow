@@ -18,6 +18,7 @@ class Task {
   String? get awaitingPhase => raw['awaitingPhase'] as String?;
   String? get error => raw['error'] as String?;
   String? get root => raw['root'] as String?;
+  String get run => (raw['run'] ?? 'ask') as String;
   String? get model => raw['model'] as String?;
   String? get openQuestionId => raw['openQuestionId'] as String?;
   num get cost => (raw['cost'] ?? 0) as num;
@@ -149,6 +150,22 @@ class Api {
   Future<dynamic> resume(String id) => _send('POST', '/api/tasks/$id/resume');
   Future<dynamic> followUp(String id, String request, {bool hideSecrets = false}) =>
       _send('POST', '/api/tasks/$id/follow-up', {'request': request, 'hideSecrets': hideSecrets});
+
+  /// Files a task produced in its work folder, newest first.
+  Future<Map<String, dynamic>> output(String id) async =>
+      (await _send('GET', '/api/tasks/$id/output')) as Map<String, dynamic>;
+
+  /// One produced file as text.
+  Future<String> outputText(String id, String name) async {
+    final request = await _client.getUrl(_url('/api/tasks/$id/output/${Uri.encodeComponent(name)}'));
+    final response = await request.close();
+    final text = await response.transform(utf8.decoder).join();
+    if (response.statusCode >= 400) throw ApiError(text);
+    return text;
+  }
+
+  Future<dynamic> switchRun(String id, String run) =>
+      _send('PUT', '/api/tasks/$id/run', {'run': run});
 
   Future<List<Map<String, dynamic>>> prompts() async =>
       ((await _send('GET', '/api/prompts')) as List).cast<Map<String, dynamic>>();

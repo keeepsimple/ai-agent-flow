@@ -109,6 +109,7 @@ function phaseContext(ctx) {
   return {
     preamble: preamble(ctx),
     prompt: ctx.prompt,
+    workDir: `${ctx.artifactDir}/work`,
     promptIndented: indent(ctx.prompt, '   '),
     artifactDir: ctx.artifactDir,
     many: ctx.trees.length > 1,

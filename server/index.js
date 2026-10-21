@@ -68,11 +68,13 @@ function taskView(id) {
   // spans a whole workspace is a hundred processes and the better part of two
   // seconds — paid every time someone opens a conversation. The one screen
   // that needs it asks for it on its own.
-  return { ...task, log: readLog(id), docs }
+  // Whether a plain-route task left files in work/: the app offers the Document route then.
+  const hasOutput = task.run === 'doc' ? undefined : runner.output(id).files.length > 0
+  return { ...task, log: readLog(id), docs, hasOutput }
 }
 
 async function api(req, res, url) {
-  const [, , section, id, action] = url.pathname.split('/')
+  const [, , section, id, action, rest] = url.pathname.split('/')
 
   if (section === 'state' && req.method === 'GET') {
     return json(res, 200, {
@@ -300,6 +302,20 @@ async function api(req, res, url) {
   if (req.method === 'POST' && action === 'cancel') return json(res, 200, runner.cancel(id))
   if (req.method === 'POST' && action === 'retry') return json(res, 200, runner.retry(id))
   if (req.method === 'POST' && action === 'resume') return json(res, 200, runner.resume(id))
+  if (req.method === 'PUT' && action === 'run') {
+    const { run } = JSON.parse((await body(req)) || '{}')
+    try { return json(res, 200, runner.switchRun(id, run)) } catch (err) { return json(res, 400, { error: err.message }) }
+  }
+  if (req.method === 'GET' && action === 'output' && !rest) return json(res, 200, runner.output(id))
+  if (req.method === 'GET' && action === 'output' && rest) {
+    let file
+    try { file = runner.outputFile(id, decodeURIComponent(rest)) } catch (err) { return json(res, err.status || 400, { error: err.message }) }
+    const types = { md: 'text/markdown', txt: 'text/plain', csv: 'text/csv', json: 'application/json', html: 'text/html' }
+    const ext = path.extname(file).slice(1).toLowerCase()
+    res.writeHead(200, { 'Content-Type': `${types[ext] || 'application/octet-stream'}${types[ext]?.startsWith('text/') || ext === 'json' ? '; charset=utf-8' : ''}` })
+    fs.createReadStream(file).pipe(res)
+    return
+  }
   if (req.method === 'POST' && action === 'ship') {
     const { repo } = JSON.parse((await body(req)) || '{}')
     return json(res, 200, runner.shipViaAgent(id, repo))

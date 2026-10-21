@@ -15,7 +15,7 @@ export const KNOWN = {
   preamble: ['many', 'treeCount', 'root', 'treeTable', 'artifactDir', 'secretsNote', 'hasAttachments', 'attachmentList', 'autoApprove', 'hasPreview', 'node', 'previewScript', 'askScript'],
   title: ['artifactDir'],
   secrets: ['noShell', 'names', 'lines', 'first'],
-  answer: ['preamble', 'prompt', 'titleAsk'],
+  answer: ['preamble', 'prompt', 'workDir', 'titleAsk'],
   spec: ['preamble', 'prompt', 'artifactDir', 'many', 'titleAsk'],
   plan: ['preamble', 'artifactDir', 'hasFeedback', 'feedback'],
   implement: ['preamble', 'quick', 'prompt', 'artifactDir', 'hasFeedback', 'feedback', 'titleAsk'],

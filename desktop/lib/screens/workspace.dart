@@ -9,6 +9,7 @@ import '../widgets/composer.dart';
 import '../widgets/conversation.dart';
 import '../widgets/decision.dart';
 import '../widgets/diff_view.dart';
+import '../widgets/output_pane.dart';
 import '../widgets/splitter.dart';
 import '../widgets/status_line.dart';
 
@@ -19,11 +20,17 @@ class WorkspaceScreen extends StatefulWidget {
     required this.flow,
     required this.task,
     required this.prefs,
+    this.outputInitial,
+    this.outputTextInitial,
   });
 
   final FlowState flow;
   final Task task;
   final Prefs prefs;
+
+  /// For tests of the document route: skips the output fetches.
+  final List<Map<String, dynamic>>? outputInitial;
+  final String? outputTextInitial;
 
   @override
   State<WorkspaceScreen> createState() => _WorkspaceScreenState();
@@ -94,9 +101,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     final files = _files();
     final chosen = files.where((f) => f['path'] == _file).firstOrNull;
 
+    final isDoc = task.run == 'doc';
     return Column(
       children: [
         StatusLine(task: task, onJump: () => _jump.value++),
+        if (!isDoc && task.raw['hasOutput'] == true) _offerDoc(task),
         Expanded(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -127,13 +136,49 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                 )
               else
                 const VerticalDivider(width: 1, color: Tern.line),
-              _changes(chosen),
+              if (isDoc)
+                OutputPane(
+                  task: task,
+                  flow: widget.flow,
+                  open: widget.prefs.changesOpen,
+                  width: widget.prefs.changesWidth,
+                  onToggle: () => setState(
+                      () => widget.prefs.set(changesOpen: !widget.prefs.changesOpen)),
+                  initial: widget.outputInitial,
+                  textInitial: widget.outputTextInitial,
+                )
+              else
+                _changes(chosen),
             ],
           ),
         ),
       ],
     );
   }
+
+  /// A plain task that wrote a file into work/: the Document route shows it.
+  Widget _offerDoc(Task task) => Container(
+        padding: const EdgeInsets.fromLTRB(16, 6, 10, 6),
+        decoration: const BoxDecoration(
+          color: Tern.panel,
+          border: Border(bottom: BorderSide(color: Tern.line)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.description_outlined, size: 13, color: Tern.muted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'This produced files. Switch to the Document route to see them here? The worktree stays.',
+              style: t(11.5, color: Tern.muted),
+            ),
+          ),
+          FlowButton(
+            dense: true,
+            label: 'Switch',
+            onPressed: () => widget.flow.run(() => widget.flow.api.switchRun(task.id, 'doc')),
+          ),
+        ]),
+      );
 
   /// The pane is sized from the right edge, so dragging the handle left makes
   /// it wider. Bounded on both sides: the conversation needs room too, and a
@@ -273,18 +318,20 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               ),
             ),
         ],
-        const SizedBox(height: 16),
-        Text('Changed files', style: t(11, color: Tern.muted)),
-        const SizedBox(height: 6),
-        if (files.isEmpty)
-          Text('none yet', style: t(11.5, color: Tern.faint))
-        else
-          for (final file in files)
-            _FileRow(
-              file: file,
-              selected: file['path'] == _file,
-              onTap: () => setState(() => _file = file['path'] as String),
-            ),
+        if (task.run != 'doc') ...[
+          const SizedBox(height: 16),
+          Text('Changed files', style: t(11, color: Tern.muted)),
+          const SizedBox(height: 6),
+          if (files.isEmpty)
+            Text('none yet', style: t(11.5, color: Tern.faint))
+          else
+            for (final file in files)
+              _FileRow(
+                file: file,
+                selected: file['path'] == _file,
+                onTap: () => setState(() => _file = file['path'] as String),
+              ),
+        ],
       ],
     ),
   );

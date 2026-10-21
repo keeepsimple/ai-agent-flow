@@ -1142,7 +1142,7 @@ try {
   const answerEntry = promptList.find((p) => p.name === 'answer')
   assert.ok(answerEntry.default.includes('What the human asked'))
   assert.equal(answerEntry.custom, null)
-  assert.deepEqual(answerEntry.placeholders, ['preamble', 'prompt', 'titleAsk'])
+  assert.deepEqual(answerEntry.placeholders, ['preamble', 'prompt', 'workDir', 'titleAsk'])
   assert.ok(answerEntry.about.length > 10)
   const putPrompt = (text) => fetch(`${base}/api/prompts/answer`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
@@ -1187,7 +1187,40 @@ try {
   assert.ok(docArgv.includes(path.join(repos, 'api')), 'and reachable: --add-dir for each repo')
   assert.equal((await fetch(`${base}/api/tasks/${doc.id}/git`)).status, 200)
   assert.deepEqual(await (await fetch(`${base}/api/tasks/${doc.id}/git`)).json(), [], 'nothing to land')
-  console.log('ok: the document route writes a file, checks nothing out, and can read the repos')
+  // Its output: listed newest first, readable, capped, and nothing outside it.
+  const out1 = await (await fetch(`${base}/api/tasks/${doc.id}/output`)).json()
+  assert.deepEqual(out1.files.map((f) => f.name).sort(), ['estimate.md', 'seen-cwd.txt'])
+  assert.equal(out1.truncated, false)
+  assert.ok(out1.files.every((f) => typeof f.bytes === 'number' && typeof f.mtime === 'number'))
+  const estimate = await fetch(`${base}/api/tasks/${doc.id}/output/estimate.md`)
+  assert.equal(estimate.status, 200)
+  assert.match(estimate.headers.get('content-type'), /^text\/markdown/)
+  assert.match(await estimate.text(), /three days/)
+  assert.equal((await fetch(`${base}/api/tasks/${doc.id}/output/%2e%2e%2fprompt.txt`)).status, 400, 'no reaching out of work/')
+  assert.equal((await fetch(`${base}/api/tasks/${doc.id}/output/nothing.md`)).status, 404)
+  for (let i = 0; i < 205; i++) fs.writeFileSync(path.join(workDir, `f${String(i).padStart(3, '0')}.txt`), 'x')
+  const out2 = await (await fetch(`${base}/api/tasks/${doc.id}/output`)).json()
+  assert.equal(out2.files.length, 200, 'capped')
+  assert.equal(out2.truncated, true, 'and says so')
+  assert.equal(written.hasOutput, undefined, 'the flag is for the other routes')
+
+  // A plain-route task is told where a document goes, and one that wrote one
+  // is offered the Document route: the switch only changes the route.
+  assert.match(fs.readFileSync(path.join(root, 'data', 'tasks', told2.id, 'prompt.txt'), 'utf8'), /work/, 'the answer prompt names the work folder')
+  assert.equal((await (await fetch(`${base}/api/tasks/${told2.id}`)).json()).hasOutput, false)
+  fs.mkdirSync(path.join(root, 'data', 'tasks', told2.id, 'work'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'data', 'tasks', told2.id, 'work', 'notes.md'), '# notes')
+  assert.equal((await (await fetch(`${base}/api/tasks/${told2.id}`)).json()).hasOutput, true)
+  const badSwitch = await fetch(`${base}/api/tasks/${told2.id}/run`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run: 'quick' }) })
+  assert.equal(badSwitch.status, 400)
+  const switched = await fetch(`${base}/api/tasks/${told2.id}/run`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run: 'doc' }) })
+  assert.equal(switched.status, 200)
+  const nowDoc = await (await fetch(`${base}/api/tasks/${told2.id}`)).json()
+  assert.equal(nowDoc.run, 'doc')
+  assert.ok(nowDoc.root && !nowDoc.root.endsWith('work'), 'the worktree stays until dropped')
+  assert.deepEqual((await (await fetch(`${base}/api/tasks/${told2.id}/output`)).json()).files.map((f) => f.name), ['notes.md'])
+  console.log('ok: the document route writes a file, checks nothing out, and can read the repos,\n' +
+    '    its output is listed and served from work/ only, and a plain task that wrote one can switch')
 
   // ---- From here on the server is restarted; nothing above may follow. ----
 

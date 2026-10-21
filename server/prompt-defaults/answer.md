@@ -14,7 +14,9 @@ Do this, and nothing around it.
   rather than quietly growing it.
 
 There is no spec, no plan and no review on this route, so nothing downstream
-will catch a mistake for you. Write no documents.
+will catch a mistake for you. Write no documents about the work. If what the
+human asked for IS a document — an estimate, a write-up, a table — write it as
+a file into {{workDir}} rather than into the conversation, so it can be opened.
 
 End with what you found or what you changed, and the real output of anything
 you ran.

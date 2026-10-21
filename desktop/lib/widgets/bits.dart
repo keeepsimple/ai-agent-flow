@@ -278,6 +278,7 @@ const phaseLabels = {
   'plan': 'Plan',
   'implement': 'Implement',
   'review': 'Self review',
+  'write': 'Writing',
 };
 
 String statusWords(Task2 task) => switch (task.status) {
