@@ -106,15 +106,18 @@ base, runs an agent that:
    stage's console tail. Without it, ends with the push and says where to
    look.
 
-"Cherry-pick, never merge" is a rule in the prompt and a check in the tool:
-the agent is told it, and the server refuses to run Ship if `prod` would be
-fast-forwardable from `main` *and* the repo's config says cherry-pick —
-because that means someone merged by hand and the branch is not what it is
-supposed to be. *(My call: refuse and say so rather than carry on.)*
+"Cherry-pick, never merge" is a rule in the prompt, and the tool checks the
+one thing it can check: Ship is refused when the task's commits are already
+on `prod` (by patch id, since a cherry-pick has a new sha), with the message
+that there is nothing to pick. *(An earlier draft refused when `prod` was
+fast-forwardable from `main`; that is wrong — a freshly cut `prod` is
+fast-forwardable and would have been refused for ever.)*
 
-**Jenkins config** lives per repo in the workspace settings: base URL, job
-name, and a token kept in the keychain (see part 6). The pipeline row that
-today shows GitLab CI gains a Jenkins row for the prod branch when configured.
+**Per-repo config** lives in the workspace settings: the prod branch name
+(default `prod`; Ship is hidden on a repo that has no such branch), and for
+Jenkins the base URL, job name, and a token kept in the keychain (see part
+6). The pipeline row that today shows GitLab CI gains a Jenkins row for the
+prod branch when configured.
 
 ### 3. Editable prompts
 
@@ -179,12 +182,16 @@ of the transcript?* Yes is the default. No sends it through as text, which
 is what happens today.
 
 **Storage.** Kept values go to the OS keychain (`security add-generic-
-password` on macOS, Credential Manager on Windows) under the task id and
-the name. `tasks.json`, the log, and the attachment on disk hold
+password` on macOS; on Windows, a file under the data folder readable only
+by the user, since Credential Manager has no built-in command line that
+reads a value back — *my call, and the Windows build is untested anyway*)
+under the task id and the name. `tasks.json`, the log, and the attachment on disk hold
 `{{secret:NAME}}` in their place. Deleting the task deletes its entries.
 
 **Use.** When a run for that task starts, each kept secret is passed to the
-`claude` process as an environment variable `FLOW_SECRET_NAME`. The prompt
+`claude` process as an environment variable `FLOW_SECRET_NAME`. A task on
+*Edits only* has no shell and so cannot use them; the form says so when a
+secret is kept on such a task. The prompt
 says: *"These values exist only in your shell as `$FLOW_SECRET_NAME`. Use
 them from there — `printf '%s' "$FLOW_SECRET_NAME" >> .env.prod` — and
 never print, echo, or write them anywhere you can read them back."* The
@@ -224,7 +231,9 @@ sitting where it should not. Then Ship, prompts, status line, document route.
 - The exact shapes in the secret detector, and its false-positive rate on
   the existing thirteen prompts (none of the others should trip it).
 - How long "silent while asleep" is before a run counts as interrupted.
-- Whether `--resume` of a session that ended cleanly needs `--continue`
-  instead; read the CLI's current help, do not assume.
+- Checked already: `claude -p --resume <session-id>` takes a new prompt, and
+  the `session_id` is in the JSON result of every run. What is not checked
+  is how long a session stays resumable after the CLI is updated; find out
+  and make the fallback to retry cover it.
 - Layout of the Prompts screen and the Output pane within the existing
   Tern tokens.
