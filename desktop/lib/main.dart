@@ -10,9 +10,11 @@ import 'screens/review.dart';
 import 'screens/sessions.dart';
 import 'screens/workspace.dart';
 import 'server.dart';
+import 'prefs.dart';
 import 'theme.dart';
 import 'widgets/bits.dart';
 import 'widgets/header.dart';
+import 'widgets/sidebar.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +35,7 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
   final _server = FlowServer(_port);
   late final FlowState _flow = FlowState(Api(_port));
 
+  final _prefs = Prefs.load();
   Accent _accent = Accent.sky;
   bool _ready = false;
   String? _trouble;
@@ -53,6 +56,12 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
       return;
     }
     await _flow.loadState();
+    // Only after the roots are known: a remembered workspace that has since
+    // been removed would otherwise filter the board down to nothing.
+    final remembered = _prefs.workspace;
+    if (remembered != null && _flow.roots.contains(remembered)) {
+      _flow.pickWorkspace(remembered);
+    }
     _flow.listen();
     if (mounted) setState(() => _ready = true);
   }
@@ -87,6 +96,10 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
     );
   }
 
+  void _toggleSidebar() {
+    setState(() => _prefs.set(sidebarOpen: !_prefs.sidebarOpen));
+  }
+
   Widget _body(BuildContext context) {
     if (_trouble != null) {
       return Center(
@@ -117,6 +130,8 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
       Column(children: [
         Header(
           flow: _flow,
+          sidebarOpen: _prefs.sidebarOpen,
+          onToggleSidebar: _toggleSidebar,
           task: showing ? task : null,
           tab: _tab,
           onTab: (name) => setState(() => _tab = name),
@@ -127,17 +142,19 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
           onDeleted: () => _flow.select(null),
         ),
         Expanded(
-          child: showing
-              ? (_tab == 'review'
-                  ? ReviewScreen(flow: _flow, task: task)
-                  : WorkspaceScreen(flow: _flow, task: task))
-              : SessionsScreen(
-                  flow: _flow,
-                  onOpen: (id) {
-                    setState(() => _tab = 'workspace');
-                    _flow.select(id);
-                  },
-                ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_prefs.sidebarOpen) Sidebar(flow: _flow, onOpen: _open),
+              Expanded(
+                child: showing
+                    ? (_tab == 'review'
+                        ? ReviewScreen(flow: _flow, task: task)
+                        : WorkspaceScreen(flow: _flow, task: task))
+                    : SessionsScreen(flow: _flow, onOpen: _open),
+              ),
+            ],
+          ),
         ),
       ]),
       if (_flow.error != null)
@@ -171,6 +188,11 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
     );
   }
 
+  void _open(String id) {
+    setState(() => _tab = 'workspace');
+    _flow.select(id);
+  }
+
   /// Cmd-1 through Cmd-9 for the workspaces, Cmd-0 for all of them. Switching
   /// shows the board, because that is what the choice changes.
   Map<ShortcutActivator, VoidCallback> _workspaceKeys() {
@@ -189,6 +211,7 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
     void go(String? root) {
       _flow.pickWorkspace(root);
       _flow.select(null);
+      _prefs.set(workspace: root, clearWorkspace: root == null);
     }
 
     return {
@@ -202,6 +225,8 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
       },
       const SingleActivator(LogicalKeyboardKey.digit0, meta: true): () => go(null),
       const SingleActivator(LogicalKeyboardKey.digit0, control: true): () => go(null),
+      const SingleActivator(LogicalKeyboardKey.backslash, meta: true): _toggleSidebar,
+      const SingleActivator(LogicalKeyboardKey.backslash, control: true): _toggleSidebar,
     };
   }
 }

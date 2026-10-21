@@ -254,21 +254,21 @@ class Panel extends StatelessWidget {
       );
 }
 
-/// The mark from the artboards: the accent square with the code brackets.
+/// The product's own logo. It has no transparency, so it is clipped to a
+/// rounded tile rather than floated on the bar as a black square.
 class Mark extends StatelessWidget {
   const Mark({super.key, this.size = 22});
   final double size;
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.primary,
-          borderRadius: BorderRadius.circular(size * 0.27),
+  Widget build(BuildContext context) => ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.27),
+        child: Image.asset(
+          'assets/logo.png',
+          width: size,
+          height: size,
+          filterQuality: FilterQuality.medium,
         ),
-        alignment: Alignment.center,
-        child: Icon(Icons.code, size: size * 0.62, color: Tern.onAccent),
       );
 }
 

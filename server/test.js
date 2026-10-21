@@ -32,6 +32,9 @@ for (const repo of REPOS) {
   git(repo, 'config', 'user.email', 'test@example.com')
   git(repo, 'config', 'user.name', 'Test')
   fs.writeFileSync(path.join(repos, repo, 'README.md'), `# ${repo}\n`)
+  fs.mkdirSync(path.join(repos, repo, 'app', 'services'), { recursive: true })
+  fs.writeFileSync(path.join(repos, repo, 'app', 'services', 'discount.server.ts'), 'x\n')
+  fs.writeFileSync(path.join(repos, repo, 'app', 'discount-notes.md'), 'x\n')
   git(repo, 'add', '.')
   git(repo, 'commit', '-qm', 'init')
 }
@@ -243,6 +246,25 @@ try {
   assert.ok(
     !fastTask.log.some((l) => l.kind === 'decision'),
     'and there was nothing to approve on the way',
+  )
+
+  // @ in a prompt box asks this. It reads tracked files, so it never has to
+  // be told to skip node_modules.
+  const found = await (await fetch(`${base}/api/files?repo=api&q=discount`)).json()
+  assert.deepEqual(
+    found.map((f) => f.path),
+    ['app/discount-notes.md', 'app/services/discount.server.ts'],
+    'a match on the file name outranks one further up the path',
+  )
+  const everything = await (await fetch(`${base}/api/files?repo=api`)).json()
+  assert.ok(
+    everything.some((f) => f.path === 'README.md'),
+    'and no query means the whole list',
+  )
+  assert.deepEqual(
+    await (await fetch(`${base}/api/files?q=discount`)).json(),
+    [],
+    'naming no repo is not a reason to search every repo there is',
   )
 
   const badRun = await fetch(`${base}/api/tasks`, {
@@ -714,6 +736,7 @@ try {
     '    push covers the task branch and the base branch after it is merged,\n' +
     '    unattended answers its own questions and the agent names an untitled task,\n' +
     '    the branch follows that name and a request in Vietnamese still slugs readably,\n' +
+    '    @ finds a tracked file, name matches first,\n' +
     '    a quick run skips spec and plan but still reviews itself,\n' +
     '    a finished task takes a follow-up on the same branches,\n' +
     '    an attached log reaches the prompt and a binary in a .log is refused,\n' +

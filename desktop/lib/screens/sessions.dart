@@ -8,6 +8,7 @@ import '../flow.dart';
 import '../pick.dart';
 import '../theme.dart';
 import '../widgets/bits.dart';
+import '../widgets/mentions.dart';
 import '../widgets/sidebar.dart';
 
 /// The board: start a task, and see every one at a glance.
@@ -18,16 +19,6 @@ class SessionsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Sidebar(flow: flow, onOpen: onOpen),
-        Expanded(child: _board(context)),
-      ],
-    );
-  }
-
-  Widget _board(BuildContext context) {
     final tasks = flow.workspace == null ? flow.tasks : flow.visible;
     return ListView(
       padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
@@ -284,19 +275,26 @@ class _NewTaskState extends State<NewTask> {
           const SizedBox(height: 8),
           ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 46, maxHeight: 260),
-            child: CallbackShortcuts(
-              bindings: {
-                const SingleActivator(LogicalKeyboardKey.enter, meta: true): _start,
-                const SingleActivator(LogicalKeyboardKey.enter, control: true): _start,
-              },
-              child: TextField(
-                controller: _prompt,
-                maxLines: null,
-                style: t(14.5, color: Tern.ink2),
-                decoration: InputDecoration.collapsed(
-                  hintText:
-                      'e.g. get-discounts should return targeted product and collection names, capped at 5',
-                  hintStyle: t(14.5, color: Tern.faint),
+            child: Mentions(
+              controller: _prompt,
+              // Only the repos ticked: @ should not offer a file from a repo
+              // this task will never have a worktree for.
+              repos: _picked.toList(),
+              api: widget.flow.api,
+              child: CallbackShortcuts(
+                bindings: {
+                  const SingleActivator(LogicalKeyboardKey.enter, meta: true): _start,
+                  const SingleActivator(LogicalKeyboardKey.enter, control: true): _start,
+                },
+                child: TextField(
+                  controller: _prompt,
+                  maxLines: null,
+                  style: t(14.5, color: Tern.ink2),
+                  decoration: InputDecoration.collapsed(
+                    hintText:
+                        'e.g. get-discounts should return targeted product and collection names, capped at 5',
+                    hintStyle: t(14.5, color: Tern.faint),
+                  ),
                 ),
               ),
             ),

@@ -107,7 +107,7 @@ class FlowServer {
           '$home/.local/bin:/opt/homebrew/bin:/usr/local/bin:${env['PATH'] ?? '/usr/bin:/bin'}';
     }
     env['FLOW_PORT'] = '$port';
-    env.putIfAbsent('FLOW_DATA', () => _dataDir());
+    env.putIfAbsent('FLOW_DATA', () => dataDir());
     env.putIfAbsent('FLOW_REPO_ROOT', () => _home());
     Directory(env['FLOW_DATA']!).createSync(recursive: true);
 
@@ -148,7 +148,7 @@ class FlowServer {
   static String _home() =>
       Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
 
-  static String _dataDir() => Platform.isWindows
+  static String dataDir() => Platform.isWindows
       ? '${Platform.environment['APPDATA'] ?? _home()}\\Agent Flow'
       : '${_home()}/Library/Application Support/Agent Flow';
 }

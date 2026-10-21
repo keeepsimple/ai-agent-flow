@@ -6,6 +6,7 @@ import '../api.dart';
 import '../flow.dart';
 import '../theme.dart';
 import 'bits.dart';
+import 'markdown_view.dart';
 
 /// The bar across the top. Carries what the current screen can do, and
 /// nothing it cannot.
@@ -13,6 +14,8 @@ class Header extends StatelessWidget {
   const Header({
     super.key,
     required this.flow,
+    required this.sidebarOpen,
+    required this.onToggleSidebar,
     required this.task,
     required this.tab,
     required this.onTab,
@@ -24,6 +27,8 @@ class Header extends StatelessWidget {
   });
 
   final FlowState flow;
+  final bool sidebarOpen;
+  final VoidCallback onToggleSidebar;
   final Task? task;
   final String tab;
   final void Function(String) onTab;
@@ -51,6 +56,14 @@ class Header extends StatelessWidget {
       ),
       child: Row(
         children: [
+          _IconButton(
+            icon: sidebarOpen ? Icons.menu_open : Icons.menu,
+            tooltip: sidebarOpen
+                ? 'Hide the sidebar  (${Platform.isMacOS ? 'Cmd' : 'Ctrl'}+\\)'
+                : 'Show the sidebar  (${Platform.isMacOS ? 'Cmd' : 'Ctrl'}+\\)',
+            onTap: onToggleSidebar,
+          ),
+          const SizedBox(width: 6),
           if (task != null)
             _IconButton(
               icon: Icons.arrow_back,
@@ -143,15 +156,8 @@ class Header extends StatelessWidget {
                   final out = await flow.api.openBrowser();
                   if (out['blocked'] == true) {
                     flow.fail(ApiError(out['why'] as String));
-                  } else if (out['yourChrome'] == false) {
-                    // The window opens either way. This is about whether it
-                    // could start from the session you already have.
-                    flow.fail(ApiError(
-                      'The window is open, but signed out: macOS will not let '
-                      'this app read your own Chrome. Grant it Full Disk Access '
-                      'in System Settings, delete the browser profile, and press '
-                      'this again.',
-                    ));
+                  } else if (out['yourChrome'] == false && context.mounted) {
+                    await _askForFullDisk(context, out['profile'] as String?);
                   }
                 } catch (err) {
                   flow.fail(err);
@@ -176,6 +182,62 @@ class Header extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// macOS never prompts for Full Disk Access: unlike the camera or the
+  /// microphone there is no API to ask, so an app can only say what is
+  /// missing and open the page where it is given.
+  Future<void> _askForFullDisk(BuildContext context, String? profile) async {
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Tern.raised,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('The browser opened, but signed out', style: t(14, color: Tern.ink)),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'macOS will not let this app read the Chrome you already use, '
+                'so there is no session to copy. It never asks for that by '
+                'itself — the permission has to be given by hand.',
+                style: t(12.5, color: Tern.muted, height: 1.5),
+              ),
+              const SizedBox(height: 12),
+              Text('1.  Add Agent Flow to Full Disk Access\n'
+                  '2.  Delete the browser profile below\n'
+                  '3.  Press Test browser again',
+                  style: t(12.5, color: Tern.ink3, height: 1.7)),
+              if (profile != null) ...[
+                const SizedBox(height: 10),
+                SelectableText(profile, style: t(11, color: Tern.faint, code: true)),
+              ],
+              const SizedBox(height: 10),
+              Text(
+                'Rebuilding the app changes its signature, so the permission '
+                'has to be given again after each build.',
+                style: t(11.5, color: Tern.faint, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          FlowButton(label: 'Not now', onPressed: () => Navigator.pop(context, false)),
+          FlowButton(
+            label: 'Open Settings',
+            tone: Tone.primary,
+            onPressed: () => Navigator.pop(context, true),
+          ),
+        ],
+      ),
+    );
+    if (open == true) {
+      await openExternal(
+          'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles');
+    }
   }
 
   Future<void> _confirmDelete(BuildContext context) async {

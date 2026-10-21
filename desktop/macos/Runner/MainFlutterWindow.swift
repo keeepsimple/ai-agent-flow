@@ -28,6 +28,10 @@ class MainFlutterWindow: NSWindow {
     self.appearance = NSAppearance(named: .darkAqua)
     self.backgroundColor = NSColor(red: 0.043, green: 0.047, blue: 0.055, alpha: 1) // --color-page
 
+    // Set after the frame, so a remembered one wins over the nib's. AppKit
+    // keeps it in user defaults and restores it on the next launch.
+    self.setFrameAutosaveName("AgentFlowWindow")
+
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()

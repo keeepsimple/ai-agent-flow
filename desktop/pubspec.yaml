@@ -57,6 +57,9 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  assets:
+    - assets/logo.png
+
   # Bundled rather than fetched: the artboards are drawn in Geist, and a
   # desktop app cannot wait on a font CDN to know how wide its text is.
   fonts:

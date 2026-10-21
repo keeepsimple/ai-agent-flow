@@ -7,6 +7,7 @@ import * as runner from './runner.js'
 import * as uploads from './uploads.js'
 import * as repoGit from './git.js'
 import * as disk from './disk.js'
+import * as files from './files.js'
 import * as preview from './preview.js'
 import * as browser from './browser.js'
 
@@ -137,6 +138,12 @@ async function api(req, res, url) {
       const { path: dir } = JSON.parse(await body(req))
       return json(res, 200, { roots: runner.removeRoot(dir), repos: runner.listRepos() })
     }
+  }
+
+  if (section === 'files' && req.method === 'GET') {
+    const repos = url.searchParams.getAll('repo').filter(Boolean)
+    if (!repos.length) return json(res, 200, [])
+    return json(res, 200, files.search(repos, url.searchParams.get('q')))
   }
 
   if (section === 'disk') {

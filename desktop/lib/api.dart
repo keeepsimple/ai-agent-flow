@@ -106,6 +106,17 @@ class Api {
           .map((r) => (r as Map).cast<String, dynamic>())
           .toList();
 
+  /// Tracked files in the given repos, for naming one in a prompt.
+  Future<List<Map<String, dynamic>>> files(List<String> repos, String query) async {
+    final params = [
+      for (final repo in repos) 'repo=${Uri.encodeQueryComponent(repo)}',
+      'q=${Uri.encodeQueryComponent(query)}',
+    ].join('&');
+    return ((await _send('GET', '/api/files?$params')) as List)
+        .map((r) => (r as Map).cast<String, dynamic>())
+        .toList();
+  }
+
   Future<Map<String, dynamic>> disk() async =>
       (await _send('GET', '/api/disk')) as Map<String, dynamic>;
 

@@ -229,6 +229,8 @@ void main() {
       'header-idle',
       Header(
         flow: flow,
+        sidebarOpen: true,
+        onToggleSidebar: () {},
         task: null,
         tab: 'workspace',
         onTab: (_) {},
@@ -280,6 +282,8 @@ void main() {
         backgroundColor: Tern.page,
         body: Header(
           flow: flow,
+          sidebarOpen: true,
+          onToggleSidebar: () {},
           task: null,
           tab: 'workspace',
           onTab: (_) {},
@@ -292,13 +296,14 @@ void main() {
       ),
     ));
 
-    final mark = find.byType(Mark);
-    expect(tester.getCenter(mark).dy, closeTo(26, 1.5),
+    expect(tester.getCenter(find.byType(Mark)).dy, closeTo(26, 1.5),
         reason: 'level with the middle of the traffic lights');
-    expect(tester.getTopLeft(mark).dx, closeTo(90, 0.5),
-        reason: 'clear of the lights, which end at 79');
-    expect(tester.getTopLeft(mark).dy, greaterThan(4),
-        reason: 'and not running off the top of the window');
+
+    // Whatever comes first in the bar is the thing that has to clear them.
+    final leading = tester.getTopLeft(find.byIcon(Icons.menu_open)).dx;
+    expect(leading, greaterThanOrEqualTo(79),
+        reason: 'the lights end at 79 and nothing may sit on top of them');
+    expect(leading, lessThan(120), reason: 'but not pushed halfway across either');
   });
 
   testWidgets('the header carries what the screen can do', (tester) async {
@@ -309,6 +314,8 @@ void main() {
       'header',
       Header(
         flow: flow,
+        sidebarOpen: true,
+        onToggleSidebar: () {},
         task: task,
         tab: 'workspace',
         onTab: (_) {},
