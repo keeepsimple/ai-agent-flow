@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../flow.dart';
+import '../left.dart';
 import '../prefs.dart';
 import '../theme.dart';
 import '../widgets/bits.dart';
@@ -106,10 +107,13 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     final chosen = files.where((f) => f['path'] == _file).firstOrNull;
 
     final isDoc = task.run == 'doc';
+    final left = leftOf(task.docs['review.md'] as String?);
+    final fixable = left.where((i) => i.kind == 'fixable' && !i.done).length;
     return Column(
       children: [
         StatusLine(task: task, onJump: () => _jump.value++),
         if (!isDoc && task.raw['hasOutput'] == true) _offerDoc(task),
+        if (fixable > 0 && !task.active) _offerFix(task, fixable),
         Expanded(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -160,6 +164,31 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       ],
     );
   }
+
+  /// The review found things it could fix and listed them instead. One click.
+  Widget _offerFix(Task task, int count) => Container(
+        padding: const EdgeInsets.fromLTRB(16, 6, 10, 6),
+        decoration: const BoxDecoration(
+          color: Tern.panel,
+          border: Border(bottom: BorderSide(color: Tern.line)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.checklist, size: 13, color: Tern.warn),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'The review left $count fixable ${count == 1 ? 'thing' : 'things'} under Left in review.md.',
+              style: t(11.5, color: Tern.muted),
+            ),
+          ),
+          FlowButton(
+            dense: true,
+            label: 'Fix the $count left',
+            tone: Tone.primary,
+            onPressed: () => widget.flow.run(() => widget.flow.api.followUp(task.id, fixLeftRequest), refresh: false),
+          ),
+        ]),
+      );
 
   /// A plain task that wrote a file into work/: the Document route shows it.
   Widget _offerDoc(Task task) => Container(
@@ -339,6 +368,39 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                   ),
                 ),
               ),
+            ),
+        ],
+        if (leftOf(task.docs['review.md'] as String?).isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text('Left (${leftOf(task.docs['review.md'] as String?).length})', style: t(11, color: Tern.muted)),
+          const SizedBox(height: 6),
+          for (final item in leftOf(task.docs['review.md'] as String?))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: item.done ? Tern.faint : (item.kind == 'fixable' ? Tern.warn : Tern.muted),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    item.text,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: t(11.5, color: item.done ? Tern.faint : Tern.ink3).copyWith(
+                      decoration: item.done ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                ),
+              ]),
             ),
         ],
         if (task.run != 'doc') ...[

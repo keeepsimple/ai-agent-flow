@@ -60,6 +60,17 @@ Future<void> loadFonts() async {
   }
 }
 
+/// An API that records follow-ups instead of sending them.
+class _CapturingApi extends Api {
+  _CapturingApi() : super(0);
+  final sent = <String>[];
+  @override
+  Future<dynamic> followUp(String id, String request, {bool hideSecrets = false}) async {
+    sent.add(request);
+    return <String, dynamic>{};
+  }
+}
+
 Task _task(Map<String, dynamic> extra) => Task({
       'id': 'a1b2c3d4',
       'title': 'get-discounts should return targeted product names',
@@ -749,6 +760,50 @@ void main() {
     final idle = tester.getTopLeft(find.text('Newest but idle')).dy;
     expect(talked, lessThan(idle), reason: 'the one talked to last comes first');
     expect(find.text('Old and idle'), findsNothing, reason: 'and the last five are by activity, so this one drops off');
+  });
+
+  testWidgets('what the review left is a checklist, and the fixable ones are one click', (tester) async {
+    final api = _CapturingApi();
+    final flow = FlowState(api);
+    addTearDown(flow.dispose);
+    flow.live = true;
+    const review = '## 1. Correctness\nok\n\n## Left\n'
+        '- [ ] fixable: null on error in useGetLatestSubmission.ts\n'
+        '- [ ] fixable: duplicated toast block\n'
+        '- [x] fixable: already ticked\n'
+        '- [ ] decision: should the API block scheduling too?\n';
+    final task = _task({'status': 'done', 'phase': null, 'docs': {'review.md': review}});
+    tester.view.physicalSize = const Size(1340, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(body: WorkspaceScreen(flow: flow, task: task, prefs: Prefs.memory())),
+    ));
+    await tester.pump();
+    expect(find.text('Left (4)'), findsOneWidget);
+    expect(find.textContaining('duplicated toast block'), findsOneWidget);
+    expect(find.text('Fix the 2 left'), findsOneWidget, reason: 'two fixable and not ticked');
+    await tester.tap(find.text('Fix the 2 left'));
+    await tester.pump();
+    expect(api.sent, ['Fix every item tagged fixable under ## Left in review.md, re-run the checks, and tick them off in review.md.']);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('only decisions left means a list and no button', (tester) async {
+    final flow = _flow();
+    final task = _task({'status': 'done', 'phase': null, 'docs': {'review.md': '## Left\n- [ ] decision: keep both?\n'}});
+    tester.view.physicalSize = const Size(1340, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(body: WorkspaceScreen(flow: flow, task: task, prefs: Prefs.memory())),
+    ));
+    await tester.pump();
+    expect(find.text('Left (1)'), findsOneWidget);
+    expect(find.textContaining('Fix the'), findsNothing);
+    await tester.pump(const Duration(seconds: 6));
   });
 
   testWidgets('the header with nothing open', (tester) async {
