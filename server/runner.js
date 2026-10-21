@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { DATA, bus, sse, tasks, artifactDir, emit, update, log, save, flush } from './store.js'
+import { DATA, bus, sse, tasks, artifactDir, emit, update, log, save, flush, readLog } from './store.js'
 import {
   resumePrompt,
   buildShipPrompt,
@@ -113,6 +113,7 @@ function tell(task, title, body, urgent = false, { phone = true } = {}) {
 
 // A reply on the phone answers the question it replies to.
 telegram.configure({
+  onCommand: (command, arg) => (command === 'status' ? progressText() : command === 'task' ? taskText(arg) : helpText()),
   onAnswer: ({ questionId, text }) => {
     // The question id is what counts; the task id in the message is only a label.
     const owner = Object.values(tasks).find((t) => (t.questions || []).some((q) => q.id === questionId && q.answer === null))
@@ -1212,6 +1213,114 @@ export function reveal(id, name) {
     spawn(cmd, args, { stdio: 'ignore', detached: true }).unref()
   }
   return { path: file }
+}
+
+// ---- Progress, as text for the phone --------------------------------------
+
+const LIVE = ['running', 'queued', 'awaiting_answer', 'awaiting_approval', 'interrupted']
+const WAITING = ['awaiting_answer', 'awaiting_approval', 'interrupted']
+
+const sentence = (text, cap = 140) => {
+  const flat = String(text || '').replace(/^[#>*\-\s]+/gm, '').replace(/\s+/g, ' ').trim()
+  const first = (/^.*?[.!?](?=\s|$)/.exec(flat) || [flat])[0]
+  return first.length > cap ? `${first.slice(0, cap)}…` : first
+}
+
+const ago = (ms) => {
+  const m = Math.floor(ms / 60000)
+  return m < 1 ? '<1m' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`
+}
+
+const where = (task) => ({
+  running: PHASE_LABEL[task.phase] || task.phase || 'running',
+  queued: 'queued',
+  awaiting_answer: 'question for you',
+  awaiting_approval: `your call: ${PHASE_LABEL[task.awaitingPhase] || task.awaitingPhase}`,
+  interrupted: 'interrupted',
+  done: 'done',
+  failed: 'failed',
+  cancelled: 'cancelled',
+}[task.status] || task.status)
+
+/** What the agent did last: its last sentence, or the tool it is on while running. */
+function didOf(task, entries) {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i]
+    if (e.kind === 'text') return sentence(e.text)
+    if (e.kind === 'tool' && task.status === 'running') return `${e.tool} ${sentence(e.text, 100)}`
+  }
+  return null
+}
+
+/** What it needs from the person: the open question, the gate, or a continue. */
+function needsOf(task) {
+  if (task.status === 'awaiting_answer') {
+    const q = (task.questions || []).find((x) => x.id === task.openQuestionId) || (task.questions || []).findLast((x) => x.answer === null)
+    if (q) return sentence(q.text, 300)
+  }
+  if (task.status === 'awaiting_approval') return `${PHASE_LABEL[task.awaitingPhase] || task.awaitingPhase} is ready for you to approve`
+  if (task.status === 'interrupted') return 'continue it, or retry'
+  return null
+}
+
+/** /status: every task that is live, the ones waiting on the person first. */
+export function progressText() {
+  const live = Object.values(tasks).filter((t) => LIVE.includes(t.status))
+  if (!live.length) {
+    const last = Object.values(tasks).filter((t) => t.status === 'done').sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
+    return last ? `Nothing running.\nLast done: ${last.title} (${last.id}), ${ago(Date.now() - (last.updatedAt || last.createdAt))} ago.` : 'Nothing running.'
+  }
+  const waiting = live.filter((t) => WAITING.includes(t.status))
+  const working = live.filter((t) => !WAITING.includes(t.status))
+  const head = [
+    working.length ? `${working.length} running` : null,
+    waiting.length ? `${waiting.length} waiting on you` : null,
+  ].filter(Boolean).join(' · ')
+  const lines = [head]
+  for (const task of [...waiting, ...working]) {
+    const icon = task.status === 'running' ? '▶' : task.status === 'queued' ? '…' : '⏸'
+    lines.push('', `${icon} ${task.title} (${task.id})`)
+    lines.push(`   ${where(task)} · ${ago(Date.now() - task.createdAt)} · $${(task.cost || 0).toFixed(2)}`)
+    const needs = needsOf(task)
+    if (needs) lines.push(`   needs: ${needs}`)
+    const did = didOf(task, readLog(task.id, 40))
+    if (did) lines.push(`   did: ${did}`)
+  }
+  lines.push('', 'Details: /task <id>')
+  return lines.join('\n')
+}
+
+/** /task <id>: one task, found by the start of its id. */
+export function taskText(prefix) {
+  const want = String(prefix || '').trim().toLowerCase()
+  if (!want) return 'Which one? /task <id>, the id is in /status.'
+  const hits = Object.values(tasks).filter((t) => t.id.startsWith(want))
+  if (!hits.length) return `No task matches ${want}.`
+  if (hits.length > 1) return `${hits.length} tasks match ${want}:\n${hits.map((t) => `${t.id} · ${t.title}`).join('\n')}`
+  const task = hits[0]
+  const entries = readLog(task.id, 200).filter((e) => ['text', 'tool', 'question', 'answer', 'decision', 'error'].includes(e.kind))
+  const mark = { text: '•', tool: '$', question: '?', answer: '→', decision: '#', error: '!' }
+  const lines = [
+    `${task.id} · ${task.title}`,
+    `${where(task)} · ${(task.repos || []).join(' + ')} · ${ago(Date.now() - task.createdAt)} · $${(task.cost || 0).toFixed(2)}`,
+  ]
+  const needs = needsOf(task)
+  if (needs) lines.push(`needs: ${needs}`)
+  lines.push('', 'Latest:')
+  for (const e of entries.slice(-8)) {
+    const body = e.kind === 'tool' ? `${e.tool} ${sentence(e.text, 120)}` : sentence(e.text, 200)
+    lines.push(`${mark[e.kind]} ${body}`)
+  }
+  return lines.join('\n')
+}
+
+function helpText() {
+  return [
+    'Agent Flow on your phone:',
+    '/status — what is running and what is waiting on you',
+    '/task <id> — one task in detail (the id is in /status)',
+    'Reply to a question message to answer it.',
+  ].join('\n')
 }
 
 /** The cost line from settings: crossed once, said once, in the conversation and as a notification. */

@@ -327,7 +327,7 @@ still went through the shell, so the effect is visible.
 crossed, writes a line in the conversation and notifies, once; and a
 Telegram bot. With a chat id and a bot token (keychain), questions, gates,
 finishes and cost lines go to the chat, and replying to a question message
-answers it. *Test* sends one message.
+answers it. *Test* sends one message. Send `/status` to the bot for what is running and what is waiting on you, `/task <id>` for one task's latest lines, `/help` for the list.
 
 Each board row carries `$cost · elapsed`, what became of the branch
 (*landed on main*, *shipped to prod*), and the board filters by repo. The

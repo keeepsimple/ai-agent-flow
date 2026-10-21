@@ -10,11 +10,20 @@ let chatId = ''
 let offset = 0
 let running = false
 let onAnswer = null
+let onCommand = null
 
-export function configure({ onAnswer: cb }) {
-  onAnswer = cb
+export function configure({ onAnswer: answer, onCommand: command }) {
+  onAnswer = answer
+  onCommand = command
   reload()
 }
+
+/** The commands the bot answers, shown in Telegram's menu. */
+export const COMMANDS = [
+  { command: 'status', description: 'What is running and what is waiting on you' },
+  { command: 'task', description: 'One task in detail: /task <id>' },
+  { command: 'help', description: 'What the bot can do' },
+]
 
 /** Re-read settings and the keychain; start polling when both are there. */
 export function reload() {
@@ -23,14 +32,22 @@ export function reload() {
   const next = secrets.read(settings.TELEGRAM_OWNER, 'TOKEN')
   if (next !== token) offset = 0 // another bot's updates start from the top
   token = next
-  if (enabled() && !running) loop()
+  if (enabled()) {
+    // Best effort: the menu is a convenience, its absence breaks nothing.
+    fetch(`${API}/bot${token}/setMyCommands`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ commands: COMMANDS }),
+    }).catch(() => {})
+    if (!running) loop()
+  }
 }
 
 export const enabled = () => Boolean(token && chatId)
 
 export async function send(text, { taskId, questionId } = {}) {
   if (!enabled()) return null
-  const body = { chat_id: chatId, text: questionId ? `Q ${taskId}/${questionId}: ${text}` : text }
+  const full = questionId ? `Q ${taskId}/${questionId}: ${text}` : text
+  // Telegram refuses anything over 4096 characters; cut, and say so.
+  const body = { chat_id: chatId, text: full.length > 4000 ? `${full.slice(0, 4000)}\n… (cut)` : full }
   try {
     const r = await fetch(`${API}/bot${token}/sendMessage`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
@@ -51,6 +68,17 @@ export function handleUpdate(update, forChat = null) {
   if (!m || typeof m.text !== 'string') return null
   // Only the configured chat: anyone else who finds the bot is ignored outright.
   if (forChat && String(m.chat?.id) !== String(forChat)) return null
+  const said = m.text.trim()
+  // Commands: progress, one task, help. A bot suffix (/status@name) is fine.
+  const slash = /^\/(\w+)(?:@\S+)?(?:\s+([\s\S]*))?$/.exec(said)
+  if (slash) {
+    const name = slash[1].toLowerCase()
+    const arg = (slash[2] || '').trim()
+    if (name === 'status' || name === 's' || name === 'progress') return { command: 'status', arg: '' }
+    if (name === 'task' || name === 't') return { command: 'task', arg }
+    return { command: 'help', arg: '' }
+  }
+  if (/^(tiến độ|tien do|status)$/i.test(said)) return { command: 'status', arg: '' }
   // A reply counts only when it replies to something the bot itself said: a
   // quoted question line typed by hand is not a question.
   const quoted = m.reply_to_message?.from?.is_bot ? /Q ([0-9a-f]{8})\/([0-9a-f]{8}):/.exec(m.reply_to_message.text || '') : null
@@ -82,10 +110,14 @@ async function loop() {
       for (const u of updates) {
         offset = u.update_id + 1
         const out = handleUpdate(u, chatId)
-        if (out?.answered) {
+        if (out?.command) {
+          let reply
+          try { reply = await onCommand?.(out.command, out.arg) } catch (err) { reply = `Could not answer that: ${err.message}` }
+          if (reply) await send(reply)
+        } else if (out?.answered) {
           try { await onAnswer?.(out.answered) } catch (err) { await send(`Could not answer: ${err.message}`) }
         } else if (out?.hint) {
-          await send('Reply to a question message to answer it, or start your message with the question id.')
+          await send('Reply to a question message to answer it, or send /status to see what is running.')
         }
       }
     }

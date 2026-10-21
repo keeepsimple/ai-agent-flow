@@ -1703,6 +1703,24 @@ try {
   let qMsg
   for (let i = 0; i < 50 && !qMsg; i++) { qMsg = sentToPhone.find((m) => new RegExp(`^Q ${onPhone.id}/[0-9a-f]{8}: `).test(m.text)); if (!qMsg) await sleep(100) }
   assert.ok(qMsg, 'the question went to the phone with its id')
+  // Progress from the phone while it waits: /status lists it as waiting on
+  // you with the question, /task shows its latest lines.
+  phoneQueue.push({ update_id: 10, message: { chat: { id: 42 }, text: '/status' } })
+  phoneQueue.push({ update_id: 11, message: { chat: { id: 42 }, text: `/task ${onPhone.id.slice(0, 4)}` } })
+  let statusMsg, taskMsg
+  for (let i = 0; i < 60 && !(statusMsg && taskMsg); i++) {
+    statusMsg = sentToPhone.find((m) => /waiting on you/.test(m.text) && m.text.includes(onPhone.id))
+    taskMsg = sentToPhone.find((m) => m.text.startsWith(`${onPhone.id} · `) && /Latest:/.test(m.text))
+    if (!(statusMsg && taskMsg)) await sleep(100)
+  }
+  assert.ok(statusMsg, '/status answers with the task waiting on you: ' + JSON.stringify(sentToPhone.slice(-3).map((m) => m.text)))
+  assert.match(statusMsg.text, /needs: ship the narrow version/, 'and what it needs')
+  assert.ok(taskMsg, '/task <prefix> answers with that task\'s detail')
+  assert.match(taskMsg.text, /ship the narrow version or the full one\?/, 'including the open question')
+  phoneQueue.push({ update_id: 12, message: { chat: { id: 42 }, text: '/task zzzz' } })
+  let missMsg
+  for (let i = 0; i < 40 && !missMsg; i++) { missMsg = sentToPhone.find((m) => /No task matches zzzz/.test(m.text)); if (!missMsg) await sleep(100) }
+  assert.ok(missMsg, 'an unknown id says so')
   phoneQueue.push({ update_id: 1, message: { chat: { id: 42 }, text: 'hello?' } })
   phoneQueue.push({ update_id: 2, message: { chat: { id: 7 }, text: 'A', reply_to_message: { text: qMsg.text, from: { is_bot: true } } } }) // someone else's chat: ignored
   phoneQueue.push({ update_id: 3, message: { chat: { id: 42 }, text: 'B', reply_to_message: { text: qMsg.text, from: { is_bot: true } } } })
