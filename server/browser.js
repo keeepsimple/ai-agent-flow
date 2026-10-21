@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
+import { captureWith } from './browser-capture.js'
 import { DATA } from './store.js'
 
 /**
@@ -236,7 +237,7 @@ export async function visit(url, shotPath, { settleMs = 2500 } = {}) {
       })
       const page = JSON.parse(read.result.value)
 
-      const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true })
+      const shot = await captureWith(send)
       fs.mkdirSync(path.dirname(shotPath), { recursive: true })
       fs.writeFileSync(shotPath, Buffer.from(shot.data, 'base64'))
 

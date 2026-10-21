@@ -68,3 +68,49 @@ assert.ok(!missing.blocked, 'nor is having no Chrome to copy from')
 // which has a debounced save still to come, and deleting the folder out from
 // under it turns a passing check into a crash.
 console.log('ok  browser: the session is copied from your own Chrome, the history is not')
+
+// A screenshot of a window that was put away: bring it back, set a viewport,
+// and try once more before giving up with both attempts named.
+const { captureWith } = await import('./browser-capture.js')
+{
+  const calls = []
+  let attempt = 0
+  const send = async (method, params) => {
+    calls.push(method)
+    if (method === 'Browser.getWindowForTarget') return { windowId: 7 }
+    if (method === 'Page.captureScreenshot') {
+      attempt++
+      if (attempt === 1) throw new Error('Cannot take screenshot with 0 width')
+      return { data: 'iVBOR' }
+    }
+    return {}
+  }
+  const shot = await captureWith(send)
+  assert.equal(shot.data, 'iVBOR')
+  assert.ok(calls.includes('Browser.setWindowBounds'), 'the window is brought back to a normal size')
+  assert.ok(calls.includes('Emulation.setDeviceMetricsOverride'), 'and a viewport is forced')
+  assert.ok(calls.includes('Page.bringToFront'))
+  assert.equal(calls.filter((c) => c === 'Page.captureScreenshot').length, 2, 'retried once')
+}
+{
+  let attempt = 0
+  const send = async (method) => {
+    if (method === 'Browser.getWindowForTarget') return { windowId: 7 }
+    if (method === 'Page.captureScreenshot') { attempt++; throw new Error(attempt === 1 ? 'Cannot take screenshot with 0 width' : 'Target crashed') }
+    return {}
+  }
+  await assert.rejects(captureWith(send), /screenshot failed twice: Cannot take screenshot with 0 width \/ Target crashed/)
+  assert.equal(attempt, 2, 'exactly one retry, whatever the second error says')
+}
+{
+  // A crashed tab on the first try is retried once too, not looped.
+  let attempt = 0
+  const send = async (method) => {
+    if (method === 'Browser.getWindowForTarget') throw new Error('no window')
+    if (method === 'Page.captureScreenshot') { attempt++; throw new Error('Target crashed') }
+    return {}
+  }
+  await assert.rejects(captureWith(send), /failed twice/)
+  assert.equal(attempt, 2)
+}
+console.log('ok: a hidden window is brought back before the screenshot, and the retry is one')
