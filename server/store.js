@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { isBareRead } from './hook-reads.mjs'
 import { EventEmitter } from 'node:events'
 
 export const DATA = process.env.FLOW_DATA || path.join(import.meta.dirname, '..', 'data')
@@ -94,6 +95,20 @@ export function log(id, entry) {
   fs.appendFileSync(path.join(DATA, 'logs', `${id}.jsonl`), JSON.stringify(line) + '\n')
   bus.emit('log', { id, entry: line })
   return line
+}
+
+/** How the agent spent its tool calls: shell reads are the ones worth seeing. */
+export function toolMix(log) {
+  const mix = { bash: 0, shellReads: 0, read: 0, edit: 0 }
+  for (const e of log) {
+    if (e.kind !== 'tool') continue
+    if (e.tool === 'Bash') {
+      mix.bash++
+      if (isBareRead(e.text)) mix.shellReads++
+    } else if (e.tool === 'Read' || e.tool === 'Grep' || e.tool === 'Glob') mix.read++
+    else if (e.tool === 'Edit' || e.tool === 'Write' || e.tool === 'MultiEdit') mix.edit++
+  }
+  return mix
 }
 
 export function readLog(id, limit = 600) {

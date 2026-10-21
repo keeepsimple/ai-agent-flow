@@ -504,6 +504,13 @@ try {
   assert.equal(flag('--model'), 'sonnet', 'the chosen model should reach the CLI')
   assert.equal(flag('--effort'), 'high', 'the chosen effort should reach the CLI')
   assert.equal(flag('--permission-mode'), 'bypassPermissions', 'the default mode should reach the CLI')
+  // Every run gets the hook that refuses bare shell reads.
+  const settingsFile = flag('--settings')
+  assert.ok(settingsFile && fs.existsSync(settingsFile), '--settings names a file on disk')
+  const hookSettings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'))
+  const preTool = hookSettings.hooks?.PreToolUse?.find((h) => h.matcher === 'Bash')
+  assert.ok(preTool && preTool.hooks.some((h) => h.type === 'command' && /hook-reads\.mjs/.test(h.command)), 'a PreToolUse hook on Bash runs hook-reads.mjs')
+  assert.deepEqual(Object.keys(task.toolMix).sort(), ['bash', 'edit', 'read', 'shellReads'], 'the task counts its tool mix')
   const sentPrompt = fs.readFileSync(path.join(root, 'data', 'tasks', created.id, 'prompt.txt'), 'utf8')
   assert.ok(sentPrompt.includes(uploaded.path), 'the attached image should be named in the prompt')
   assert.ok(sentPrompt.includes(log.path), 'and so should the attached log')

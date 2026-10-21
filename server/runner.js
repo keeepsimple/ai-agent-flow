@@ -33,6 +33,21 @@ const NODE_BIN = process.execPath
 const ASK_SCRIPT = path.join(import.meta.dirname, 'ask.mjs')
 const PREVIEW_SCRIPT = path.join(import.meta.dirname, 'preview.mjs')
 const GUARD_SCRIPT = path.join(import.meta.dirname, 'guard-secrets.mjs')
+const HOOK_SCRIPT = path.join(import.meta.dirname, 'hook-reads.mjs')
+// The settings every claude run gets: one hook that refuses bare shell reads.
+const CLAUDE_SETTINGS = path.join(DATA, 'claude-settings.json')
+function ensureSettings() {
+  const wanted = JSON.stringify({
+    hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: `"${NODE_BIN}" "${HOOK_SCRIPT}"` }] }] },
+  }, null, 2)
+  let current = null
+  try { current = fs.readFileSync(CLAUDE_SETTINGS, 'utf8') } catch {}
+  if (current !== wanted) {
+    fs.mkdirSync(DATA, { recursive: true })
+    fs.writeFileSync(CLAUDE_SETTINGS, wanted)
+  }
+  return CLAUDE_SETTINGS
+}
 // A setup or baseline command that never ends is cut here, said so, and the run starts anyway.
 const SETUP_MAX_MS = Number(process.env.FLOW_SETUP_MAX_MS || 600_000)
 const JENKINS_SCRIPT = path.join(import.meta.dirname, 'jenkins.mjs')
@@ -1163,6 +1178,7 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {}, en
     '--permission-mode', task.permissionMode,
     '--add-dir', task.artifactDir,
     '--add-dir', UPLOADS,
+    '--settings', ensureSettings(),
   ]
   if (resume) args.push('--resume', resume)
   for (const dir of task.readPaths || []) args.push('--add-dir', dir)

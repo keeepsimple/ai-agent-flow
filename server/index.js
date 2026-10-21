@@ -2,7 +2,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { bus, sse, tasks, readLog, artifact } from './store.js'
+import { bus, sse, tasks, readLog, toolMix, artifact } from './store.js'
 import * as runner from './runner.js'
 import * as secrets from './secrets.js'
 import * as repoConfig from './repo-config.js'
@@ -71,7 +71,8 @@ function taskView(id) {
   // that needs it asks for it on its own.
   // Whether a plain-route task left files in work/: the app offers the Document route then.
   const hasOutput = task.run === 'doc' ? undefined : runner.output(id).files.length > 0
-  return { ...task, log: readLog(id), docs, hasOutput }
+  const log = readLog(id)
+  return { ...task, log, docs, hasOutput, toolMix: toolMix(log) }
 }
 
 async function api(req, res, url) {
