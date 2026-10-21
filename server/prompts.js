@@ -353,10 +353,14 @@ first thing that is not yours to decide.
     is still failing, stop here and say what: do not open a merge request on
     a branch you know is broken.
 
-3.  Push the branch:
+3.  Check the diff for secrets, then push the branch:
 
+        "${ctx.node}" "${ctx.guardScript}" "${tree.repoPath}" ${tree.baseBranch} ${tree.branch}
         git push -u origin ${tree.branch}
 
+    If the guard exits non-zero it names file:line of something that looks
+    like a secret. Do not push. Take it out of the history (amend or rebase
+    the commit that added it), run the guard again, and say what you found.
     Never force. If the remote rejects it, say what git said and stop.
     A repo with no remote has nothing to push and no merge request to open:
     say so and go to step 5.

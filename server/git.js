@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { tasks, update } from './store.js'
+import * as secrets from './secrets.js'
 import { pipelineFor } from './pipeline.js'
 
 const git = (cwd, ...args) =>
@@ -126,12 +127,28 @@ function treesOf(id, repo) {
   return trees
 }
 
+/** Added lines on this branch that carry a kept value or look like a secret. */
+export function scanForSecrets(tree, values) {
+  const diff = quiet(() => git(tree.repoPath, 'diff', `${tree.baseBranch}...${tree.branch}`)) || ''
+  return secrets.scanDiff(diff, values)
+}
+
 export function push(id, repo, { base = false } = {}) {
   const done = []
+  const values = Object.values(secrets.env(tasks[id]))
   for (const tree of treesOf(id, repo)) {
     const remote = quiet(() => git(tree.repoPath, 'remote').split('\n')[0])
     if (!remote) throw new Error(`${tree.repo} has no remote to push to`)
     const ref = base ? tree.baseBranch : tree.branch
+    // Not with a secret in it. The agent was told the same rule; this is the
+    // part of it the tool can check.
+    const leaks = scanForSecrets(tree, values)
+    if (leaks.length) {
+      throw new Error(
+        `${tree.repo}: the diff carries something that looks like a secret at ` +
+          leaks.map((l) => `${l.file}:${l.line}`).join(', ') + '. Take it out of the history first.',
+      )
+    }
     // No force, ever. If the remote has moved on, git says so and we pass that
     // along rather than deciding on the human's behalf.
     try {

@@ -72,6 +72,12 @@ if (args.includes('--resume') && process.env.STUB_REFUSE_RESUME) {
   say('picked up where I was')
 } else if (prompt.includes('SLEEPY') && fs.existsSync(path.join(art, 'pid'))) {
   say('napped already, carrying on') // a fresh re-run of a task that already slept
+} else if (prompt.includes('LEAKY')) {
+  // An agent that wrote the value into a tracked file, against the rule.
+  fs.writeFileSync('leak.txt', 'EGO_API_KEY=' + process.env.FLOW_SECRET_EGO_API_KEY)
+  execFileSync('git', ['add', '-A'])
+  execFileSync('git', ['commit', '-q', '-m', 'oops'])
+  say('committed the config')
 } else if (prompt.includes('SLEEPY')) {
   process.on('SIGTERM', () => {}) // ignore it, the way a real agent tree can
   fs.writeFileSync(path.join(art, 'pid'), String(process.pid))
@@ -943,7 +949,30 @@ try {
   await fetch(`${base}/api/tasks/${noShell.id}`, { method: 'DELETE' })
   assert.equal(secrets.read(hush.id, 'EGO_API_KEY'), null, 'deleting the task forgets its secrets')
   assert.equal(secrets.read(hush.id, 'OTHER_TOKEN'), null)
-  console.log('ok: secrets are named on the task, valued only in the shell, and forgotten with it')
+  // The guard: a diff that carries a kept value, or anything shaped like a
+  // secret, does not get pushed — by the button or by the agent.
+  const leaky = await post('/api/tasks', {
+    title: 'leaky', repos: ['web'], run: 'ask', prompt: 'LEAKY',
+    secrets: [{ name: 'EGO_API_KEY', value: 'ck_test_value_1234567890' }],
+  })
+  const leaked = await waitFor(leaky.id, (t) => t.status === 'done', 'the leaky task')
+  const refusedPush = await fetch(`${base}/api/tasks/${leaky.id}/push`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'web' }),
+  })
+  assert.equal(refusedPush.status, 400, 'a diff with a secret in it is not pushed')
+  assert.match((await refusedPush.json()).error, /leak\.txt:1/)
+  const leakTree = leaked.trees[0]
+  assert.throws(
+    () => execFileSync(process.execPath, [path.join(here, 'guard-secrets.mjs'), leakTree.repoPath, leakTree.baseBranch, leakTree.branch], {
+      env: { ...process.env, FLOW_SECRET_EGO_API_KEY: 'ck_test_value_1234567890' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+    (err) => err.status === 1 && /leak\.txt:1/.test(String(err.stderr)),
+    'the guard the agent runs says the same, with the file and line',
+  )
+  await fetch(`${base}/api/tasks/${leaky.id}`, { method: 'DELETE' })
+  console.log('ok: secrets are named on the task, valued only in the shell, and forgotten with it,\n' +
+    '    and a diff that carries one is refused by the push button and by the guard')
 
   // ---- From here on the server is restarted; nothing above may follow. ----
 

@@ -134,3 +134,33 @@ export function env(task) {
   }
   return out
 }
+
+// ---- The guard ------------------------------------------------------------
+
+/**
+ * Lines a diff adds that carry a kept value or anything shaped like a secret.
+ * `diff` is `git diff base...branch` text; `values` are the kept values.
+ * Returns [{ file, line }] in diff order.
+ */
+export function scanDiff(diff, values = []) {
+  const hits = []
+  let file = null
+  let line = 0
+  for (const raw of diff.split('\n')) {
+    if (raw.startsWith('+++ ')) {
+      file = raw.slice(4).replace(/^b\//, '')
+      continue
+    }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(raw)
+    if (hunk) {
+      line = Number(hunk[1]) - 1
+      continue
+    }
+    if (raw.startsWith('-') || raw.startsWith('\\')) continue
+    line++
+    if (!raw.startsWith('+') || !file) continue
+    const text = raw.slice(1)
+    if (values.some((v) => v && text.includes(v)) || detect(text).length) hits.push({ file, line })
+  }
+  return hits
+}

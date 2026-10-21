@@ -29,6 +29,7 @@ const WIN = process.platform === 'win32'
 const NODE_BIN = process.execPath
 const ASK_SCRIPT = path.join(import.meta.dirname, 'ask.mjs')
 const PREVIEW_SCRIPT = path.join(import.meta.dirname, 'preview.mjs')
+const GUARD_SCRIPT = path.join(import.meta.dirname, 'guard-secrets.mjs')
 
 // These three end up on a command line, which on Windows goes through cmd.exe,
 // so they are allowlisted rather than trusted. Each list is the CLI's own enum;
@@ -539,7 +540,7 @@ export function mergeViaAgent(id, repo) {
   return sideRun(
     task,
     `landing on ${tree.baseBranch}`,
-    buildMergePrompt(tree, { ...task, node: NODE_BIN, askScript: ASK_SCRIPT }),
+    buildMergePrompt(tree, { ...task, node: NODE_BIN, askScript: ASK_SCRIPT, guardScript: GUARD_SCRIPT }),
     tree.worktree,
     `Landed: ${task.title}`,
   )

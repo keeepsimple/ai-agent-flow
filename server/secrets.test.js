@@ -61,3 +61,18 @@ try {
 } finally {
   forget(who, ['A', 'B'])
 }
+
+// The guard reads a diff: added lines only, numbered by hunk.
+const { scanDiff } = await import('./secrets.js')
+const diff = [
+  'diff --git a/.env.dev b/.env.dev', '--- a/.env.dev', '+++ b/.env.dev',
+  '@@ -1,3 +1,5 @@', ' A=1', '-B=2', '+B=3', ' C=4', '+DB_PASSWORD=hunter2hunter2', '+D=5',
+  'diff --git a/README.md b/README.md', '--- a/README.md', '+++ b/README.md',
+  '@@ -10,2 +10,3 @@', ' text', '+the value ck_test_value_1234567890 is here', ' more',
+].join('\n')
+assert.deepEqual(scanDiff(diff, ['ck_test_value_1234567890']), [
+  { file: '.env.dev', line: 3 },
+  { file: 'README.md', line: 11 },
+])
+assert.deepEqual(scanDiff(diff.replace('ck_test_value_1234567890', 'nothing'), []), [{ file: '.env.dev', line: 3 }])
+console.log('ok: the guard reads added lines with their line numbers')
