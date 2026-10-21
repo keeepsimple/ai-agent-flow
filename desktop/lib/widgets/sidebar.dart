@@ -95,10 +95,13 @@ class Sidebar extends StatelessWidget {
   }
 
   List<Widget> _conversations(String root) {
+    // The ones last talked to, not the ones last created: an old conversation
+    // picked back up belongs at the top.
     final mine = (flow.tasks ?? const <Task>[])
         .where((t) => flow.rootOf(t) == root)
-        .take(recent)
-        .toList();
+        .toList()
+      ..sort((a, b) => b.activeAt.compareTo(a.activeAt));
+    if (mine.length > recent) mine.removeRange(recent, mine.length);
 
     if (mine.isEmpty) {
       return [

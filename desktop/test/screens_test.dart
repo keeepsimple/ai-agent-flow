@@ -684,6 +684,27 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
+  testWidgets('the sidebar lists the conversations touched most recently, not the newest', (tester) async {
+    final flow = _flow();
+    flow.tasks = [
+      _task({'id': 'n1', 'title': 'Newest but idle', 'createdAt': 300, 'updatedAt': 300, 'status': 'done', 'phase': null}),
+      _task({'id': 'o1', 'title': 'Old but just talked to', 'createdAt': 100, 'updatedAt': 900, 'status': 'done', 'phase': null}),
+      _task({'id': 'o2', 'title': 'Old and idle', 'createdAt': 50, 'status': 'done', 'phase': null}),
+    ];
+    tester.view.physicalSize = const Size(244, 460);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(body: Sidebar(flow: flow, onOpen: (_) {}, onPick: (_) {}, recent: 2)),
+    ));
+    await tester.pump();
+    final talked = tester.getTopLeft(find.text('Old but just talked to')).dy;
+    final idle = tester.getTopLeft(find.text('Newest but idle')).dy;
+    expect(talked, lessThan(idle), reason: 'the one talked to last comes first');
+    expect(find.text('Old and idle'), findsNothing, reason: 'and the last five are by activity, so this one drops off');
+  });
+
   testWidgets('the header with nothing open', (tester) async {
     final flow = _flow();
     await _shoot(

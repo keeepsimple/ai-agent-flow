@@ -23,6 +23,9 @@ class Task {
   String? get openQuestionId => raw['openQuestionId'] as String?;
   num get cost => (raw['cost'] ?? 0) as num;
   int get createdAt => (raw['createdAt'] ?? 0) as int;
+
+  /// When anything last happened on it: a run, a reply, a follow-up.
+  int get activeAt => (raw['updatedAt'] ?? raw['createdAt'] ?? 0) as int;
   List<String> get repos => (raw['repos'] as List?)?.cast<String>() ?? const [];
   List<Map<String, dynamic>> get trees =>
       (raw['trees'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
