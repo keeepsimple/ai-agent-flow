@@ -247,6 +247,93 @@ comes back as whatever it is then.
 This is also what **Catch up with \<base\>** runs on, so both are the same thing:
 one agent run on a task that already happened.
 
+## When the machine went to sleep
+
+A run that was cut off — the app quit, the laptop slept long enough for the
+CLI's connection to drop — is not failed. It is **interrupted**, and it keeps
+the session it was in. On launch the app continues every interrupted task by
+itself; the sidebar has a switch to make that a button instead. Continue runs
+`claude --resume` with one instruction: look at what is actually on disk,
+compare it with what you remember doing, carry on. A session the CLI will not
+continue falls back to a fresh run and says so in the conversation.
+
+Typing `tiếp tục` (or `continue`) into the box of a finished task continues its
+last session the same way, instead of opening a new run that has to be told the
+story again.
+
+## Secrets: used, never kept
+
+Paste a key into a prompt and the form notices — `NAME=value` with a name like
+`*_KEY`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`; the usual prefixes (`ck_`, `sk_`,
+`ghp_`, `glpat-`, …); or anything you wrap in `<<…>>` by hand — and asks once:
+keep it out of the transcript? Yes is the default.
+
+Kept values go to the macOS keychain under the task (a file only you can read,
+elsewhere). The conversation, the log and the task record show
+`{{secret:NAME}}` instead. When a run starts, each value reaches the agent only
+as `$FLOW_SECRET_NAME` in its shell, and the prompt says to use it from there —
+`printf '%s' "$FLOW_SECRET_NAME" >> .env.prod` — and never print it. A task on
+*Edits only* has no shell and is told so. Deleting the task deletes its secrets.
+
+Before anything is pushed — the Push button, Land, Ship — the diff is checked
+for the kept values and for anything shaped like a secret. A hit names the file
+and line and nothing moves. The agent runs the same guard itself before it
+pushes.
+
+Already have a key in an old task? With the server stopped:
+
+```sh
+node scripts/redact-existing.mjs
+```
+
+It moves what it finds to the keychain, rewrites the files, and lists what to
+rotate, because those values have already been in a model's context.
+
+## Ship to prod
+
+Land puts a branch on its base. **Ship to prod** on the repo card, enabled once
+it has landed, takes the task's commits to the prod branch — by cherry-pick,
+one at a time, oldest first, in a worktree on prod. Never by merging main in,
+never with force. Conflicts are resolved with the spec in hand; a product
+decision is asked, not guessed. Then the repo's checks, the secrets guard, and
+`git push origin prod`.
+
+Ship is refused when there is nothing left to pick (counted by patch, so a
+cherry-pick done by hand counts), when the branch has not landed yet, and on a
+repo that has no prod branch. **Prod…** on the card names the branch (default
+`prod`) and, optionally, the Jenkins job that deploys it: URL, job, user, API
+token. The token goes to the keychain. With Jenkins set, the ship run ends by
+watching the deploy — it waits for the build the push starts, then for it to
+finish, and quotes the console tail if it fails.
+
+## Prompts
+
+Everything the agents are told is a template you can edit: **Prompts** in the
+header, when no task is open. Each has the placeholders it is given listed
+above the editor — `{{prompt}}`, `{{artifactDir}}`, … — and
+`{{#if x}}…{{else}}…{{/if}}` for the branches. An override that names a
+placeholder the prompt does not get is refused. Saves keep the last three
+versions; Reset puts the default back. Overrides live at
+`<data>/prompts/<name>.md`, so they survive updates and travel with the data.
+
+## The status line
+
+Under the header of every task, one line: **Did** — the first sentence of the
+agent's last message, or the tool it is on while running — and **Needs** — the
+open question, the gate it is waiting at, or nothing. Click it to go to that
+message. The board shows the same Needs on each row, so twelve tasks say which
+two are waiting on you.
+
+## The Document route
+
+Beside normal, build and full there is **Document**: for an estimate, a
+write-up, a table. No worktree. The agent works in a folder under the task,
+with the repos reachable to read and told not to touch them. The workspace
+shows an **Output** pane in place of the diff: the files it produced, newest
+first; Markdown and text render in place, anything else opens with the system.
+A normal-route task that produced a file (the prompt tells it where to put one)
+is offered the switch.
+
 ## Repos: one, several, or all of them
 
 `FLOW_REPO_ROOT` defaults to the folder above this one, and every sibling with a
@@ -422,6 +509,9 @@ A machine with its own `~/.claude/settings.json` picks that up on its own.
 | `FLOW_CLAUDE_BIN` | `claude` | Path to the CLI, if it is not on your PATH |
 | `FLOW_CHROME_PROFILE` | `Default` | Which Chrome profile the browser copies its session from |
 | `FLOW_CHROME_USER_DATA` | per platform | Where that profile lives, if Chrome is not in the usual place |
+| `FLOW_AUTO_RESUME` | on | `0` leaves interrupted tasks for the Continue button (the sidebar switch sets this) |
+| `FLOW_WATCHDOG_MS` / `FLOW_SLEEP_JUMP_MS` / `FLOW_SILENT_MS` | 60s / 180s / 10min | How a sleep is noticed, and how long a run may be silent after one before it counts as interrupted |
+| `FLOW_JENKINS_POLL_MS` / `FLOW_JENKINS_START_MS` / `FLOW_JENKINS_MAX_MS` | 15s / 2min / 30min | The deploy watcher: poll interval, how long to wait for a new build to start, how long to wait for it |
 
 ## The risk worth knowing about
 
@@ -474,6 +564,8 @@ well inside it.
 ## Checks
 
 `npm test` drives the whole machine end to end against a stubbed `claude`: it
-creates a worktree, walks all four phases, answers both gates, and answers a
-blocking question. No network, no spend. The stub is plain Node behind a
+creates a worktree, walks all four phases, answers both gates, answers a
+blocking question, lands, ships to a prod branch, kills the server mid-run and
+continues the session, keeps a secret out of every file and refuses to push it,
+and overrides a prompt. No network, no spend. The stub is plain Node behind a
 one-line launcher, so the check runs on all three platforms.
