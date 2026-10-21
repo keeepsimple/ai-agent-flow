@@ -15,6 +15,7 @@ class Header extends StatelessWidget {
     super.key,
     required this.flow,
     required this.sidebarOpen,
+    required this.fullScreen,
     required this.onToggleSidebar,
     required this.task,
     required this.tab,
@@ -28,6 +29,9 @@ class Header extends StatelessWidget {
 
   final FlowState flow;
   final bool sidebarOpen;
+
+  /// Full screen has no traffic lights, so nothing to leave room for.
+  final bool fullScreen;
   final VoidCallback onToggleSidebar;
   final Task? task;
   final String tab;
@@ -46,7 +50,10 @@ class Header extends StatelessWidget {
     // inset only has to clear the lights.
     return Container(
       height: 52,
-      padding: EdgeInsets.only(left: Platform.isMacOS ? 90 : 14, right: 14),
+      padding: EdgeInsets.only(
+        left: Platform.isMacOS && !fullScreen ? 90 : 14,
+        right: 14,
+      ),
       decoration: const BoxDecoration(
         // A shade above the page, not level with it. At panel colour the bar
         // and the body were the same dark, and the hairline between them read

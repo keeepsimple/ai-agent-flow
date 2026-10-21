@@ -250,6 +250,7 @@ void main() {
       Header(
         flow: flow,
         sidebarOpen: true,
+        fullScreen: false,
         onToggleSidebar: () {},
         task: null,
         tab: 'workspace',
@@ -347,6 +348,7 @@ void main() {
         body: Header(
           flow: flow,
           sidebarOpen: true,
+        fullScreen: false,
           onToggleSidebar: () {},
           task: null,
           tab: 'workspace',
@@ -370,6 +372,37 @@ void main() {
     expect(leading, lessThan(120), reason: 'but not pushed halfway across either');
   });
 
+  testWidgets('full screen stops leaving room for lights that are gone', (tester) async {
+    final flow = _flow();
+    tester.view.physicalSize = const Size(1340, 120);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        backgroundColor: Tern.page,
+        body: Header(
+          flow: flow,
+          sidebarOpen: true,
+          onToggleSidebar: () {},
+          fullScreen: true,
+          task: null,
+          tab: 'workspace',
+          onTab: (_) {},
+          onBack: () {},
+          accent: Accent.sky,
+          onAccent: (_) {},
+          onDropped: () {},
+          onDeleted: () {},
+        ),
+      ),
+    ));
+
+    expect(tester.getTopLeft(find.byIcon(Icons.menu_open)).dx, lessThan(40),
+        reason: 'there are no traffic lights in full screen to clear');
+  });
+
   testWidgets('the header carries what the screen can do', (tester) async {
     final flow = _flow();
     final task = _task({'status': 'done', 'phase': null, 'root': '/w/tree'});
@@ -379,6 +412,7 @@ void main() {
       Header(
         flow: flow,
         sidebarOpen: true,
+        fullScreen: false,
         onToggleSidebar: () {},
         task: task,
         tab: 'workspace',

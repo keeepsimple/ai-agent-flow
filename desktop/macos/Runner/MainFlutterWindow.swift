@@ -2,6 +2,12 @@ import Cocoa
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
+  /// Flutter draws this window's title bar, so it has to be told when there
+  /// stops being one. In full screen there are no traffic lights to leave
+  /// room for, and the toolbar AppKit keeps reserving overlays the header
+  /// rather than sitting beside it.
+  private var channel: FlutterMethodChannel?
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
@@ -32,8 +38,33 @@ class MainFlutterWindow: NSWindow {
     // keeps it in user defaults and restores it on the next launch.
     self.setFrameAutosaveName("AgentFlowWindow")
 
+    channel = FlutterMethodChannel(
+      name: "agentflow/window",
+      binaryMessenger: flutterViewController.engine.binaryMessenger)
+    channel?.setMethodCallHandler { [weak self] call, reply in
+      // Asked for once on startup: a window restored into full screen would
+      // otherwise lay itself out as if it were not.
+      reply(call.method == "fullScreen" ? self?.isFullScreen() ?? false : FlutterMethodNotImplemented)
+    }
+
+    for (name, full) in [
+      (NSWindow.didEnterFullScreenNotification, true),
+      (NSWindow.didExitFullScreenNotification, false),
+    ] {
+      NotificationCenter.default.addObserver(
+        forName: name, object: self, queue: .main
+      ) { [weak self] _ in
+        // The reserved toolbar strip is what leaves a dead band across the
+        // top and hides the header under it.
+        self?.toolbar?.isVisible = !full
+        self?.channel?.invokeMethod("fullScreen", arguments: full)
+      }
+    }
+
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()
   }
+
+  private func isFullScreen() -> Bool { styleMask.contains(.fullScreen) }
 }

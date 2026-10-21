@@ -12,6 +12,7 @@ import 'server.dart';
 import 'shortcuts.dart';
 import 'prefs.dart';
 import 'theme.dart';
+import 'window.dart';
 import 'widgets/bits.dart';
 import 'widgets/header.dart';
 import 'widgets/sidebar.dart';
@@ -36,6 +37,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
   late final FlowState _flow = FlowState(Api(_port));
 
   final _prefs = Prefs.load();
+  final _window = WindowState();
   Accent _accent = Accent.sky;
   bool _ready = false;
   String? _trouble;
@@ -76,6 +78,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _window.dispose();
     _flow.dispose();
     super.dispose();
   }
@@ -87,7 +90,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
       debugShowCheckedModeBanner: false,
       theme: ternTheme(_accent),
       home: AnimatedBuilder(
-        animation: _flow,
+        animation: Listenable.merge([_flow, _window]),
         builder: (context, _) =>
             Scaffold(backgroundColor: Tern.page, body: _body(context)),
       ),
@@ -148,6 +151,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                 Header(
                   flow: _flow,
                   sidebarOpen: _prefs.sidebarOpen,
+          fullScreen: _window.fullScreen,
                   onToggleSidebar: _toggleSidebar,
                   task: showing ? task : null,
                   tab: _tab,
