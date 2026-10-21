@@ -95,6 +95,7 @@ FlowState _flow() {
       {'value': 'acceptEdits', 'label': 'Edits only', 'hint': 'No shell.'},
     ],
     'runs': [
+      {'value': 'ask', 'label': 'Normal', 'hint': 'One run, no documents and no self review.'},
       {'value': 'full', 'label': 'Spec, plan, then build', 'hint': 'Stops for you twice.'},
       {'value': 'quick', 'label': 'Just build it', 'hint': 'Straight to the work.'},
     ],

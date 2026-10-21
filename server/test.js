@@ -88,6 +88,9 @@ if (prompt.includes('SLEEPY')) {
   // Catch-up run: do the merge for real, in the worktree we were started in.
   execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'merge', 'main'])
   say('merged main in')
+} else if (prompt.includes('## What the human asked')) {
+  if (prompt.includes('title.txt')) fs.writeFileSync(path.join(art, 'title.txt'), 'Named on the plain route')
+  say('read the code, here is the answer')
 } else if (prompt.includes('Phase: implement')) {
   if (prompt.includes('title.txt')) fs.writeFileSync(path.join(art, 'title.txt'), 'Named from the build')
   const ask = ${JSON.stringify(path.join(here, 'ask.mjs'))}
@@ -267,6 +270,15 @@ try {
     'naming no repo is not a reason to search every repo there is',
   )
 
+  // Nothing chosen on the form means this: one run, no documents, no review.
+  const plain = await post('/api/tasks', { repos: ['api'], prompt: 'what does getDiscounts return?' })
+  assert.equal(plain.run, 'ask', 'an omitted run is the plain route, not the full one')
+  const answered = await waitFor(plain.id, (t) => t.status === 'done' || t.status === 'failed', 'the plain run')
+  assert.equal(answered.status, 'done', `plain run failed: ${answered.error}`)
+  assert.deepEqual(Object.keys(answered.phases), ['answer'])
+  assert.deepEqual(answered.docs, {}, 'it writes no documents')
+  assert.equal(answered.title, 'Named on the plain route', 'and still names itself')
+
   const badRun = await fetch(`${base}/api/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -274,7 +286,12 @@ try {
   })
   assert.equal(badRun.status, 400, 'an unknown run shape should be refused')
 
-  const quiet = await post('/api/tasks', { repos: ['api'], prompt: 'just do it, nobody is watching', autoApprove: true })
+  const quiet = await post('/api/tasks', {
+    repos: ['api'],
+    prompt: 'just do it, nobody is watching',
+    run: 'full',
+    autoApprove: true,
+  })
   assert.equal(quiet.title, 'just do it, nobody is watching', 'the prompt stands in until the agent names it')
   assert.equal(quiet.namedByHuman, false)
   let quietTask = await waitFor(quiet.id, (t) => t.status === 'done' || t.status === 'failed', 'the quiet run')
@@ -368,6 +385,7 @@ try {
     title: 'Add a thing',
     repos: REPOS,
     prompt: 'add a thing',
+    run: 'full',
     attachments: [uploaded.path, log.path],
     model: 'sonnet',
     effort: 'high',
@@ -737,6 +755,7 @@ try {
     '    unattended answers its own questions and the agent names an untitled task,\n' +
     '    the branch follows that name and a request in Vietnamese still slugs readably,\n' +
     '    @ finds a tracked file, name matches first,\n' +
+    '    choosing no run shape is the plain one: no documents, no review,\n' +
     '    a quick run skips spec and plan but still reviews itself,\n' +
     '    a finished task takes a follow-up on the same branches,\n' +
     '    an attached log reaches the prompt and a binary in a .log is refused,\n' +

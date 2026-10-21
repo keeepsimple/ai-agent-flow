@@ -137,17 +137,27 @@ the ones that let it leave the sandbox, which it only survived before because
 ## How a task runs
 
 ```
-Spec, plan, then build
-  worktree -> spec -> [your call] -> plan -> [your call] -> implement -> review
+Normal  (nothing chosen)
+  worktree -> one run
 
 Just build it
   worktree -> implement -> review
+
+Spec, plan, then build
+  worktree -> spec -> [your call] -> plan -> [your call] -> implement -> review
 ```
 
-Not every change earns a spec. A one-line fix spends more on the document than
-on the work, so **Just build it** goes straight to it. The review is not part of
-what gets skipped: it is the phase that catches the bug, and it is cheap next to
-implement. The question channel stays open on both routes.
+Most of what gets typed into a box like this is a question, or a change small
+enough that the ceremony costs more than the work. That is the route you get by
+choosing nothing: one run, no documents, no self review. Nothing downstream
+catches a mistake on it, which is the trade.
+
+The two longer routes are opt-in. **Just build it** skips the documents but
+keeps the review, because the review is the phase that catches the bug and it
+is cheap next to implement. **Spec, plan, then build** stops for you twice
+before any code moves.
+
+The question channel stays open on all three.
 
 Each phase is a separate `claude -p` run in the worktree. They hand off through
 files, not through a shared session, so a failed phase can be retried on its own.

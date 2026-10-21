@@ -171,9 +171,10 @@ export function createTask({
     autoApprove,
     status: 'queued',
     phase: null,
-    run: pick(run, RUN_VALUES, 'full', 'run'),
+    // Nothing chosen is a choice: the plain route, not the full ceremony.
+    run: pick(run, RUN_VALUES, 'ask', 'run'),
     phases: Object.fromEntries(
-      phasesFor(pick(run, RUN_VALUES, 'full', 'run')).map((p) => [p, { status: 'pending' }]),
+      phasesFor(pick(run, RUN_VALUES, 'ask', 'run')).map((p) => [p, { status: 'pending' }]),
     ),
     questions: [],
     cost: 0,

@@ -150,7 +150,9 @@ class _NewTaskState extends State<NewTask> {
   final _picked = <String>{};
   final _attached = <String>[];
 
-  String _run = 'full';
+  /// Null is the plain route: one run, no documents, no review. It is what
+  /// most of what gets typed in here actually wants.
+  String? _run;
   String? _model;
   String? _effort;
   String? _mode;
@@ -239,8 +241,8 @@ class _NewTaskState extends State<NewTask> {
         'prompt': _prompt.text.trim(),
         if (_title.text.trim().isNotEmpty) 'title': _title.text.trim(),
         'repos': _target(),
-        'run': _run,
         'autoApprove': _unattended,
+        'run': _run ?? 'ask',
         if (_model != null) 'model': _model,
         if (_effort != null) 'effort': _effort,
         if (_mode != null) 'permissionMode': _mode,
@@ -272,6 +274,7 @@ class _NewTaskState extends State<NewTask> {
         ? widget.flow.repos
         : widget.flow.repos.where((r) => r['root'] == workspace).toList();
     final runs = (_options['runs'] as List?) ?? const [];
+    final plain = runs.cast<Map>().where((r) => r['value'] == 'ask').firstOrNull;
     final target = _target();
     final ready = _prompt.text.trim().isNotEmpty && target.isNotEmpty;
 
@@ -356,16 +359,31 @@ class _NewTaskState extends State<NewTask> {
             ],
           ),
           const SizedBox(height: 14),
+          Row(children: [
+            Text('Route', style: t(11.5, color: Tern.muted)),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: (plain?['hint'] as String?) ?? '',
+              child: Text(
+                _run == null ? 'normal — no documents, no self review' : '',
+                style: t(11, color: Tern.faint),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 7),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final run in runs)
+              // The plain route has no chip: it is what not choosing means.
+              for (final run in runs.where((r) => (r as Map)['value'] != 'ask'))
                 Chip2(
                   label: (run as Map)['label'] as String,
                   selected: _run == run['value'],
                   tooltip: run['hint'] as String?,
-                  onTap: () => setState(() => _run = run['value'] as String),
+                  onTap: () => setState(
+                    () => _run = _run == run['value'] ? null : run['value'] as String,
+                  ),
                 ),
               Chip2(
                 label: 'Run unattended',

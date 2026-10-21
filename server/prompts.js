@@ -1,3 +1,6 @@
+// The long route's phases, in order. `answer` is not one of them: it is the
+// whole of the plain route, and listing it here put it on the end of every
+// full run.
 export const PHASES = ['spec', 'plan', 'implement', 'review']
 
 /**
@@ -6,6 +9,12 @@ export const PHASES = ['spec', 'plan', 'implement', 'review']
  * itself: the review is what catches the bug, and it is cheap next to implement.
  */
 export const RUNS = [
+  {
+    value: 'ask',
+    label: 'Normal',
+    hint: 'One run, no documents and no self review. Answering a question, or a change small enough that the ceremony costs more than the work.',
+    phases: ['answer'],
+  },
   {
     value: 'full',
     label: 'Spec, plan, then build',
@@ -23,13 +32,14 @@ export const RUNS = [
 export const phasesFor = (run) => (RUNS.find((r) => r.value === run) || RUNS[0]).phases
 
 // Phases that stop for a human before the next one starts.
-export const GATES = { spec: true, plan: true, implement: false, review: false }
+export const GATES = { spec: true, plan: true, implement: false, review: false, answer: false }
 
 export const PHASE_LABEL = {
   spec: 'Spec',
   plan: 'Implementation plan',
   implement: 'Implement',
   review: 'Self review',
+  answer: 'Working',
 }
 
 const treeTable = (ctx) =>
@@ -125,6 +135,31 @@ can answer by reading the code.`
 }
 
 const BODY = {
+  /**
+   * No phases, no documents, no review: the plain route. Most of what gets
+   * typed into a box like this is a question, and a question answered twice
+   * and written up three times is worse than one answered once.
+   */
+  answer: (ctx) => `## What the human asked
+
+${ctx.prompt}
+
+Do this, and nothing around it.
+
+- If it is a question, answer it. Read whatever you need to be sure, and say
+  what you actually found rather than what is usually true.
+- If it is a change, make it, run the repo's own checks, and commit it.
+- If it turns out to be larger than it reads — a migration, a new dependency,
+  something that wants a spec — say so plainly and do the narrow version
+  rather than quietly growing it.
+
+There is no spec, no plan and no review on this route, so nothing downstream
+will catch a mistake for you. Write no documents.
+
+End with what you found or what you changed, and the real output of anything
+you ran.
+${titleAsk(ctx)}`,
+
   spec: (ctx) => `## Phase: write the spec
 
 Task from the human:
