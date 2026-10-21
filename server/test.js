@@ -1113,7 +1113,28 @@ try {
   assert.ok(pastBase.log.some((l) => /Baseline skipped for web: the worktree is past its base/.test(l.text)), 'said, not faked')
   assert.ok(!fs.existsSync(path.join(root, 'data', 'tasks', landing5.id, 'baseline')), 'and nothing written')
   await putRepo('web', { checks: [] })
-  console.log('ok: the guard blames only the task\'s own commits')
+  // A token typed while resolving a conflict is the task's: the merge commit's
+  // resolution is scanned, even though what the merge brought in is not.
+  execFileSync('git', ['-C', tree5.worktree, 'reset', '-q', '--hard', 'HEAD~1']) // drop the notes.txt commit
+  fs.writeFileSync(path.join(repos, 'web', 'app', 'discount-notes.md'), 'main says A\n')
+  git('web', 'add', 'app/discount-notes.md')
+  git('web', 'commit', '-qm', 'main edits notes')
+  git('web', 'push', '-q', 'origin', 'main')
+  fs.writeFileSync(path.join(tree5.worktree, 'app', 'discount-notes.md'), 'branch says B\n')
+  execFileSync('git', ['-C', tree5.worktree, 'add', 'app/discount-notes.md'])
+  execFileSync('git', ['-C', tree5.worktree, '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'branch edits notes'])
+  execFileSync('git', ['-C', tree5.worktree, 'fetch', '-q', 'origin'])
+  try { execFileSync('git', ['-C', tree5.worktree, 'merge', '-q', 'origin/main'], { stdio: 'pipe' }) } catch {} // conflicts, as intended
+  fs.writeFileSync(path.join(tree5.worktree, 'app', 'discount-notes.md'), 'resolved\nRESOLVED_TOKEN=abcdefgh12345678\n')
+  execFileSync('git', ['-C', tree5.worktree, 'add', 'app/discount-notes.md'])
+  execFileSync('git', ['-C', tree5.worktree, '-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'resolve'])
+  const pushResolved = await fetch(`${base}/api/tasks/${landing5.id}/push`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'web' }),
+  })
+  assert.equal(pushResolved.status, 400, 'a token typed into a conflict resolution is caught')
+  assert.match((await pushResolved.json()).error, /discount-notes\.md/)
+  assert.throws(() => execFileSync(process.execPath, [path.join(here, 'guard-secrets.mjs'), tree5.repoPath, 'main', tree5.branch], { stdio: 'pipe' }), (e) => e.status === 1 && /discount-notes\.md/.test(String(e.stderr)))
+  console.log('ok: the guard blames only the task\'s own commits, including what it typed resolving a conflict')
 
   // A worktree that arrives ready: the repo's setup ran in it, generated files
   // came over from the checkout, and the checks were run once at base so a

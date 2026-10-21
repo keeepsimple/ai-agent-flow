@@ -178,11 +178,21 @@ export function toPick(tree, prodBranch) {
 }
 
 /** Added lines on this branch that carry a kept value or look like a secret. */
+/** Where the task's own commits start: the remote's base when it has one, else the local one. */
+export function guardBase(repoPath, baseBranch) {
+  return quiet(() => git(repoPath, 'rev-parse', '--verify', '--quiet', `origin/${baseBranch}`)) ? `origin/${baseBranch}` : baseBranch
+}
+
+/** git log arguments that show only what the task typed: its own commits and its conflict resolutions. */
+export const GUARD_LOG = ['log', '--first-parent', '--diff-merges=remerge', '-p', '--format=']
+
 export function scanForSecrets(tree, values) {
-  // The task's own commits only. A three-dot diff against a stale local base
-  // blamed the branch for everything main gained since; a merge's diff is
-  // main's too. First-parent, no merges: what this task typed.
-  const diff = quiet(() => git(tree.repoPath, 'log', '--first-parent', '--no-merges', '-p', '--format=', `${tree.baseBranch}..${tree.branch}`)) || ''
+  // The task's own commits only. Against the remote's base so a stale local
+  // one does not blame the branch for everything main gained; first-parent so
+  // a merge does not bring main's history in; remerge so what the agent typed
+  // while resolving a conflict is still seen.
+  const start = guardBase(tree.repoPath, tree.baseBranch)
+  const diff = quiet(() => git(tree.repoPath, ...GUARD_LOG, `${start}..${tree.branch}`)) || ''
   return secrets.scanDiff(diff, values)
 }
 

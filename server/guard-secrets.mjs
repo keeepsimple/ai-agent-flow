@@ -18,7 +18,11 @@ const values = Object.entries(process.env)
 // from the base is the base's problem, not a reason to stop this push.
 let diff
 try {
-  diff = execFileSync('git', ['-C', repo, 'log', '--first-parent', '--no-merges', '-p', '--format=', `${base}..${branch}`], { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] })
+  // The remote's base when it has one, so a stale local base does not blame
+  // the branch for main's history. Remerge: what was typed resolving a conflict.
+  let start = base
+  try { execFileSync('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `origin/${base}`], { stdio: 'ignore' }); start = `origin/${base}` } catch {}
+  diff = execFileSync('git', ['-C', repo, 'log', '--first-parent', '--diff-merges=remerge', '-p', '--format=', `${start}..${branch}`], { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] })
 } catch (err) {
   console.error(`cannot read the range ${base}..${branch}: ${String(err.stderr || err.message).trim().split('\n')[0]}`)
   process.exit(2) // not a secret: say so with a different code
