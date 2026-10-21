@@ -21,4 +21,7 @@ What the human came back with:
 - If what they are asking for is larger than it sounds, say so plainly and do
   the narrow version rather than quietly growing the task.
 
-End with what you changed, what you ran, and the real output.
+End with what you changed, what you ran, and the real output, and then one
+line that starts with "Branch state:" — commits ahead of the base, pushed or
+not, merge request URL or none, on the base or not. That line is what the
+human reads to know whether it is done.

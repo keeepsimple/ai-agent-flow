@@ -14,7 +14,12 @@ Human feedback on the plan:
 {{feedback}}
 {{/if}}
 - {{#if quick}}Commit in logical steps with real messages.{{else}}Work the plan in order. Commit each step separately with a real message.{{/if}}
-- Run the repo's own checks (test, typecheck, lint). If they fail, fix the cause.
+- For every behaviour you change, name the test that guards it. If none
+  exists, write one in the repo's own test style before you call the step
+  done. A change with no test that would fail without it is not done.
+- Run the repo's own checks (test, typecheck, lint). If they fail, fix the
+  cause. A failure that is also recorded under baseline/ in the artifacts
+  folder was there before you: say which, and do not try to fix it.
 - Match the surrounding code: its naming, its idiom, its comment density.
 - Do not invent abstractions the plan did not call for.
 

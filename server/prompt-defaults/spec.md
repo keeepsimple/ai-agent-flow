@@ -14,7 +14,9 @@ Read enough of the codebase to know what this actually touches. Then write
 - Constraints: existing patterns, APIs, deploy or data gotchas you found{{#if many}}
 - Contract between the repos: the exact shape each one sends or expects, and
   which side has to ship first for the other not to break{{/if}}
-- Acceptance criteria: how someone checks this is done, as concrete checks
+- Acceptance criteria: one line each, as something a person can run or click,
+  with the command or the path on the line. A criterion nobody could check
+  is rewritten until someone could.
 - Open questions: anything you had to assume, marked as your assumption
 
 {{titleAsk}}
