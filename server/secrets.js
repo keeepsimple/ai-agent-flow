@@ -65,3 +65,72 @@ export function redact(text, found) {
 export function placeholderNames(text) {
   return [...new Set([...text.matchAll(/\{\{secret:([A-Za-z0-9_]+)\}\}/g)].map((m) => m[1]))]
 }
+
+// ---- Keeping values -------------------------------------------------------
+//
+// macOS: the login keychain, through the `security` CLI the way the file
+// dialogs already go through osascript. One generic-password item per
+// (taskId, name). Elsewhere: a JSON file per task that only this user can
+// read, since Windows has no built-in CLI that reads a credential back.
+
+import fs from 'node:fs'
+import path from 'node:path'
+import { execFileSync } from 'node:child_process'
+const DATA = process.env.FLOW_DATA || path.join(import.meta.dirname, '..', 'data')
+const MAC = process.platform === 'darwin'
+const SERVICE = (name) => `agentflow:${name}`
+const FILE = (owner) => path.join(DATA, 'secrets', `${owner.replace(/[^A-Za-z0-9_.:-]/g, '_')}.json`)
+
+const sec = (...args) =>
+  execFileSync('security', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+
+const readFile = (owner) => {
+  try { return JSON.parse(fs.readFileSync(FILE(owner), 'utf8')) } catch { return {} }
+}
+const writeFile = (owner, values) => {
+  const file = FILE(owner)
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  if (Object.keys(values).length === 0) {
+    fs.rmSync(file, { force: true })
+    return
+  }
+  fs.writeFileSync(file, JSON.stringify(values), { mode: 0o600 })
+  fs.chmodSync(file, 0o600)
+}
+
+export function keep(owner, name, value) {
+  if (MAC) {
+    sec('add-generic-password', '-U', '-a', owner, '-s', SERVICE(name), '-w', value)
+    return
+  }
+  writeFile(owner, { ...readFile(owner), [name]: value })
+}
+
+export function read(owner, name) {
+  if (MAC) {
+    try { return sec('find-generic-password', '-a', owner, '-s', SERVICE(name), '-w').replace(/\n$/, '') } catch { return null }
+  }
+  return readFile(owner)[name] ?? null
+}
+
+export function forget(owner, names) {
+  if (MAC) {
+    for (const name of names) {
+      try { sec('delete-generic-password', '-a', owner, '-s', SERVICE(name)) } catch {}
+    }
+    return
+  }
+  const values = readFile(owner)
+  for (const name of names) delete values[name]
+  writeFile(owner, values)
+}
+
+/** The environment a run for `task` gets: FLOW_SECRET_<NAME> for every name it keeps. */
+export function env(task) {
+  const out = {}
+  for (const name of task.secrets || []) {
+    const value = read(task.id, name)
+    if (value !== null) out[`FLOW_SECRET_${name}`] = value
+  }
+  return out
+}

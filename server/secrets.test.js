@@ -38,3 +38,25 @@ assert.equal(redact(twice, detect(twice)), 'TOKEN_KEY={{secret:TOKEN_KEY}}\nagai
 assert.deepEqual(placeholderNames('x {{secret:A}} y {{secret:B}} {{secret:A}}'), ['A', 'B'])
 
 console.log('ok: secrets are found by name, prefix, wrapper and shape; shas, UUIDs and prose are left alone')
+
+// Kept values live in the OS keychain (macOS) or a 0600 file (elsewhere), and
+// reach the agent only as FLOW_SECRET_<NAME> in its environment.
+const { keep, read, forget, env } = await import('./secrets.js')
+const who = 'agentflow-test'
+try {
+  keep(who, 'A', 'value-one')
+  assert.equal(read(who, 'A'), 'value-one')
+  keep(who, 'A', 'value-two') // overwrite, not duplicate
+  assert.equal(read(who, 'A'), 'value-two')
+  keep(who, 'B', 'other')
+  assert.deepEqual(env({ id: who, secrets: ['A', 'B'] }), { FLOW_SECRET_A: 'value-two', FLOW_SECRET_B: 'other' })
+  assert.deepEqual(env({ id: who, secrets: [] }), {})
+  assert.deepEqual(env({ id: who }), {})
+  forget(who, ['A', 'B'])
+  assert.equal(read(who, 'A'), null)
+  assert.equal(read(who, 'B'), null)
+  assert.equal(read(who, 'NEVER'), null)
+  console.log('ok: secrets are kept, read back, and forgotten')
+} finally {
+  forget(who, ['A', 'B'])
+}
