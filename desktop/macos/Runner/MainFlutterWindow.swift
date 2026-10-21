@@ -15,6 +15,15 @@ class MainFlutterWindow: NSWindow {
     self.styleMask.insert(.fullSizeContentView)
     self.titlebarAppearsTransparent = true
     self.titleVisibility = .hidden
+
+    // An empty unified toolbar, purely for its geometry: it takes the title
+    // bar from 32pt to 52pt and moves the traffic lights to the middle of it
+    // (centres at 26, spanning x 19..79, measured rather than guessed). The
+    // header can then be a normal centred row instead of a band pinned to the
+    // top of the window with dead space under it.
+    let toolbar = NSToolbar(identifier: "AgentFlowToolbar")
+    self.toolbar = toolbar
+    self.toolbarStyle = .unified
     self.isMovableByWindowBackground = true
     self.appearance = NSAppearance(named: .darkAqua)
     self.backgroundColor = NSColor(red: 0.043, green: 0.047, blue: 0.055, alpha: 1) // --color-page

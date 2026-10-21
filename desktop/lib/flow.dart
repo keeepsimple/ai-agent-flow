@@ -20,6 +20,9 @@ class FlowState extends ChangeNotifier {
   bool live = false;
   String? error;
 
+  /// Which workspace the board is showing. Null means all of them.
+  String? workspace;
+
   StreamSubscription<dynamic>? _events;
   Timer? _errorTimer;
   Timer? _retry;
@@ -64,6 +67,34 @@ class FlowState extends ChangeNotifier {
     } catch (err) {
       fail(err);
     }
+  }
+
+  void pickWorkspace(String? root) {
+    workspace = root;
+    notifyListeners();
+  }
+
+  /// Which root a task belongs to. Its repo paths say so directly; a task
+  /// from before those were stored falls back to the repo list by name.
+  String? rootOf(Task task) {
+    for (final path in (task.raw['repoPaths'] as List?)?.cast<String>() ?? const []) {
+      for (final root in roots) {
+        if (path == root || path.startsWith('$root/') || path.startsWith('$root\\')) return root;
+      }
+    }
+    for (final name in task.repos) {
+      for (final repo in repos) {
+        if (repo['name'] == name) return repo['root'] as String?;
+      }
+    }
+    return null;
+  }
+
+  /// The board, filtered to the chosen workspace.
+  List<Task> get visible {
+    final all = tasks ?? const <Task>[];
+    if (workspace == null) return all;
+    return all.where((t) => rootOf(t) == workspace).toList();
   }
 
   Future<void> select(String? id) async {

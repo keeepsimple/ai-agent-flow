@@ -56,6 +56,7 @@ Task _task(Map<String, dynamic> extra) => Task({
       'status': 'running',
       'phase': 'implement',
       'repos': ['mobile-admin-shopify', 'notify-service'],
+      'repoPaths': ['/w/mobile-builder/mobile-admin-shopify', '/w/mobile-builder/notify-service'],
       'model': 'opus',
       'cost': 1.42,
       'createdAt': 1,
@@ -77,10 +78,12 @@ FlowState _flow() {
   // The error banner dismisses itself after five seconds, and that timer
   // outlives the test unless the store is disposed with it.
   addTearDown(flow.dispose);
+  flow.roots = ['/w/mobile-builder', '/w/logistek'];
   flow.repos = [
-    {'name': 'mobile-admin-shopify', 'path': '/w/mobile-admin-shopify'},
-    {'name': 'notify-service', 'path': '/w/notify-service'},
-    {'name': 'mobile-builder', 'path': '/w/mobile-builder'},
+    {'name': 'mobile-admin-shopify', 'path': '/w/mobile-builder/mobile-admin-shopify', 'root': '/w/mobile-builder'},
+    {'name': 'notify-service', 'path': '/w/mobile-builder/notify-service', 'root': '/w/mobile-builder'},
+    {'name': 'mobile-builder', 'path': '/w/mobile-builder/mobile-builder', 'root': '/w/mobile-builder'},
+    {'name': 'warehouse-api', 'path': '/w/logistek/warehouse-api', 'root': '/w/logistek'},
   ];
   flow.options = {
     'models': ['', 'fable', 'opus', 'sonnet', 'haiku'],
@@ -133,6 +136,13 @@ void main() {
       }),
       _task({'id': 'c3', 'title': 'Kiwi size chart polish', 'status': 'done', 'phase': null}),
       _task({'id': 'd4', 'title': 'Port the email cron', 'status': 'failed', 'phase': null}),
+      _task({
+        'id': 'e5',
+        'title': 'Driver app loses its route on a cold start',
+        'status': 'running',
+        'repos': ['warehouse-api'],
+        'repoPaths': ['/w/logistek/warehouse-api'],
+      }),
     ];
     await _shoot(tester, 'sessions',
         SessionsScreen(flow: flow, onOpen: (_) {}), const Size(1340, 900));
@@ -232,12 +242,35 @@ void main() {
     );
   });
 
+  test('a task belongs to the workspace its repos live in', () {
+    final flow = _flow(); // already disposes itself at the end of the test
+    flow.tasks = [
+      _task({}),
+      _task({
+        'id': 'e5',
+        'repos': ['warehouse-api'],
+        'repoPaths': ['/w/logistek/warehouse-api'],
+      }),
+      // No repoPaths: an older task, matched through the repo list by name.
+      _task({'id': 'old', 'repos': ['warehouse-api'], 'repoPaths': null}),
+    ];
+
+    expect(flow.rootOf(flow.tasks![0]), '/w/mobile-builder');
+    expect(flow.rootOf(flow.tasks![1]), '/w/logistek');
+    expect(flow.rootOf(flow.tasks![2]), '/w/logistek',
+        reason: 'a task stored before repo paths were still has repo names');
+
+    flow.pickWorkspace('/w/logistek');
+    expect(flow.visible.map((t) => t.id), ['e5', 'old']);
+    flow.pickWorkspace(null);
+    expect(flow.visible, hasLength(3), reason: 'no workspace means all of them');
+  });
+
   testWidgets('the bar lines up with the traffic lights', (tester) async {
-    // Not eyeballed: AppKit reports the lights at x 9..69 with their centres
-    // 16 from the top of the window. Centring the row in the bar instead put
-    // everything 8pt low, which is what was visible.
+    // Not eyeballed: with a unified toolbar AppKit reports the lights at
+    // x 19..79 with their centres 26 from the top of the window.
     final flow = _flow();
-    tester.view.physicalSize = const Size(1340, 110);
+    tester.view.physicalSize = const Size(1340, 120);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -260,10 +293,10 @@ void main() {
     ));
 
     final mark = find.byType(Mark);
-    expect(tester.getCenter(mark).dy, closeTo(16, 1.5),
+    expect(tester.getCenter(mark).dy, closeTo(26, 1.5),
         reason: 'level with the middle of the traffic lights');
-    expect(tester.getTopLeft(mark).dx, closeTo(80, 0.5),
-        reason: 'clear of the lights, which end at 69');
+    expect(tester.getTopLeft(mark).dx, closeTo(90, 0.5),
+        reason: 'clear of the lights, which end at 79');
     expect(tester.getTopLeft(mark).dy, greaterThan(4),
         reason: 'and not running off the top of the window');
   });

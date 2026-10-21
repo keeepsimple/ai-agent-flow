@@ -35,18 +35,13 @@ class Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // The window has no title bar of its own any more, so this row sits where
-    // one would be. AppKit puts the traffic lights at x 9..69 with their
-    // centres 16 from the top of the window, so the content is laid out in a
-    // 32-high band from the top rather than down the middle of the bar:
-    // centred in the bar it sat 8pt below the lights, which is what showed.
+    // This row is the window's title bar. A unified toolbar makes that bar
+    // 52pt tall and puts the traffic lights in the middle of it, at x 19..79
+    // with their centres at 26 — so an ordinary centred row lines up, and the
+    // inset only has to clear the lights.
     return Container(
-      height: 44,
-      padding: EdgeInsets.only(
-        left: Platform.isMacOS ? 80 : 14,
-        right: 14,
-        bottom: Platform.isMacOS ? 12 : 0,
-      ),
+      height: 52,
+      padding: EdgeInsets.only(left: Platform.isMacOS ? 90 : 14, right: 14),
       decoration: const BoxDecoration(
         // A shade above the page, not level with it. At panel colour the bar
         // and the body were the same dark, and the hairline between them read

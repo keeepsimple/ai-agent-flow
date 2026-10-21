@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'flow.dart';
@@ -107,7 +108,12 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
     final task = _flow.detail;
     final showing = _flow.selected != null && task != null;
 
-    return Stack(children: [
+    // High in the tree on purpose: a key the focused text field does not want
+    // travels up to here, so typing is never interrupted and the shortcut
+    // still works from anywhere.
+    return CallbackShortcuts(
+      bindings: _workspaceKeys(),
+      child: Stack(children: [
       Column(children: [
         Header(
           flow: _flow,
@@ -161,6 +167,41 @@ class _AgentFlowAppState extends State<AgentFlowApp> with WidgetsBindingObserver
             ),
           ),
         ),
-    ]);
+      ]),
+    );
+  }
+
+  /// Cmd-1 through Cmd-9 for the workspaces, Cmd-0 for all of them. Switching
+  /// shows the board, because that is what the choice changes.
+  Map<ShortcutActivator, VoidCallback> _workspaceKeys() {
+    const digits = [
+      LogicalKeyboardKey.digit1,
+      LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3,
+      LogicalKeyboardKey.digit4,
+      LogicalKeyboardKey.digit5,
+      LogicalKeyboardKey.digit6,
+      LogicalKeyboardKey.digit7,
+      LogicalKeyboardKey.digit8,
+      LogicalKeyboardKey.digit9,
+    ];
+
+    void go(String? root) {
+      _flow.pickWorkspace(root);
+      _flow.select(null);
+    }
+
+    return {
+      for (var i = 0; i < digits.length; i++) ...{
+        SingleActivator(digits[i], meta: true): () {
+          if (i < _flow.roots.length) go(_flow.roots[i]);
+        },
+        SingleActivator(digits[i], control: true): () {
+          if (i < _flow.roots.length) go(_flow.roots[i]);
+        },
+      },
+      const SingleActivator(LogicalKeyboardKey.digit0, meta: true): () => go(null),
+      const SingleActivator(LogicalKeyboardKey.digit0, control: true): () => go(null),
+    };
   }
 }

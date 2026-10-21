@@ -8,6 +8,7 @@ import '../flow.dart';
 import '../pick.dart';
 import '../theme.dart';
 import '../widgets/bits.dart';
+import '../widgets/sidebar.dart';
 
 /// The board: start a task, and see every one at a glance.
 class SessionsScreen extends StatelessWidget {
@@ -17,7 +18,17 @@ class SessionsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tasks = flow.tasks;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Sidebar(flow: flow, onOpen: onOpen),
+        Expanded(child: _board(context)),
+      ],
+    );
+  }
+
+  Widget _board(BuildContext context) {
+    final tasks = flow.workspace == null ? flow.tasks : flow.visible;
     return ListView(
       padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
       children: [
@@ -34,15 +45,24 @@ class SessionsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Sessions', style: t(12, color: Tern.muted)),
+                Text(
+                  flow.workspace == null
+                      ? 'Sessions'
+                      : 'Sessions in ${Sidebar.nameOf(flow.workspace!)}',
+                  style: t(12, color: Tern.muted),
+                ),
                 const SizedBox(height: 10),
                 if (tasks == null)
                   Text('Loading…', style: t(12.5, color: Tern.muted))
                 else if (tasks.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 26),
-                    child: Text('Nothing running. Start something above.',
-                        style: t(12.5, color: Tern.muted)),
+                    child: Text(
+                      flow.workspace == null
+                          ? 'Nothing running. Start something above.'
+                          : 'Nothing here yet.',
+                      style: t(12.5, color: Tern.muted),
+                    ),
                   )
                 else
                   for (final task in tasks)
@@ -209,20 +229,6 @@ class _NewTaskState extends State<NewTask> {
     }
   }
 
-  /// Picking a folder is not adding it. The server's browse endpoint only
-  /// answers with a path; without the second call nothing ever happened,
-  /// which is exactly how this looked.
-  Future<void> _addFolder() async {
-    final path = await Pick.folder();
-    if (path == null) return; // cancelled
-    try {
-      await widget.flow.api.addRoot(path);
-      await widget.flow.loadState();
-    } catch (err) {
-      widget.flow.fail(err);
-    }
-  }
-
   Future<void> _start() async {
     if (_prompt.text.trim().isEmpty || _picked.isEmpty || _busy) return;
     setState(() => _busy = true);
@@ -257,7 +263,12 @@ class _NewTaskState extends State<NewTask> {
 
   @override
   Widget build(BuildContext context) {
-    final repos = widget.flow.repos;
+    // Only the workspace being shown, so a repo list of 40 is not what you
+    // scroll past to start a task in one of them.
+    final workspace = widget.flow.workspace;
+    final repos = workspace == null
+        ? widget.flow.repos
+        : widget.flow.repos.where((r) => r['root'] == workspace).toList();
     final runs = (_options['runs'] as List?) ?? const [];
     final ready = _prompt.text.trim().isNotEmpty && _picked.isNotEmpty;
 
@@ -319,7 +330,6 @@ class _NewTaskState extends State<NewTask> {
                   onTap: () => _toggleRepo(repo['name'] as String),
                   tooltip: repo['path'] as String?,
                 ),
-              Chip2(label: 'Add folder…', icon: Icons.create_new_folder_outlined, onTap: _addFolder),
             ],
           ),
           const SizedBox(height: 14),
