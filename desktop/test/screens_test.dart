@@ -851,6 +851,7 @@ void main() {
           onMerge: (_) {},
           onCatchUp: () {},
           onShip: () {},
+          onLandAndShip: () {},
           onConfigureProd: () {},
         ),
       ),
@@ -888,6 +889,7 @@ void main() {
             onMerge: landed.add,
             onCatchUp: () {},
             onShip: () {},
+            onLandAndShip: () {},
             onConfigureProd: () {},
           ),
         ),
@@ -956,6 +958,7 @@ void main() {
           onMerge: (_) {},
           onCatchUp: () {},
           onShip: () {},
+          onLandAndShip: () {},
           onConfigureProd: () {},
         ),
       ),
@@ -984,12 +987,14 @@ void main() {
             'setup': 'pnpm install --frozen-lockfile',
             'copy': ['@types/api-routes.d.ts'],
             'checks': ['pnpm tsc', 'pnpm verify-all'],
+            'smoke': 'curl -fsS https://admin.example.com/health',
           },
         ),
       ),
       const Size(640, 720),
     );
     expect(find.text('Setup command'), findsOneWidget);
+    expect(find.text('Smoke command, after the deploy'), findsOneWidget);
     expect(find.text('pnpm tsc\npnpm verify-all'), findsOneWidget);
     expect(find.text('Prod branch'), findsOneWidget);
     expect(find.text('Jenkins job'), findsOneWidget);
@@ -1376,6 +1381,7 @@ void main() {
             onMerge: landed.add,
             onCatchUp: () {},
             onShip: () {},
+            onLandAndShip: () {},
             onConfigureProd: () {},
           ),
         ),
@@ -1389,6 +1395,97 @@ void main() {
     await tester.tap(find.text('main').last);
     await tester.pumpAndSettle();
     expect(landed, ['main']);
+  });
+
+  testWidgets('the board row carries cost and time, shell reads, and what became of the branch', (tester) async {
+    final flow = _flow();
+    flow.tasks = [
+      _task({
+        'id': 'f1', 'title': 'Landed one', 'status': 'done', 'phase': null, 'cost': 1.42,
+        'createdAt': 1000, 'updatedAt': 1000 + 5 * 60 * 1000,
+        'toolMix': {'bash': 40, 'shellReads': 12, 'read': 3, 'edit': 2},
+        'log': [{'kind': 'decision', 'text': 'Push flow/x, open a merge request, then land on main'}],
+      }),
+    ];
+    tester.view.physicalSize = const Size(1340, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(body: SessionsScreen(flow: flow, onOpen: (_) {})),
+    ));
+    await tester.pump();
+    expect(find.textContaining('12 shell reads'), findsOneWidget);
+    expect(find.text('\$1.42 · 5m'), findsOneWidget);
+    expect(find.text('landed on main'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('the board filters by repo', (tester) async {
+    final flow = _flow();
+    flow.pickWorkspace('/w/mobile-builder');
+    flow.tasks = [
+      _task({'id': 'a1', 'title': 'Admin thing', 'status': 'done', 'phase': null, 'repos': ['mobile-admin-shopify'], 'repoPaths': ['/w/mobile-builder/mobile-admin-shopify']}),
+      _task({'id': 'n1', 'title': 'Notify thing', 'status': 'done', 'phase': null, 'repos': ['notify-service'], 'repoPaths': ['/w/mobile-builder/notify-service']}),
+    ];
+    tester.view.physicalSize = const Size(1340, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        body: AnimatedBuilder(
+          animation: flow,
+          builder: (_, __) => SessionsScreen(flow: flow, onOpen: (_) {}),
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('Admin thing'), findsOneWidget);
+    expect(find.text('Notify thing'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('repo-chip:notify-service')));
+    await tester.pump();
+    expect(find.text('Admin thing'), findsNothing);
+    expect(find.text('Notify thing'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('repo-chip:notify-service')));
+    await tester.pump();
+    expect(find.text('Admin thing'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('the card offers Land & ship and names who else touched the files', (tester) async {
+    final calls = <String>[];
+    tester.view.physicalSize = const Size(640, 420);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        body: RepoCard(
+          repo: const {
+            'repo': 'web', 'branch': 'flow/x-1', 'base': 'main', 'ahead': 2, 'behind': 0, 'unpushed': 0,
+            'baseUnpushed': 0, 'remote': 'origin', 'targets': ['main'], 'landTarget': null,
+            'prod': {'branch': 'prod', 'exists': true, 'toPick': 0, 'picked': 0, 'jenkins': null},
+            'overlaps': [{'taskId': 'o1', 'title': 'Other task', 'files': ['app/a.ts', 'app/b.ts']}],
+          },
+          busy: '',
+          onPush: () {},
+          onPushBase: () {},
+          onMerge: (t) => calls.add('land:$t'),
+          onCatchUp: () {},
+          onShip: () {},
+          onLandAndShip: () => calls.add('land&ship'),
+          onConfigureProd: () {},
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.textContaining('Also changed by Other task: app/a.ts, app/b.ts'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.expand_more));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Land & ship to prod'));
+    await tester.pumpAndSettle();
+    expect(calls, ['land&ship']);
   });
 
   testWidgets('the header with nothing open', (tester) async {

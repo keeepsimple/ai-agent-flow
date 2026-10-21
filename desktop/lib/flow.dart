@@ -27,6 +27,9 @@ class FlowState extends ChangeNotifier {
   /// Which workspace the board is showing. Null means all of them.
   String? workspace;
 
+  /// A repo chosen on the board; null for all of the workspace.
+  String? repoFilter;
+
   StreamSubscription<dynamic>? _events;
   Timer? _errorTimer;
   Timer? _retry;
@@ -73,7 +76,13 @@ class FlowState extends ChangeNotifier {
     }
   }
 
+  void pickRepo(String? name) {
+    repoFilter = repoFilter == name ? null : name;
+    notifyListeners();
+  }
+
   void pickWorkspace(String? root) {
+    repoFilter = null;
     workspace = root;
     notifyListeners();
   }

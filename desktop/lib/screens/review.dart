@@ -183,6 +183,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
                       () => widget.flow.api.catchUp(widget.task.id, repo['repo'] as String)),
                   onShip: () => _act('ship:${repo['repo']}',
                       () => widget.flow.api.ship(widget.task.id, repo['repo'] as String)),
+                  onLandAndShip: () => _act('merge:${repo['repo']}',
+                      () => widget.flow.api.merge(widget.task.id, repo['repo'] as String, thenShip: true)),
                   onConfigureProd: () => _configureProd(repo['repo'] as String),
                 ),
                 const SizedBox(height: 12),
@@ -210,6 +212,7 @@ class RepoCard extends StatelessWidget {
     required this.onMerge,
     required this.onCatchUp,
     required this.onShip,
+    required this.onLandAndShip,
     required this.onConfigureProd,
   });
 
@@ -221,6 +224,9 @@ class RepoCard extends StatelessWidget {
   final void Function(String target) onMerge;
   final VoidCallback onCatchUp;
   final VoidCallback onShip;
+
+  /// Land on the base, then ship the same repo to prod: one click, two runs.
+  final VoidCallback onLandAndShip;
   final VoidCallback onConfigureProd;
 
   @override
@@ -306,6 +312,7 @@ class RepoCard extends StatelessWidget {
                 icon: const Icon(Icons.expand_more, size: 16, color: Tern.muted),
                 color: Tern.raised,
                 onSelected: (picked) async {
+                  if (picked == '\u0000landship') return onLandAndShip();
                   if (picked != '\u0000other') return onMerge(picked);
                   final typed = await _askBranch(context);
                   if (typed != null && typed.isNotEmpty) onMerge(typed);
@@ -314,6 +321,8 @@ class RepoCard extends StatelessWidget {
                   for (final t in menuTargets)
                     PopupMenuItem(value: t, height: 32, child: Text(t, style: t12(t == landTarget))),
                   PopupMenuItem(value: '\u0000other', height: 32, child: Text('Other…', style: t12(false))),
+                  if (prod?['exists'] == true && ahead > 0)
+                    PopupMenuItem(value: '\u0000landship', height: 32, child: Text('Land & ship to $prodBranch', style: t12(false))),
                 ],
               ),
             ]),
@@ -361,6 +370,17 @@ class RepoCard extends StatelessWidget {
           if (blocked != null) ...[
             const SizedBox(height: 8),
             Text(blocked, style: t(11, color: Tern.warn)),
+          ],
+          // Another task changed the same files and has not landed: say so
+          // here, before Land finds out the hard way.
+          for (final o in ((repo['overlaps'] as List?) ?? const []).cast<Map>()) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Also changed by ${o['title']}: ${((o['files'] as List?) ?? const []).join(', ')}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: t(11, color: Tern.warn),
+            ),
           ],
         ],
       ),
@@ -471,6 +491,7 @@ class _ProdConfigDialogState extends State<ProdConfigDialog> {
   late final _user = TextEditingController(text: (_jenkins?['user'] ?? '') as String);
   final _token = TextEditingController();
   late final _setup = TextEditingController(text: (widget.config['setup'] ?? '') as String);
+  late final _smoke = TextEditingController(text: (widget.config['smoke'] ?? '') as String);
   late final _copy = TextEditingController(text: ((widget.config['copy'] as List?) ?? const []).join('\n'));
   late final _checks = TextEditingController(text: ((widget.config['checks'] as List?) ?? const []).join('\n'));
 
@@ -479,7 +500,7 @@ class _ProdConfigDialogState extends State<ProdConfigDialog> {
 
   @override
   void dispose() {
-    for (final c in [_branch, _url, _job, _user, _token, _setup, _copy, _checks]) {
+    for (final c in [_branch, _url, _job, _user, _token, _setup, _copy, _checks, _smoke]) {
       c.dispose();
     }
     super.dispose();
@@ -525,6 +546,7 @@ class _ProdConfigDialogState extends State<ProdConfigDialog> {
             Text('Prod', style: t(11.5, color: Tern.muted)),
             const SizedBox(height: 8),
             _field('Prod branch', _branch, hint: 'prod'),
+            _field('Smoke command, after the deploy', _smoke, hint: 'curl -fsS https://example.com/health'),
             const SizedBox(height: 4),
             Text('Jenkins, to watch the deploy after the push (optional)', style: t(11.5, color: Tern.muted)),
             const SizedBox(height: 8),
@@ -551,6 +573,7 @@ class _ProdConfigDialogState extends State<ProdConfigDialog> {
                   : {'url': _url.text.trim(), 'job': _job.text.trim(), 'user': _user.text.trim()},
               if (_token.text.isNotEmpty) 'jenkinsToken': _token.text,
               'setup': _setup.text.trim(),
+              'smoke': _smoke.text.trim(),
               'copy': _copy.text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList(),
               'checks': _checks.text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList(),
             }),

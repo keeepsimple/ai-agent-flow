@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets/bits.dart';
 import '../widgets/mentions.dart';
 import '../widgets/secrets.dart';
+import '../fate.dart';
 import '../status.dart';
 import '../widgets/sidebar.dart';
 
@@ -19,7 +20,12 @@ class SessionsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tasks = flow.workspace == null ? flow.tasks : flow.visible;
+    final inWorkspace = flow.workspace == null ? flow.tasks : flow.visible;
+    final tasks = flow.repoFilter == null ? inWorkspace : inWorkspace?.where((t) => t.repos.contains(flow.repoFilter)).toList();
+    final repoNames = (flow.repos)
+        .where((r) => flow.workspace == null || r['root'] == flow.workspace)
+        .map((r) => r['name'] as String)
+        .toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
       children: [
@@ -48,6 +54,19 @@ class SessionsScreen extends StatelessWidget {
                   ).copyWith(letterSpacing: -0.6),
                 ),
                 const SizedBox(height: 14),
+                if (repoNames.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Wrap(spacing: 6, runSpacing: 6, children: [
+                      for (final name in repoNames)
+                        Chip2(
+                          key: ValueKey('repo-chip:$name'),
+                          label: name,
+                          selected: flow.repoFilter == name,
+                          onTap: () => flow.pickRepo(name),
+                        ),
+                    ]),
+                  ),
                 if (tasks != null && tasks.any((t) => t.interrupted))
                   _Interrupted(
                     flow: flow,
@@ -218,7 +237,8 @@ class _TaskRowState extends State<_TaskRow>
                         TextSpan(
                           children: [
                             TextSpan(
-                              text: '${task.repos.join(' + ')}  ·  $words',
+                              text: '${task.repos.join(' + ')}  ·  $words'
+                                  '${task.shellReads > 0 ? '  ·  ${task.shellReads} shell reads' : ''}',
                             ),
                             if (needs != null && needs != words)
                               TextSpan(
@@ -262,9 +282,13 @@ class _TaskRowState extends State<_TaskRow>
                     ],
                   ),
                 ),
+                if (fateOf(task) != null) ...[
+                  Text(fateOf(task)!, style: t(11, color: Tern.ok)),
+                  const SizedBox(width: 10),
+                ],
                 if (task.cost > 0)
                   Text(
-                    '\$${task.cost.toStringAsFixed(2)}',
+                    '\$${task.cost.toStringAsFixed(2)} · ${elapsedWords((task.active ? DateTime.now().millisecondsSinceEpoch : task.activeAt) - task.createdAt)}',
                     style: t(11.5, color: Tern.muted, code: true),
                   ),
                 // Free the checkout from here, without opening the conversation.

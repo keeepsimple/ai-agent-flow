@@ -19,6 +19,9 @@ class Task {
   String? get error => raw['error'] as String?;
   String? get root => raw['root'] as String?;
   String get run => (raw['run'] ?? 'ask') as String;
+
+  /// File reads the agent did through the shell instead of the Read tool.
+  int get shellReads => ((raw['toolMix'] as Map?)?['shellReads'] ?? 0) as int;
   String? get model => raw['model'] as String?;
   String? get openQuestionId => raw['openQuestionId'] as String?;
   num get cost => (raw['cost'] ?? 0) as num;
@@ -191,8 +194,8 @@ class Api {
       _send('POST', '/api/tasks/$id/catch-up', {'repo': repo});
   Future<dynamic> push(String id, String repo, {bool base = false}) =>
       _send('POST', '/api/tasks/$id/push', {'repo': repo, 'base': base});
-  Future<dynamic> merge(String id, String repo, {String? target}) =>
-      _send('POST', '/api/tasks/$id/merge', {'repo': repo, if (target != null) 'target': target});
+  Future<dynamic> merge(String id, String repo, {String? target, bool thenShip = false}) =>
+      _send('POST', '/api/tasks/$id/merge', {'repo': repo, if (target != null) 'target': target, if (thenShip) 'then': 'ship'});
   Future<dynamic> ship(String id, String repo) =>
       _send('POST', '/api/tasks/$id/ship', {'repo': repo});
   Future<Map<String, dynamic>> repoConfig(String repo) async =>
