@@ -29,13 +29,23 @@ export const tasks = fs.existsSync(TASKS_FILE)
 // that was blocked waiting on a human lost the promise it was blocked on. Say
 // so instead of showing a spinner or an approval button that cannot work.
 const STALE = {
-  running: 'Server restarted while this phase was running',
   queued: 'Server restarted before this task started',
   awaiting_approval: 'Server restarted while waiting for your decision. Retry to pick up from the next phase.',
   awaiting_answer: 'Server restarted while waiting for your answer. Retry to re-run this phase.',
 }
 for (const t of Object.values(tasks)) {
-  if (STALE[t.status]) {
+  // A run that had a session is not lost: it was interrupted, and the session
+  // can be continued. Only a run that never got that far is a plain failure.
+  if (t.status === 'running') {
+    if (t.lastSession?.id) {
+      t.status = 'interrupted'
+      t.interruptedAt = Date.now()
+      t.error = 'Interrupted by a restart while this was running. Continue picks up the session.'
+    } else {
+      t.status = 'failed'
+      t.error = 'Server restarted while this phase was running'
+    }
+  } else if (STALE[t.status]) {
     t.error = STALE[t.status]
     t.status = 'failed'
   }

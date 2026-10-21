@@ -5,6 +5,7 @@ import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { DATA, bus, sse, tasks, artifactDir, emit, update, log, save, flush } from './store.js'
 import {
+  RESUME_PROMPT,
   RUNS, GATES, PHASE_LABEL, phasesFor, buildPrompt, buildCatchUpPrompt, buildFollowUpPrompt,
   buildMergePrompt,
 } from './prompts.js'
@@ -279,7 +280,7 @@ async function runTask(task) {
 
     let result
     try {
-      result = await runClaude(task, prompt, task.root, { meta: { kind: 'phase', phase } })
+      result = await runPhase(task, phase, prompt)
     } catch (err) {
       task.phases[phase] = { ...task.phases[phase], status: 'failed', endedAt: Date.now() }
       return fail(task, err.message)
@@ -419,11 +420,31 @@ export function answerQuestion(id, questionId, answer) {
  * The task goes back to whatever it was when the run ends, so a follow-up on a
  * done task leaves it done rather than inventing a state for it.
  */
-function sideRun(task, label, prompt, cwd, finished) {
+/**
+ * One phase run. A task carrying `resumeFrom` for this phase continues that
+ * session instead; a session the CLI will not continue (expired, CLI updated)
+ * exits without streaming anything, and then the phase runs fresh, out loud.
+ */
+async function runPhase(task, phase, prompt) {
+  const meta = { kind: 'phase', phase }
+  const from = task.resumeFrom
+  if (from?.kind !== 'phase' || from.phase !== phase) return runClaude(task, prompt, task.root, { meta })
+
+  update(task.id, { resumeFrom: null })
+  try {
+    return await runClaude(task, RESUME_PROMPT, task.root, { meta, resume: from.id })
+  } catch (err) {
+    if (err.streamed || task.status === 'cancelled') throw err
+    log(task.id, { kind: 'text', text: 'resume refused; running the phase again' })
+    return runClaude(task, prompt, task.root, { meta })
+  }
+}
+
+function sideRun(task, label, prompt, cwd, finished, opts = {}) {
   const previous = task.status
   update(task.id, { status: 'running', phase: label, error: null })
 
-  runClaude(task, prompt, cwd, { meta: { kind: 'side', label } })
+  runClaude(task, prompt, cwd, { ...opts, meta: { kind: 'side', label } })
     .then(() => {
       if (tasks[task.id].status === 'cancelled') return
       update(task.id, { status: previous, phase: null })
@@ -661,6 +682,30 @@ export function retry(id) {
   return task
 }
 
+/**
+ * Continue an interrupted run in the session it had, so the agent keeps what it
+ * knew instead of being told the story again from the last message.
+ */
+export function resume(id) {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  if (task.status !== 'interrupted') throw new Error('this task was not interrupted')
+  if (!task.lastSession?.id) throw new Error('no session to continue; retry instead')
+
+  log(id, { kind: 'decision', text: 'Continuing the interrupted session' })
+  if (task.lastSession.kind === 'side') {
+    // A side run started from a finished task; that is what it goes back to.
+    update(id, { status: 'done', error: null })
+    return sideRun(task, task.lastSession.label, RESUME_PROMPT, task.lastSession.cwd, `Done: ${task.title}`, {
+      resume: task.lastSession.id,
+    })
+  }
+  update(id, { status: 'queued', error: null, resumeFrom: task.lastSession })
+  queue.push(id)
+  pump()
+  return task
+}
+
 export function removeWorktrees(id) {
   const task = tasks[id]
   if (!task?.root) throw new Error('nothing to remove')
@@ -740,6 +785,7 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {} } =
     let buffer = ''
     let summary = ''
     let resultError = null
+    let streamed = 0
     // The final result repeats the last thing the model said. Remember it so the
     // stream does not print the same paragraphs twice at the end of every phase.
     const seen = { lastText: '' }
@@ -755,6 +801,7 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {} } =
         if (msg.session_id && tasks[task.id]?.lastSession?.id !== msg.session_id) {
           update(task.id, { lastSession: { id: msg.session_id, ...meta, cwd, at: Date.now() } })
         }
+        streamed++
         const entry = toLogEntry(task, msg, seen)
         if (entry) log(task.id, entry)
         if (msg.type === 'result') {
@@ -780,9 +827,9 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {} } =
     child.on('close', (code) => {
       children.delete(task.id)
       if (task.status === 'cancelled') return resolve({ summary })
-      if (resultError) return reject(new Error(`${task.phase}: ${resultError}`))
+      if (resultError) return reject(Object.assign(new Error(`${task.phase}: ${resultError}`), { streamed }))
       if (code === 0) return resolve({ summary })
-      reject(new Error(`claude exited with code ${code} during ${task.phase}`))
+      reject(Object.assign(new Error(`claude exited with code ${code} during ${task.phase}`), { streamed }))
     })
   })
 }

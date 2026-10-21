@@ -57,10 +57,14 @@ let prompt = ''
 process.stdin.setEncoding('utf8')
 for await (const chunk of process.stdin) prompt += chunk
 
+const session = 'stub-' + process.pid
 const say = (text) =>
-  console.log(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } }))
+  console.log(JSON.stringify({ type: 'assistant', session_id: session, message: { content: [{ type: 'text', text }] } }))
 
-if (prompt.includes('SLEEPY')) {
+if (args.includes('--resume')) {
+  fs.writeFileSync(path.join(art, 'resumed.txt'), args[args.indexOf('--resume') + 1])
+  say('picked up where I was')
+} else if (prompt.includes('SLEEPY')) {
   process.on('SIGTERM', () => {}) // ignore it, the way a real agent tree can
   fs.writeFileSync(path.join(art, 'pid'), String(process.pid))
   say('settling in')
@@ -124,7 +128,7 @@ if (prompt.includes('SLEEPY')) {
 console.log(JSON.stringify({
   type: 'result', subtype: 'success', is_error: false,
   result: 'ok', total_cost_usd: 0.01, num_turns: 2,
-  session_id: 'stub-' + process.pid,
+  session_id: session,
 }))
 `)
 
@@ -135,17 +139,20 @@ fs.writeFileSync(
   { mode: 0o755 },
 )
 
-const server = spawn(process.execPath, [path.join(here, 'index.js')], {
-  env: {
-    ...process.env,
-    FLOW_CLAUDE_BIN: launcher,
-    FLOW_DATA: path.join(root, 'data'),
-    FLOW_REPO_ROOT: repos,
-    FLOW_PORT: String(PORT),
-    FLOW_NOTIFY: 'off',
-  },
-  stdio: ['ignore', 'pipe', 'inherit'],
-})
+const startServer = (extra = {}) =>
+  spawn(process.execPath, [path.join(here, 'index.js')], {
+    env: {
+      ...process.env,
+      FLOW_CLAUDE_BIN: launcher,
+      FLOW_DATA: path.join(root, 'data'),
+      FLOW_REPO_ROOT: repos,
+      FLOW_PORT: String(PORT),
+      FLOW_NOTIFY: 'off',
+      ...extra,
+    },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  })
+let server = startServer()
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -171,14 +178,27 @@ async function waitFor(id, predicate, what) {
     last.log.slice(-6).map((l) => `  [${l.kind}] ${l.text}`).join('\n'))
 }
 
-let failure = null
-try {
+async function up() {
   for (let i = 0; ; i++) {
-    try { await fetch(`${base}/api/state`); break } catch {
+    try { await fetch(`${base}/api/state`); return } catch {
       if (i > 50) throw new Error('server never came up')
       await sleep(100)
     }
   }
+}
+
+/** Kill the server (and the agent it was running) the way a crash would. */
+async function restart(extra = {}) {
+  await sleep(300) // the store's save is debounced; a real crash can lose that much too
+  server.kill('SIGKILL')
+  await sleep(300)
+  server = startServer(extra)
+  await up()
+}
+
+let failure = null
+try {
+  await up()
 
   const state = await (await fetch(`${base}/api/state`)).json()
   assert.deepEqual(state.repos.map((r) => r.name), REPOS, 'should discover both demo repos')
@@ -858,6 +878,34 @@ try {
     '    a follow-up on a dropped task checks the same branch back out,\n' +
     '    running the app refuses until the config it may repoint is named,\n' +
     '    and the configs offered come from the repo, paired with their dev stores',
+  )
+
+  // ---- From here on the server is restarted; nothing above may follow. ----
+
+  // A crash mid-run used to fail the task, and the only way on was to prompt
+  // again from the last message. The run has a session; keep it and continue it.
+  const napping = await post('/api/tasks', { title: 'nap', repos: ['api'], prompt: 'SLEEPY', run: 'ask' })
+  const napPid = path.join(root, 'data', 'tasks', napping.id, 'pid')
+  for (let i = 0; i < 100 && !fs.existsSync(napPid); i++) await sleep(100)
+  await waitFor(napping.id, (t) => t.lastSession?.id, 'the session to be reported')
+  await restart({ FLOW_AUTO_RESUME: '0' })
+  try { process.kill(Number(fs.readFileSync(napPid, 'utf8')), 'SIGKILL') } catch {} // the orphan
+
+  let woke = await (await fetch(`${base}/api/tasks/${napping.id}`)).json()
+  assert.equal(woke.status, 'interrupted', 'a run cut off by a restart is interrupted, not failed: ' + woke.error + ' ' + JSON.stringify(woke.lastSession))
+  assert.equal(woke.lastSession.phase, 'answer')
+  assert.match(woke.error || '', /interrupted/i)
+
+  const hadSession = woke.lastSession.id
+  await post(`/api/tasks/${napping.id}/resume`)
+  woke = await waitFor(napping.id, (t) => t.status === 'done', 'the resumed run to finish')
+  const resumedWith = path.join(root, 'data', 'tasks', napping.id, 'resumed.txt')
+  assert.ok(fs.existsSync(resumedWith), 'continuing must call the CLI with --resume')
+  assert.equal(fs.readFileSync(resumedWith, 'utf8'), hadSession, 'and hand it the session it had')
+  assert.notEqual(woke.lastSession.id, hadSession, 'the continued run reports a session of its own, kept too')
+
+  console.log(
+    'ok: a restart mid-run leaves the task interrupted and resume continues its session',
   )
 } catch (err) {
   failure = err

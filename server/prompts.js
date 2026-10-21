@@ -398,6 +398,11 @@ output, the merge request URL, and what ${tree.baseBranch} points at now.`
  * A follow-up: the task already ran, and the human came back with something
  * else to do on the same branches. Usually "the build is broken".
  */
+/** What a continued session is told. It must look before it acts: the disk may differ from its memory. */
+export const RESUME_PROMPT =
+  'You were interrupted. Read the worktree to see what is actually on disk, compare it with what you ' +
+  'remember doing, and carry on from there. Say what you found.'
+
 export function buildFollowUpPrompt(ctx) {
   return `${preamble(ctx)}
 
