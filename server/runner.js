@@ -18,6 +18,7 @@ import { invalidate as forgetDiskSize } from './disk.js'
 import * as browser from './browser.js'
 import * as secrets from './secrets.js'
 import * as repoConfig from './repo-config.js'
+import * as settings from './settings.js'
 import { toPick, statusRow, targetsOf } from './git.js'
 
 export const PORT = Number(process.env.FLOW_PORT || 7777)
@@ -1112,6 +1113,15 @@ export function reveal(id, name) {
   return { path: file }
 }
 
+/** The cost line from settings: crossed once, said once, in the conversation and as a notification. */
+function warnOnCost(task) {
+  const line = settings.get().costWarnUsd
+  if (!line || task.costWarned || !(task.cost >= line)) return
+  update(task.id, { costWarned: true })
+  log(task.id, { kind: 'decision', text: `Cost passed $${line}: this task is at $${task.cost.toFixed(2)}` })
+  tell(task, `Cost passed $${line}: ${task.title}`, `at $${task.cost.toFixed(2)}`, true)
+}
+
 /** On launch: pick every interrupted task back up, unless told to leave them for the button. */
 export function resumeInterrupted() {
   if (process.env.FLOW_AUTO_RESUME === '0') return []
@@ -1317,6 +1327,7 @@ function toLogEntry(task, msg, seen) {
   }
   if (msg.type === 'result') {
     task.cost = +(task.cost + (msg.total_cost_usd || 0)).toFixed(4)
+    warnOnCost(task)
     task.turns += msg.num_turns || 0
     emit(task)
     const result = msg.result || (msg.subtype === 'success' ? '' : msg.subtype || '')

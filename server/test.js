@@ -921,6 +921,11 @@ try {
     'the conversation should say what was asked for',
   )
   assert.notEqual(git('api', 'rev-parse', 'main'), beforeMerge, 'and main should have moved')
+  assert.equal(
+    git('api', 'rev-parse', 'main'),
+    git('api', 'rev-parse', landed.trees[0].branch),
+    'to exactly the branch, because a fast-forward writes no merge commit',
+  )
 
 
   // Ship: once a branch is on the base, its commits go to prod by cherry-pick,
@@ -1099,6 +1104,67 @@ try {
   await fetch(`${base}/api/repos/config?repo=web`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ smoke: '' }) })
   console.log('ok: land & ship is one click, and the deploy is smoked')
 
+  // Settings: a cost line not to cross. Crossed once, said once.
+  const settings0 = await (await fetch(`${base}/api/settings`)).json()
+  assert.deepEqual(settings0, { costWarnUsd: 20, telegram: { chatId: '' }, hasTelegramToken: false })
+  const putSettings = (patch) => fetch(`${base}/api/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
+  assert.ok((await putSettings({ costWarnUsd: 0.015 })).ok)
+  assert.equal((await putSettings({ costWarnUsd: 'lots' })).status, 400)
+  const pricey = await post('/api/tasks', { repos: ['api'], prompt: 'cost me', run: 'quick', autoApprove: true })
+  const priced = await waitFor(pricey.id, (t) => t.status === 'done', 'the pricey task')
+  const costLines = (t) => t.log.filter((l) => l.kind === 'decision' && /^Cost passed \$0\.015/.test(l.text))
+  assert.equal(costLines(priced).length, 1, 'said once when crossed')
+  assert.equal(priced.costWarned, true)
+  await post(`/api/tasks/${pricey.id}/follow-up`, { request: 'and more' })
+  const pricedMore = await waitFor(pricey.id, (t) => t.status === 'done' && t.phase === null && t.cost > priced.cost, 'the pricey follow-up')
+  assert.equal(costLines(pricedMore).length, 1, 'not again as it keeps growing')
+  await putSettings({ costWarnUsd: 20 })
+  console.log('ok: cost has a line, crossed once and said once')
+
+  // Two tasks on the same file: each row names the other, until one lands.
+  const twinA = await post('/api/tasks', { repos: ['api'], prompt: 'twin a', run: 'quick', autoApprove: true })
+  const twinB = await post('/api/tasks', { repos: ['api'], prompt: 'twin b', run: 'quick', autoApprove: true })
+  await waitFor(twinA.id, (t) => t.status === 'done', 'twin a')
+  await waitFor(twinB.id, (t) => t.status === 'done', 'twin b')
+  const rowA = (await (await fetch(`${base}/api/tasks/${twinA.id}/git`)).json())[0]
+  const aSeesB = rowA.overlaps.find((o) => o.taskId === twinB.id)
+  assert.ok(aSeesB, 'a names b (other unlanded fixture tasks touch the file too)')
+  assert.deepEqual(aSeesB.files, ['impl.txt'])
+  assert.equal(aSeesB.title, (await (await fetch(`${base}/api/tasks/${twinB.id}`)).json()).title, 'by its current title')
+  assert.ok(!rowA.overlaps.some((o) => o.taskId === twinA.id), 'never itself')
+  await post(`/api/tasks/${twinA.id}/merge-now`, {})
+  const rowB = (await (await fetch(`${base}/api/tasks/${twinB.id}/git`)).json())[0]
+  assert.ok(!rowB.overlaps.some((o) => o.taskId === twinA.id), 'a has landed, so it is no longer in b\'s way')
+  console.log('ok: two tasks on the same file know about each other')
+
+  // Templates: the form, saved and reused.
+  const tplPut = (body) => fetch(`${base}/api/templates`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  assert.equal((await tplPut({ prompt: 'no name' })).status, 400)
+  const tpl = await (await tplPut({ name: 'Port an MR', prompt: 'Port MR {n} onto main', repos: ['api'], run: 'quick', permissionMode: 'bypassPermissions' })).json()
+  assert.match(tpl.id, /^[0-9a-f]{8}$/)
+  const tpls = await (await fetch(`${base}/api/templates`)).json()
+  assert.deepEqual(tpls.map((t) => t.name), ['Port an MR'])
+  const tpl2 = await (await tplPut({ id: tpl.id, name: 'Port an MR', prompt: 'Port MR {n} onto main, then ship', repos: ['api'], run: 'quick' })).json()
+  assert.equal(tpl2.id, tpl.id, 'same id updates in place')
+  assert.equal((await (await fetch(`${base}/api/templates`)).json()).length, 1)
+  assert.equal((await fetch(`${base}/api/templates/${tpl.id}`, { method: 'DELETE' })).status, 200)
+  assert.deepEqual(await (await fetch(`${base}/api/templates`)).json(), [])
+  console.log('ok: templates are saved, updated in place, and deleted')
+
+  // Screenshots the agent took: listed newest first, served, nothing outside.
+  assert.deepEqual(await (await fetch(`${base}/api/tasks/${twinA.id}/shots`)).json(), [])
+  const shotsDir = path.join(root, 'data', 'tasks', twinA.id, 'shots')
+  fs.mkdirSync(shotsDir, { recursive: true })
+  fs.writeFileSync(path.join(shotsDir, '100.png'), png)
+  fs.writeFileSync(path.join(shotsDir, '200.png'), png)
+  fs.utimesSync(path.join(shotsDir, '100.png'), new Date(Date.now() - 60_000), new Date(Date.now() - 60_000))
+  assert.deepEqual((await (await fetch(`${base}/api/tasks/${twinA.id}/shots`)).json()).map((s) => s.name), ['200.png', '100.png'])
+  const shotRes = await fetch(`${base}/api/tasks/${twinA.id}/shots/200.png`)
+  assert.equal(shotRes.status, 200)
+  assert.equal(shotRes.headers.get('content-type'), 'image/png')
+  assert.equal((await fetch(`${base}/api/tasks/${twinA.id}/shots/%2e%2e%2fprompt.txt`)).status, 400)
+  console.log('ok: screenshots are listed and served from the task only')
+
   const putRepo = (name, patch) => fetch(`${base}/api/repos/config?repo=${name}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
   // The guard blames only the task's own commits. The shape from real life: a
   // token committed on origin/main long ago, the local main behind it, and a
@@ -1196,11 +1262,6 @@ try {
   fs.rmSync(path.join(repos, 'api', 'generated.txt'), { force: true })
   await putRepo('api', { setup: '', copy: [], checks: [] })
   console.log('ok: a worktree arrives with setup run, generated files copied, and the base checks known')
-  assert.equal(
-    git('api', 'rev-parse', 'main'),
-    git('api', 'rev-parse', landed.trees[0].branch),
-    'to exactly the branch, because a fast-forward writes no merge commit',
-  )
 
   console.log(
     'ok  2 repos, 2 worktrees, both gates, blocking ask, 4 phases, per-repo commits,\n' +

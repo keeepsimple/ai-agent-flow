@@ -106,9 +106,33 @@ function statusOf(tree) {
     // remote or the checkout knows, never the task branch itself.
     targets: targetsOf(tree),
     landTarget: repoConfig.get(tree.repoPath).landTarget || null,
+    overlaps: overlapsOf(tree),
     uncommitted: uncommitted.length,
     mergeBlockedBy: blocked,
   }
+}
+
+/** Files this branch changed since it forked. */
+const changedFiles = (tree) => lines(quiet(() => git(tree.repoPath, 'diff', '--name-only', `${tree.baseRef}..${tree.branch}`)))
+
+/**
+ * Other tasks that changed the same files in the same repo and are still in
+ * the way: running, waiting, or finished but not yet landed on the base.
+ */
+export function overlapsOf(tree) {
+  const mine = new Set(changedFiles(tree))
+  if (!mine.size) return []
+  const out = []
+  for (const other of Object.values(tasks)) {
+    const theirs = other.trees?.find((t) => t.repoPath === tree.repoPath && t.branch !== tree.branch)
+    if (!theirs || other.status === 'cancelled') continue
+    const active = ['running', 'queued', 'awaiting_approval', 'awaiting_answer', 'interrupted'].includes(other.status)
+    const unlanded = (count(tree.repoPath, `${theirs.baseBranch}..${theirs.branch}`) ?? 0) > 0
+    if (!active && !unlanded) continue
+    const files = changedFiles(theirs).filter((f) => mine.has(f))
+    if (files.length) out.push({ taskId: other.id, title: other.title, files })
+  }
+  return out
 }
 
 export function targetsOf(tree) {

@@ -2,11 +2,13 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { bus, sse, tasks, readLog, toolMix, artifact } from './store.js'
+import { bus, sse, tasks, readLog, toolMix, artifact, artifactDir as artifactDirOf, DATA } from './store.js'
 import * as runner from './runner.js'
 import * as secrets from './secrets.js'
 import * as repoConfig from './repo-config.js'
 import * as templates from './templates.js'
+import * as settings from './settings.js'
+import { randomBytes } from 'node:crypto'
 import { resolveRepo } from './roots.js'
 import * as uploads from './uploads.js'
 import * as repoGit from './git.js'
@@ -178,6 +180,51 @@ async function api(req, res, url) {
     }
   }
 
+  // App-wide settings: the cost line, the phone.
+  if (section === 'settings' && !id) {
+    if (req.method === 'GET') return json(res, 200, settings.get())
+    if (req.method === 'PUT') {
+      const patch = JSON.parse((await body(req)) || '{}')
+      try { return json(res, 200, settings.set(patch)) } catch (err) { return json(res, 400, { error: err.message }) }
+    }
+  }
+
+  // Task templates: the form, saved. One file, whole list.
+  if (section === 'templates') {
+    const file = path.join(DATA, 'templates.json')
+    const read = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return [] } }
+    const write = (list) => { fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSync(file, JSON.stringify(list, null, 2)) }
+    if (req.method === 'GET' && !id) return json(res, 200, read())
+    if (req.method === 'PUT' && !id) {
+      const given = JSON.parse((await body(req)) || '{}')
+      if (!String(given.name || '').trim()) return json(res, 400, { error: 'a template needs a name' })
+      const list = read()
+      const tpl = {
+        id: list.find((t) => t.id === given.id) ? given.id : randomBytes(4).toString('hex'),
+        name: String(given.name).trim(),
+        prompt: String(given.prompt || ''),
+        repos: Array.isArray(given.repos) ? given.repos.map(String) : [],
+        run: given.run || 'ask',
+        permissionMode: given.permissionMode || null,
+        model: given.model || null,
+        effort: given.effort || null,
+      }
+      const at = list.findIndex((t) => t.id === tpl.id)
+      if (at >= 0) list[at] = tpl
+      else list.push(tpl)
+      write(list)
+      return json(res, 200, tpl)
+    }
+    if (req.method === 'DELETE' && id) {
+      const list = read()
+      const left = list.filter((t) => t.id !== id)
+      if (left.length === list.length) return json(res, 404, { error: 'no such template' })
+      write(left)
+      return json(res, 200, { id })
+    }
+    return json(res, 404, { error: 'not found' })
+  }
+
   // The prompts: what every agent is told, with the person's overrides.
   if (section === 'prompts') {
     if (req.method === 'GET' && !id) {
@@ -311,6 +358,26 @@ async function api(req, res, url) {
   if (req.method === 'PUT' && action === 'run') {
     const { run } = JSON.parse((await body(req)) || '{}')
     try { return json(res, 200, runner.switchRun(id, run)) } catch (err) { return json(res, 400, { error: err.message }) }
+  }
+  // Screenshots the agent took, newest first; served by bare name only.
+  if (req.method === 'GET' && action === 'shots' && !rest) {
+    const dir = path.join(tasks[id]?.artifactDir || artifactDirOf(id), 'shots')
+    let names = []
+    try { names = fs.readdirSync(dir).filter((n) => n.endsWith('.png')) } catch {}
+    const shots = names
+      .map((name) => { try { const st = fs.statSync(path.join(dir, name)); return { name, bytes: st.size, mtime: st.mtimeMs } } catch { return null } })
+      .filter(Boolean)
+      .sort((a, b) => b.mtime - a.mtime)
+    return json(res, 200, shots)
+  }
+  if (req.method === 'GET' && action === 'shots' && rest) {
+    const name = decodeURIComponent(rest)
+    if (name !== path.basename(name) || !name.endsWith('.png')) return json(res, 400, { error: 'a png name, not a path' })
+    const file = path.join(tasks[id]?.artifactDir || artifactDirOf(id), 'shots', name)
+    if (!fs.existsSync(file)) return json(res, 404, { error: 'no such screenshot' })
+    res.writeHead(200, { 'Content-Type': 'image/png' })
+    fs.createReadStream(file).pipe(res)
+    return
   }
   if (req.method === 'GET' && action === 'output' && !rest) return json(res, 200, runner.output(id))
   if (req.method === 'GET' && action === 'output' && rest) {
