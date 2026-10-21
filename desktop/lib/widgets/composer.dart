@@ -150,24 +150,11 @@ class _ComposerState extends State<Composer> {
             const SizedBox(height: 10),
             Row(
               children: [
-                for (final tree in task.trees)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: Container(
-                      height: 26,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: Tern.selected,
-                        borderRadius: BorderRadius.circular(13),
-                      ),
-                      child: Text(
-                        '@${tree['repo']}',
-                        style: t(11, color: Tern.ink3, code: true),
-                      ),
-                    ),
-                  ),
-                const Spacer(),
+                // A task on a whole workspace carries a dozen of these. Laid
+                // out plainly they ran off the end and took the send button
+                // with them, so they get the leftover room and no more.
+                Expanded(child: _Repos(task.trees)),
+                const SizedBox(width: 10),
                 Text(sendHint, style: t(10.5, color: Tern.muted, code: true)),
                 const SizedBox(width: 8),
                 _Round(
@@ -190,6 +177,68 @@ class _ComposerState extends State<Composer> {
         ),
       ),
     );
+  }
+}
+
+/// The repos this task works in, as many as fit and a count for the rest.
+class _Repos extends StatelessWidget {
+  const _Repos(this.trees);
+  final List<Map<String, dynamic>> trees;
+
+  static const _chip = 26.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final names = trees.map((t) => '${t['repo']}').toList();
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        final shown = <String>[];
+        var used = 0.0;
+
+        for (final name in names) {
+          final width = _width(context, '@$name') + 22;
+          // Leave room for the "+n more" chip whenever one is still needed.
+          final rest = names.length - shown.length - 1;
+          final reserve = rest > 0 ? _width(context, '+$rest more') + 28 : 0;
+          if (used + width + reserve > box.maxWidth) break;
+          shown.add(name);
+          used += width + 6;
+        }
+
+        return Row(children: [
+          for (final name in shown) _pill('@$name', null),
+          if (shown.length < names.length)
+            _pill(
+              '+${names.length - shown.length} more',
+              names.skip(shown.length).join('\n'),
+            ),
+        ]);
+      },
+    );
+  }
+
+  static double _width(BuildContext context, String text) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: t(11, code: true)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return painter.width;
+  }
+
+  Widget _pill(String label, String? tooltip) {
+    final pill = Container(
+      height: _chip,
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Tern.selected,
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Text(label, style: t(11, color: Tern.ink3, code: true)),
+    );
+    return tooltip == null ? pill : Tooltip(message: tooltip, child: pill);
   }
 }
 

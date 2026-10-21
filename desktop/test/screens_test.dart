@@ -16,6 +16,7 @@ import 'package:agent_flow/screens/sessions.dart';
 import 'package:agent_flow/screens/workspace.dart';
 import 'package:agent_flow/theme.dart';
 import 'package:agent_flow/widgets/bits.dart';
+import 'package:agent_flow/widgets/composer.dart';
 import 'package:agent_flow/widgets/header.dart';
 import 'package:agent_flow/widgets/sidebar.dart';
 import 'package:flutter/material.dart';
@@ -195,6 +196,34 @@ void main() {
     flow.tasks = [task];
     await _shoot(tester, 'workspace',
         WorkspaceScreen(flow: flow, task: task), const Size(1340, 900));
+  });
+
+  testWidgets('a task on a whole workspace still has a send button', (tester) async {
+    // Twelve repos laid out plainly ran off the end of the row and pushed the
+    // buttons out of the window with them.
+    final flow = _flow();
+    final task = _task({
+      'status': 'done',
+      'phase': null,
+      'root': '/w/tree',
+      'trees': [
+        for (final name in [
+          'auth-server', 'cdn-service', 'chat-management', 'management-service',
+          'mobile-pharmacy', 'notification-socket', 'order-service', 'payment-service',
+          'report-service', 'search-service', 'stock-service', 'user-service',
+        ])
+          {'repo': name, 'branch': 'flow/x'},
+      ],
+    });
+
+    await _shoot(tester, 'composer-many-repos',
+        Composer(task: task, flow: flow), const Size(760, 200));
+
+    final send = tester.getRect(find.byIcon(Icons.arrow_upward));
+    expect(send.right, lessThanOrEqualTo(760),
+        reason: 'the send button has to stay inside the window');
+    expect(find.textContaining('more'), findsOneWidget,
+        reason: 'and the repos that did not fit are counted, not dropped silently');
   });
 
   testWidgets('the review, with somewhere to push', (tester) async {
