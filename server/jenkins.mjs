@@ -20,24 +20,29 @@ const jobUrl = `${url.replace(/\/+$/, '')}/job/${encodeURIComponent(job)}`
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 async function last() {
-  const res = await fetch(`${jobUrl}/lastBuild/api/json`, { headers: auth })
+  let res
+  try { res = await fetch(`${jobUrl}/lastBuild/api/json`, { headers: auth }) } catch (err) { throw new Error(`could not reach Jenkins: ${err.message}`) }
   if (!res.ok) throw new Error(`${res.status} from ${jobUrl}/lastBuild/api/json`)
   return res.json()
 }
 
-const first = await last().catch((err) => { console.error(`could not reach Jenkins: ${err.message}`); process.exit(2) })
+/** A Jenkins that stops answering mid-watch is 'could not tell', never 'failed'. */
+const poll = () => last().catch((err) => { console.log(`lost Jenkins while watching: ${err.message}`); process.exit(2) })
+
+const first = await poll()
 const seen = first.number
 console.log(`last build before the push: #${seen}${first.building ? ' (still running)' : ''}`)
 
 const started = Date.now()
 let build = first
-while (build.number === seen && !build.building) {
+// A build already running when we look is the one before the push, not ours.
+while (build.number === seen) {
   if (Date.now() - started > START_MS) {
     console.log(`no new build started on ${job} within ${Math.round(START_MS / 1000)}s; check the job's triggers`)
     process.exit(2)
   }
   await sleep(POLL_MS)
-  build = await last()
+  build = await poll()
 }
 console.log(`watching #${build.number}`)
 while (build.building) {
@@ -46,7 +51,7 @@ while (build.building) {
     process.exit(2)
   }
   await sleep(POLL_MS)
-  build = await last()
+  build = await poll()
 }
 console.log(`#${build.number}: ${build.result}`)
 if (build.result === 'SUCCESS') process.exit(0)

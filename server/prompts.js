@@ -106,8 +106,10 @@ function preamble(ctx) {
 
 /** Everything a phase or a follow-up template may use. */
 function phaseContext(ctx) {
+  const isDoc = ctx.run === 'doc'
   return {
-    preamble: preamble(ctx),
+    isDoc,
+    preamble: isDoc ? docPreamble(ctx) : preamble(ctx),
     prompt: ctx.prompt,
     workDir: `${ctx.artifactDir}/work`,
     promptIndented: indent(ctx.prompt, '   '),
@@ -122,9 +124,9 @@ function phaseContext(ctx) {
   }
 }
 
-/** The document route has no worktree and no preamble: its own opening instead. */
-function writeContext(ctx) {
-  return {
+/** The document route has no worktree: its own opening instead of the preamble. */
+function docPreamble(ctx) {
+  return render(load('doc-preamble'), {
     workDir: ctx.root,
     repoList: (ctx.repoPaths || []).map((p) => `    ${p}`).join('\n') || '    (none)',
     artifactDir: ctx.artifactDir,
@@ -134,13 +136,10 @@ function writeContext(ctx) {
     autoApprove: Boolean(ctx.autoApprove),
     node: ctx.node,
     askScript: ctx.askScript,
-    prompt: ctx.prompt,
-    titleAsk: titleAsk(ctx),
-  }
+  })
 }
 
 export function buildPrompt(phase, ctx) {
-  if (phase === 'write') return render(load('write'), writeContext(ctx))
   return render(load(phase), phaseContext(ctx))
 }
 

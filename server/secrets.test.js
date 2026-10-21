@@ -63,7 +63,7 @@ try {
 }
 
 // The guard reads a diff: added lines only, numbered by hunk.
-const { scanDiff } = await import('./secrets.js')
+const { scanDiff, hide: hideAll } = await import('./secrets.js')
 const diff = [
   'diff --git a/.env.dev b/.env.dev', '--- a/.env.dev', '+++ b/.env.dev',
   '@@ -1,3 +1,5 @@', ' A=1', '-B=2', '+B=3', ' C=4', '+DB_PASSWORD=hunter2hunter2', '+D=5',
@@ -75,7 +75,25 @@ assert.deepEqual(scanDiff(diff, ['ck_test_value_1234567890']), [
   { file: 'README.md', line: 11 },
 ])
 assert.deepEqual(scanDiff(diff.replace('ck_test_value_1234567890', 'nothing'), []), [{ file: '.env.dev', line: 4 }])
-console.log('ok: the guard reads added lines with their line numbers')
+// The guard never trips on a lockfile hash, a data URL, or a C++ template:
+// in a diff only kept values, NAME=value and known prefixes count.
+const lockDiff = ['+++ b/pnpm-lock.yaml', '@@ -1 +1,3 @@', '+  integrity: sha512-K7y0RiAbcDEFghijk1234567890LMNOPqrstuvWXYZabcdef==', '+  src: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ1', '+  x = a<<b>>c'].join('\n')
+assert.deepEqual(scanDiff(lockDiff, []), [], 'shapes alone do not block a push')
+assert.deepEqual(scanDiff('+++ b/x\n@@ -1 +1 @@\n+DB_PASSWORD=hunter2hunter2', []), [{ file: 'x', line: 1 }], 'a named one still does')
+assert.deepEqual(scanDiff('+++ b/x\n@@ -1 +1 @@\n+token glpat-ABCDEFGHIJKLMNOPQRST', []), [{ file: 'x', line: 1 }], 'and a prefixed one')
+assert.deepEqual(scanDiff('+++ b/x\n@@ -1 +1 @@\n+K7y0RiAbcDEFghijk1234567890LMNOPqrstuvWXYZabcdef', ['K7y0RiAbcDEFghijk1234567890LMNOPqrstuvWXYZabcdef']), [{ file: 'x', line: 1 }], 'and a kept value')
+
+// One list of what counts as a text attachment, with .env.* in it.
+const { TEXT_ATTACHMENT } = await import('./secrets.js')
+for (const f of ['/u/a.env', '/u/.env', '/u/.env.prod', '/u/x.env.local', '/u/notes.txt', '/u/c.yml', '/u/d.toml']) assert.ok(TEXT_ATTACHMENT.test(f), f)
+for (const f of ['/u/a.png', '/u/b.jpg', '/u/env']) assert.ok(!TEXT_ATTACHMENT.test(f), f)
+
+// Numbering can start after what a task already has, so a second follow-up
+// does not reuse SECRET_1 for a different value.
+const later = hideAll([{ key: 'p', text: 'use xoxb-ABCDEFGHIJKLMNOPQRS now' }], { start: 2 })
+assert.deepEqual(later.secrets.map((s) => s.name), ['SECRET_3'])
+
+console.log('ok: the guard reads added lines with their line numbers, and ignores shapes')
 
 // The hand wrapper is for what a person types; a shell line with a heredoc
 // and an append on it is not that, and logs never get the wrapper rule at all.

@@ -13,15 +13,24 @@ const rotate = []
 
 for (const task of Object.values(tasks)) {
   const logFile = path.join(DATA, 'logs', `${task.id}.jsonl`)
-  const log = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8') : ''
-  const { secrets, texts } = hide([{ key: 'prompt', text: task.prompt || '' }, { key: 'log', text: log, wrapped: false }])
+  // The log is JSON lines: redact the text of each entry, not the raw file,
+  // or an escaped newline rides along inside a value.
+  const lines = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').split('\n') : []
+  const entries = lines.map((l) => { try { return JSON.parse(l) } catch { return null } })
+  const texts = [{ key: 'prompt', text: task.prompt || '' }]
+  entries.forEach((e, i) => { if (e && typeof e.text === 'string') texts.push({ key: `log:${i}`, text: e.text, wrapped: false }) })
+  const { secrets, texts: out } = hide(texts)
   if (!secrets.length) continue
 
   for (const { name, value } of secrets) keep(task.id, name, value)
-  const where = [task.prompt !== texts.prompt ? 'prompt' : null, log !== texts.log ? 'log' : null]
-  task.prompt = texts.prompt
+  let logChanged = false
+  entries.forEach((e, i) => {
+    if (e && out[`log:${i}`] !== undefined && out[`log:${i}`] !== e.text) { e.text = out[`log:${i}`]; logChanged = true }
+  })
+  const where = [task.prompt !== out.prompt ? 'prompt' : null, logChanged ? 'log' : null]
+  task.prompt = out.prompt
   task.secrets = [...new Set([...(task.secrets || []), ...secrets.map((s) => s.name)])]
-  if (log !== texts.log) fs.writeFileSync(logFile, texts.log)
+  if (logChanged) fs.writeFileSync(logFile, lines.map((l, i) => (entries[i] ? JSON.stringify(entries[i]) : l)).join('\n'))
   console.log(`${task.id}: moved ${secrets.map((s) => s.name).join(', ')} (${where.filter(Boolean).join(', ')})`)
   rotate.push(...secrets.map((s) => `${s.name} (${task.id})`))
 }

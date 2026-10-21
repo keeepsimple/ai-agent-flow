@@ -21,7 +21,8 @@ Commits to pick, oldest first:
 
         git cherry-pick <sha>
 
-    If one conflicts, resolve it. Read {{artifactDir}}/spec.md first where
+    A pick that comes up empty — the change reached {{prodBranch}} some other
+    way — is `git cherry-pick --skip`, not a failure. If one conflicts, resolve it. Read {{artifactDir}}/spec.md first where
     it exists: it says what this work was for, which is what tells you which
     side of a conflict carries intent. Where the two sides changed different
     things, keep both. Never take one side wholesale because it is shorter.

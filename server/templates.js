@@ -20,12 +20,13 @@ export const KNOWN = {
   plan: ['preamble', 'artifactDir', 'hasFeedback', 'feedback'],
   implement: ['preamble', 'quick', 'prompt', 'artifactDir', 'hasFeedback', 'feedback', 'titleAsk'],
   review: ['preamble', 'diffCommands', 'quick', 'promptIndented', 'artifactDir'],
-  'follow-up': ['preamble', 'artifactDir', 'requestIndented'],
+  'follow-up': ['preamble', 'artifactDir', 'requestIndented', 'isDoc'],
   'catch-up': ['worktree', 'branch', 'repo', 'baseBranch', 'artifactDir', 'node', 'askScript'],
   land: ['worktree', 'branch', 'repo', 'repoPath', 'baseBranch', 'artifactDir', 'node', 'askScript', 'guardScript'],
   ship: ['prodWorktree', 'prodBranch', 'repo', 'repoPath', 'branch', 'baseBranch', 'shaList', 'artifactDir', 'node', 'askScript', 'guardScript', 'jenkinsScript', 'hasJenkins', 'jenkinsUrl', 'jenkinsJob'],
   resume: [],
-  write: ['workDir', 'repoList', 'artifactDir', 'secretsNote', 'hasAttachments', 'attachmentList', 'autoApprove', 'node', 'askScript', 'prompt', 'titleAsk'],
+  'doc-preamble': ['workDir', 'repoList', 'artifactDir', 'secretsNote', 'hasAttachments', 'attachmentList', 'autoApprove', 'node', 'askScript'],
+  write: ['preamble', 'prompt', 'titleAsk'],
 }
 
 /** One line each, for the Prompts screen. */
@@ -43,6 +44,7 @@ export const ABOUT = {
   land: 'Land: catch up, checks, guard, push, merge request, fast-forward the base.',
   ship: 'Ship to prod: cherry-pick onto the prod branch, checks, guard, push, watch Jenkins.',
   resume: 'What a continued session is told after an interruption.',
+  'doc-preamble': 'The opening a document task and its follow-ups get: the work folder, the repos to read, how to ask.',
   write: 'The document route: a file, not code; no worktree; the repos there to read.',
 }
 
@@ -116,13 +118,19 @@ export function load(name, { warn = console.warn } = {}) {
   const text = overrideOf(name)
   if (text === null) return fallback
   const unknown = placeholders(text).filter((p) => !KNOWN[name].includes(p))
-  if (unknown.length) {
-    if (!warnedAbout.has(name)) {
-      warnedAbout.add(name)
-      warn(`prompt override ${name} uses unknown {{${unknown[0]}}}; using default`)
+  let broken = unknown.length ? `uses unknown {{${unknown[0]}}}` : null
+  if (!broken) {
+    try { render(text, {}) } catch (err) { broken = `has a syntax error (${err.message})` }
+  }
+  if (broken) {
+    // Once per problem, not once per name: a different breakage is news.
+    const key = `${name}: ${broken}`
+    if (!warnedAbout.has(key)) {
+      warnedAbout.add(key)
+      warn(`prompt override ${name} ${broken}; using default`)
     }
     return fallback
   }
-  warnedAbout.delete(name)
+  for (const key of warnedAbout) if (key.startsWith(`${name}: `)) warnedAbout.delete(key)
   return text
 }

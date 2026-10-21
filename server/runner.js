@@ -93,6 +93,18 @@ function tell(task, title, body, urgent = false) {
 
 const children = new Map() // taskId -> ChildProcess
 const lastHeard = new Map() // taskId -> when the agent last streamed anything
+const scrubFor = new Map() // taskId -> [[value, placeholder]] while a run is live
+
+/** Log for a live run: a kept value the agent let slip never reaches the file. */
+function logRun(task, entry) {
+  const pairs = scrubFor.get(task.id)
+  if (pairs?.length && typeof entry.text === 'string') {
+    let text = entry.text
+    for (const [value, placeholder] of pairs) text = text.split(value).join(placeholder)
+    entry = { ...entry, text }
+  }
+  return log(task.id, entry)
+}
 const stopped = (task) => ['cancelled', 'interrupted'].includes(tasks[task.id]?.status)
 const gateWaiters = new Map() // taskId -> resolve(feedbackOrNull)
 const questionWaiters = new Map() // questionId -> resolve(answer)
@@ -163,7 +175,7 @@ function keepSecrets(id, given, attached) {
   }
   if (!kept.length) return kept
   for (const file of attached) {
-    if (!/\.(txt|md|env|json|csv|log|diff|patch)$/i.test(file)) continue
+    if (!secrets.TEXT_ATTACHMENT.test(file)) continue
     const text = fs.readFileSync(file, 'utf8')
     let out = text
     for (const { name, value } of given) out = out.split(value).join(`{{secret:${name}}}`)
@@ -198,8 +210,9 @@ export function scanSecrets(prompt, attachments) {
  * hideSecrets: find them here, keep them, and carry on with the redacted
  * texts, so the values never make a second trip through the client.
  */
-function hideIn(prompt, attached) {
-  const { secrets: found, texts } = secrets.hide(sources(prompt, attached))
+function hideIn(prompt, attached, existing = []) {
+  const start = Math.max(0, ...existing.map((n) => Number((/^SECRET_(\d+)$/.exec(n) || [])[1] || 0)))
+  const { secrets: found, texts } = secrets.hide(sources(prompt, attached), { start })
   for (const [key, text] of Object.entries(texts)) if (key !== 'prompt') fs.writeFileSync(key, text)
   return { prompt: texts.prompt, secrets: found }
 }
@@ -510,9 +523,9 @@ export function answerQuestion(id, questionId, answer) {
 async function runPhase(task, phase, prompt) {
   const meta = { kind: 'phase', phase }
   const from = task.resumeFrom
+  if (from) update(task.id, { resumeFrom: null })
   if (from?.kind !== 'phase' || from.phase !== phase) return runClaude(task, prompt, task.root, { meta })
 
-  update(task.id, { resumeFrom: null })
   try {
     return await runClaude(task, resumePrompt(), task.root, { meta, resume: from.id })
   } catch (err) {
@@ -629,6 +642,7 @@ export function shipViaAgent(id, repo) {
   if (!tree) throw new Error(`unknown repo: ${repo}`)
 
   const { prodBranch, jenkins } = repoConfig.get(tree.repoPath)
+  try { git(tree.repoPath, 'fetch', '-q', 'origin', prodBranch) } catch {} // no remote, or offline: the local branch is what there is
   const { exists, shas } = toPick(tree, prodBranch)
   if (!exists) throw new Error(`${repo} has no ${prodBranch} branch`)
   if (statusRow(tree).ahead > 0) throw new Error(`land ${tree.branch} on ${tree.baseBranch} first`)
@@ -662,16 +676,16 @@ export function shipViaAgent(id, repo) {
  */
 export function followUp(id, request, { secrets: given = [], hideSecrets = false } = {}) {
   if (!request?.trim()) throw new Error('say what you want changed')
-  if (hideSecrets) {
-    const hid = hideIn(request, [])
-    request = hid.prompt
-    given = [...given, ...hid.secrets]
-  }
 
   // Busy is not a reason to lose what someone just typed. It waits in line
   // and goes as soon as the run in front of it is done.
   const busy = tasks[id]
   if (!busy) throw new Error('unknown task')
+  if (hideSecrets) {
+    const hid = hideIn(request, [], busy.secrets || [])
+    request = hid.prompt
+    given = [...given, ...hid.secrets]
+  }
   if (given?.length) {
     const kept = keepSecrets(id, given, [])
     update(id, { secrets: [...new Set([...(busy.secrets || []), ...kept])] })
@@ -882,7 +896,7 @@ export function switchRun(id, run) {
   if (!task) throw new Error('unknown task')
   if (run !== 'doc') throw new Error('only a switch to the Document route is offered')
   if (task.status === 'running' || task.status === 'queued') throw new Error('wait for the run to finish')
-  update(id, { run: 'doc', readPaths: task.repoPaths })
+  update(id, { run: 'doc', readPaths: task.repoPaths, phases: { ...task.phases, write: { status: 'done' } } })
   return task
 }
 
@@ -927,7 +941,7 @@ setInterval(() => {
 
 export function removeWorktrees(id) {
   const task = tasks[id]
-  if (task?.run === 'doc') throw new Error('a document task has no worktree; delete the task to remove its files')
+  if (task && !task.trees?.length) throw new Error('a document task has no worktree; delete the task to remove its files')
   if (!task?.root) throw new Error('nothing to remove')
   // Status alone is not enough: cancelling does not instantly stop the process,
   // and pulling the worktree out from under a live agent is how it goes strange.
@@ -983,6 +997,12 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {}, en
   // that wants to ask would stall the phase instead of getting on with it.
   if (task.permissionMode !== 'bypassPermissions') args.push('--permission-prompts', 'none')
 
+  // Until this run reports its own session there is nothing to continue: a
+  // restart now is a failure, not an interruption into the previous session.
+  update(task.id, { lastSession: null })
+  const kept = secrets.env(task)
+  scrubFor.set(task.id, Object.entries(kept).map(([k, v]) => [v, `{{secret:${k.slice('FLOW_SECRET_'.length)}}}`]))
+
   return new Promise((resolve, reject) => {
     // On Windows `claude` is a .cmd, which Node refuses to spawn directly, so it
     // goes through the shell. Nothing with a space reaches the command line
@@ -992,7 +1012,7 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {}, en
       shell: WIN,
       env: {
         ...process.env,
-        ...secrets.env(task),
+        ...kept,
         ...extraEnv,
         FLOW_URL: `http://127.0.0.1:${PORT}`,
         FLOW_TASK_ID: task.id,
@@ -1023,14 +1043,14 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {}, en
       for (const line of lines) {
         if (!line.trim()) continue
         let msg
-        try { msg = JSON.parse(line) } catch { log(task.id, { kind: 'text', text: line }); continue }
+        try { msg = JSON.parse(line) } catch { logRun(task, { kind: 'text', text: line }); continue }
         if (msg.session_id && tasks[task.id]?.lastSession?.id !== msg.session_id) {
           update(task.id, { lastSession: { id: msg.session_id, ...meta, cwd, at: Date.now() } })
         }
         streamed++
         lastHeard.set(task.id, Date.now())
         const entry = toLogEntry(task, msg, seen)
-        if (entry) log(task.id, entry)
+        if (entry) logRun(task, entry)
         if (msg.type === 'result') {
           summary = msg.result || ''
           // A budget cap or a refusal ends the run with exit code 0 and an
@@ -1043,7 +1063,7 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {}, en
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk) => {
       const text = chunk.trim()
-      if (text) log(task.id, { kind: 'stderr', text })
+      if (text) logRun(task, { kind: 'stderr', text })
     })
 
     child.on('error', (err) => {
@@ -1054,6 +1074,7 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {}, en
     child.on('close', (code) => {
       children.delete(task.id)
       lastHeard.delete(task.id)
+      scrubFor.delete(task.id)
       if (stopped(task)) return resolve({ summary })
       if (resultError) return reject(Object.assign(new Error(`${task.phase}: ${resultError}`), { streamed }))
       if (code === 0) return resolve({ summary })
@@ -1069,9 +1090,9 @@ function toLogEntry(task, msg, seen) {
     for (const block of msg.message?.content || []) {
       if (block.type === 'text' && block.text.trim()) {
         seen.lastText = block.text
-        log(task.id, { kind: 'text', text: block.text })
+        logRun(task, { kind: 'text', text: block.text })
       }
-      if (block.type === 'tool_use') log(task.id, { kind: 'tool', tool: block.name, text: describeTool(block.name, block.input) })
+      if (block.type === 'tool_use') logRun(task, { kind: 'tool', tool: block.name, text: describeTool(block.name, block.input) })
     }
     return null
   }

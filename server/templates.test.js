@@ -32,6 +32,12 @@ assert.match(load('answer', { warn: (m) => warned.push(m) }), /What the human as
 assert.equal(warned.length, 1, 'and is warned about once')
 assert.match(warned[0], /prompt override answer uses unknown \{\{nope\}\}; using default/)
 assert.throws(() => load('nothing-here'), /unknown prompt/)
+// A hand-edited override with broken syntax must not take a task down at start.
+fs.writeFileSync(path.join(tmp, 'prompts', 'answer.md'), 'open {{#if prompt}}never closed')
+const warned2 = []
+assert.match(load('answer', { warn: (m) => warned2.push(m) }), /What the human asked/, 'bad syntax falls back')
+assert.equal(warned2.length, 1)
+assert.match(warned2[0], /unclosed/)
 
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log('ok: templates render, placeholders are listed, overrides load and broken ones fall back')

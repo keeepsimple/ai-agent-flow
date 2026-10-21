@@ -145,8 +145,12 @@ function treesOf(id, repo) {
 export function toPick(tree, prodBranch) {
   const has = quiet(() => git(tree.repoPath, 'rev-parse', '--verify', '--quiet', prodBranch))
   if (!has) return { exists: false, shas: [], picked: 0 }
-  const own = new Set(lines(quiet(() => git(tree.repoPath, 'rev-list', '--no-merges', `${tree.baseRef}..${tree.branch}`))))
-  const cherry = lines(quiet(() => git(tree.repoPath, 'cherry', prodBranch, tree.branch, tree.baseRef)))
+  // What the remote knows is what counts: a pick done by hand lands there first.
+  const ref = quiet(() => git(tree.repoPath, 'rev-parse', '--verify', '--quiet', `origin/${prodBranch}`)) ? `origin/${prodBranch}` : prodBranch
+  // --first-parent: after a catch-up or Land merged the base in, everything the
+  // base gained is reachable from the branch too. That is other people's work.
+  const own = new Set(lines(quiet(() => git(tree.repoPath, 'rev-list', '--first-parent', '--no-merges', `${tree.baseRef}..${tree.branch}`))))
+  const cherry = lines(quiet(() => git(tree.repoPath, 'cherry', ref, tree.branch, tree.baseRef)))
   const shas = []
   let picked = 0
   for (const row of cherry) {

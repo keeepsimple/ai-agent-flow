@@ -14,7 +14,7 @@ const HEX40 = /^[0-9a-f]{40}$/i
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const mixed = (v) => /[a-z]/.test(v) && /[A-Z]/.test(v) && /[0-9]/.test(v)
 
-export function detect(text, { wrapped = true } = {}) {
+export function detect(text, { wrapped = true, shaped = true } = {}) {
   const found = new Map() // value -> { name, value, spans }
   const taken = [] // spans already claimed by an earlier rule
 
@@ -38,7 +38,7 @@ export function detect(text, { wrapped = true } = {}) {
   }
   if (wrapped) for (const m of text.matchAll(WRAPPED)) claim(m.index, m.index + m[0].length, m[1])
   for (const m of text.matchAll(PREFIXED)) claim(m.index, m.index + m[1].length, m[1])
-  for (const m of text.matchAll(SHAPED)) {
+  if (shaped) for (const m of text.matchAll(SHAPED)) {
     const v = m[0]
     if (HEX40.test(v) || UUID.test(v) || !mixed(v)) continue
     claim(m.index, m.index + v.length, v)
@@ -160,24 +160,27 @@ export function scanDiff(diff, values = []) {
     line++
     if (!raw.startsWith('+') || !file) continue
     const text = raw.slice(1)
-    if (values.some((v) => v && text.includes(v)) || detect(text).length) hits.push({ file, line })
+    // In a diff only a kept value, NAME=value or a known prefix counts: the
+    // bare-shape rule would stop every lockfile hash and data URL.
+    if (values.some((v) => v && text.includes(v)) || detect(text, { wrapped: false, shaped: false }).length) hits.push({ file, line })
   }
   return hits
 }
 
 // ---- Several sources at once ---------------------------------------------
 
-export const TEXT_ATTACHMENT = /\.(txt|md|env|json|csv|log|diff|patch|yml|yaml|toml|ini)$/i
+export const TEXT_ATTACHMENT = /\.env(\.[^\\/]*)?$|\.(txt|md|json|csv|log|diff|patch|yml|yaml|toml|ini)$/i
 
 /**
  * Detect across several texts (the prompt and its text attachments) with one
  * numbering and one name per value, and redact each of them.
  * texts: [{ key, text, wrapped? }] -> { secrets: [{ name, value }], texts: { key: redacted } }
  * `wrapped: false` turns the hand-wrapper rule off for text nobody typed (logs).
+ * `start` is the highest SECRET_n the task already has, so numbering continues.
  */
-export function hide(texts) {
+export function hide(texts, { start = 0 } = {}) {
   const byValue = new Map()
-  let unnamed = 0
+  let unnamed = start
   const out = {}
   for (const { key, text, wrapped = true } of texts) {
     const found = detect(text, { wrapped })

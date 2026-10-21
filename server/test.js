@@ -75,6 +75,9 @@ if (args.includes('--resume') && process.env.STUB_REFUSE_RESUME) {
 } else if (args.includes('--resume')) {
   fs.writeFileSync(path.join(art, 'resumed.txt'), args[args.indexOf('--resume') + 1])
   say('picked up where I was')
+} else if (prompt.includes('SLOWSTART')) {
+  await new Promise((r) => setTimeout(r, 2500)) // a run that has not reported its session yet
+  say('slow to start')
 } else if (prompt.includes('SLEEPY') && fs.existsSync(path.join(art, 'pid'))) {
   say('napped already, carrying on') // a fresh re-run of a task that already slept
 } else if (prompt.includes('LEAKY')) {
@@ -82,7 +85,7 @@ if (args.includes('--resume') && process.env.STUB_REFUSE_RESUME) {
   fs.writeFileSync('leak.txt', 'EGO_API_KEY=' + process.env.FLOW_SECRET_EGO_API_KEY)
   execFileSync('git', ['add', '-A'])
   execFileSync('git', ['commit', '-q', '-m', 'oops'])
-  say('committed the config')
+  say('committed the config, the key is ' + process.env.FLOW_SECRET_EGO_API_KEY)
 } else if (prompt.includes('SLEEPY')) {
   process.on('SIGTERM', () => {}) // ignore it, the way a real agent tree can
   fs.writeFileSync(path.join(art, 'pid'), String(process.pid))
@@ -543,6 +546,7 @@ try {
   const prodTmp = path.join(root, 'prod-tmp')
   git('web', 'worktree', 'add', '-q', prodTmp, 'prod')
   execFileSync('git', ['-C', prodTmp, 'cherry-pick', webRow.branch], { stdio: 'ignore' })
+  execFileSync('git', ['-C', prodTmp, 'push', '-q', 'origin', 'prod'], { stdio: 'ignore' })
   git('web', 'worktree', 'remove', '--force', prodTmp)
   const picked = (await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()).find((r) => r.repo === 'web')
   assert.deepEqual(picked.prod, { branch: 'prod', exists: true, toPick: 0, picked: 1, jenkins: null })
@@ -902,7 +906,16 @@ try {
   })
   assert.equal(early.status, 400, 'not before it has landed')
   assert.match((await early.json()).error, /land/i)
+  // Meanwhile someone else lands on main. Catch-up merges it into the branch;
+  // that is their commit, not this task's, and it must not go to prod here.
+  fs.writeFileSync(path.join(repos, 'web', 'STRANGER.md'), 'someone else')
+  git('web', 'add', 'STRANGER.md')
+  git('web', 'commit', '-qm', 'stranger on main')
+  await post(`/api/tasks/${shipping.id}/catch-up`, { repo: 'web' })
+  await waitFor(shipping.id, (t) => t.status === 'done' && t.phase === null, 'the catch-up before shipping')
   await post(`/api/tasks/${shipping.id}/merge-now`, {})
+  const beforeShip = (await (await fetch(`${base}/api/tasks/${shipping.id}/git`)).json()).find((r) => r.repo === 'web')
+  assert.equal(beforeShip.prod.toPick, 1, "the stranger's commit is not this task's to pick")
   const prodBefore = git('web', 'rev-parse', 'prod')
   await post(`/api/tasks/${shipping.id}/ship`, { repo: 'web' })
   const shipped = await waitFor(shipping.id, (t) => t.status === 'done' || t.status === 'failed', 'the ship run')
@@ -911,6 +924,7 @@ try {
   assert.notEqual(git('web', 'rev-parse', 'prod'), prodBefore, 'prod moved')
   assert.equal(git('web', 'rev-parse', 'prod'), execFileSync('git', ['-C', origin, 'rev-parse', 'prod'], { encoding: 'utf8' }), 'and was pushed')
   assert.ok(!git('web', 'log', '--merges', '--oneline', 'prod').trim(), 'by cherry-pick, never by merge')
+  assert.doesNotMatch(git('web', 'log', '--oneline', 'prod'), /stranger/, "and the stranger's commit stayed off prod")
   assert.ok(fs.existsSync(path.join(root, 'data', 'worktrees', shipping.id, 'web-prod')), 'in a worktree on prod')
   assert.equal(git('web', 'symbolic-ref', '--short', 'HEAD').trim(), 'main', 'the checkout was left alone')
   const shippedRow = (await (await fetch(`${base}/api/tasks/${shipping.id}/git`)).json()).find((r) => r.repo === 'web')
@@ -930,12 +944,21 @@ try {
   // for it to finish, and says how it went. It runs as a child because the
   // fake Jenkins lives in this process and has to be free to answer.
   let jenkinsHits = 0
-  let jenkinsMode = 'ok' // ok | fail | stuck
+  let jenkinsMode = 'ok' // ok | fail | stuck | busy | flaky
   const jenkins = http.createServer((req, res) => {
     jenkinsHits++
     if (req.url.endsWith('/consoleText')) return res.end('line one\nline two\nBUILD FAILED\n')
     assert.equal(req.headers.authorization, 'Basic ' + Buffer.from('ci:tok').toString('base64'))
     if (jenkinsMode === 'stuck') return res.end(JSON.stringify({ number: 7, building: false, result: 'SUCCESS' }))
+    if (jenkinsMode === 'busy') {
+      // #7 is still running from before the push; #8 is the one the push starts.
+      if (jenkinsHits === 1) return res.end(JSON.stringify({ number: 7, building: true, result: null }))
+      return res.end(JSON.stringify({ number: 8, building: false, result: 'SUCCESS' }))
+    }
+    if (jenkinsMode === 'flaky' && jenkinsHits > 1) {
+      res.statusCode = 502
+      return res.end('bad gateway')
+    }
     const number = jenkinsHits === 1 ? 7 : 8
     const building = jenkinsHits === 2
     res.end(JSON.stringify({ number, building, result: building ? null : jenkinsMode === 'fail' ? 'FAILURE' : 'SUCCESS' }))
@@ -968,6 +991,16 @@ try {
   const never = await watch({ FLOW_JENKINS_START_MS: '60', FLOW_JENKINS_POLL_MS: '30' })
   assert.equal(never.code, 2, never.out)
   assert.match(never.out, /no new build/i)
+  jenkinsHits = 0
+  jenkinsMode = 'busy'
+  const busy = await watch()
+  assert.equal(busy.code, 0, busy.out)
+  assert.match(busy.out, /#8: SUCCESS/, 'a build already running when the watcher starts is not the one')
+  assert.doesNotMatch(busy.out, /#7: /)
+  jenkinsHits = 0
+  jenkinsMode = 'flaky'
+  const flaky = await watch()
+  assert.equal(flaky.code, 2, 'a Jenkins that stops answering mid-watch is "could not tell", not "failed": ' + flaky.out)
   jenkins.closeAllConnections()
   jenkins.close()
   assert.equal(
@@ -1068,6 +1101,8 @@ try {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'web' }),
   })
   assert.equal(refusedPush.status, 400, 'a diff with a secret in it is not pushed')
+  assert.ok(!fs.readFileSync(path.join(root, 'data', 'logs', `${leaky.id}.jsonl`), 'utf8').includes('ck_test_value'), 'the agent said the value; the log did not keep it')
+  assert.ok(leaked.log.some((l) => l.text === 'committed the config, the key is {{secret:EGO_API_KEY}}'), 'the placeholder stands in for it')
   assert.match((await refusedPush.json()).error, /leak\.txt:1/)
   const leakTree = leaked.trees[0]
   assert.throws(
@@ -1113,6 +1148,11 @@ try {
   const hiddenMore = await waitFor(hidden.id, (t) => t.status === 'done' && t.phase === null, 'the hidden follow-up')
   assert.ok(hiddenMore.log.some((l) => l.text === 'Follow-up: also {{secret:SECRET_1}}'), 'the follow-up is logged redacted')
   assert.deepEqual(hiddenMore.secrets, ['EGO_API_KEY', 'SMTP_TOKEN', 'SECRET_1'])
+  await post(`/api/tasks/${hidden.id}/follow-up`, { request: 'and xoxb-ABCDEFGHIJKLMNOPQRS too', hideSecrets: true })
+  const hiddenAgain = await waitFor(hidden.id, (t) => t.status === 'done' && t.phase === null && t.secrets.length === 4, 'the second hidden follow-up')
+  assert.deepEqual(hiddenAgain.secrets, ['EGO_API_KEY', 'SMTP_TOKEN', 'SECRET_1', 'SECRET_2'], 'a new bare value gets a new number')
+  assert.equal(secrets.read(hidden.id, 'SECRET_1'), 'glpat-ABCDEFGHIJKLMNOPQRST', 'and the first one is still there')
+  assert.equal(secrets.read(hidden.id, 'SECRET_2'), 'xoxb-ABCDEFGHIJKLMNOPQRS')
   await fetch(`${base}/api/tasks/${hidden.id}`, { method: 'DELETE' })
   console.log('ok: secrets are named on the task, valued only in the shell, and forgotten with it,\n' +
     '    and a diff that carries one is refused by the push button and by the guard')
@@ -1138,7 +1178,7 @@ try {
   // Prompts: every one the agents are told is listed, editable, and reset-able.
   // An override that names a placeholder the prompt is not given is refused.
   const promptList = await (await fetch(`${base}/api/prompts`)).json()
-  assert.equal(promptList.length, 14)
+  assert.equal(promptList.length, 15)
   const answerEntry = promptList.find((p) => p.name === 'answer')
   assert.ok(answerEntry.default.includes('What the human asked'))
   assert.equal(answerEntry.custom, null)
@@ -1219,6 +1259,16 @@ try {
   assert.equal(nowDoc.run, 'doc')
   assert.ok(nowDoc.root && !nowDoc.root.endsWith('work'), 'the worktree stays until dropped')
   assert.deepEqual((await (await fetch(`${base}/api/tasks/${told2.id}/output`)).json()).files.map((f) => f.name), ['notes.md'])
+  const retrySwitched = await fetch(`${base}/api/tasks/${told2.id}/retry`, { method: 'POST' })
+  assert.equal(retrySwitched.status, 400, 'retry on a switched task is refused, not a crash')
+  assert.equal((await fetch(`${base}/api/tasks/${told2.id}/worktree`, { method: 'DELETE' })).status, 200, 'its worktree can still be dropped')
+  // A follow-up on a document task is told the document rules, not the branch ones.
+  await post(`/api/tasks/${doc.id}/follow-up`, { request: 'add a risks section' })
+  await waitFor(doc.id, (t) => t.status === 'done' && t.phase === null, 'the document follow-up')
+  const docFollow = fs.readFileSync(path.join(root, 'data', 'tasks', doc.id, 'prompt.txt'), 'utf8')
+  assert.match(docFollow, /do not modify\s+anything under/i)
+  assert.doesNotMatch(docFollow, /existing branches/)
+  assert.match(docFollow, /add a risks section/)
   console.log('ok: the document route writes a file, checks nothing out, and can read the repos,\n' +
     '    its output is listed and served from work/ only, and a plain task that wrote one can switch')
 
@@ -1301,7 +1351,7 @@ try {
   })
   await waitFor(old.id, (t) => t.status === 'done', 'the old-style task')
   fs.appendFileSync(path.join(root, 'data', 'logs', `${old.id}.jsonl`),
-    JSON.stringify({ t: Date.now(), kind: 'text', text: 'ok I used ck_test_value_1234567890' }) + '\n')
+    JSON.stringify({ t: Date.now(), kind: 'text', text: 'ok I used ck_test_value_1234567890\nthen ran it' }) + '\n')
   await sleep(300)
   server.kill('SIGKILL')
   await sleep(300)
@@ -1316,8 +1366,19 @@ try {
   const migrated = await (await fetch(`${base}/api/tasks/${old.id}`)).json()
   assert.equal(migrated.prompt, 'use EGO_API_KEY={{secret:EGO_API_KEY}} please')
   assert.deepEqual(migrated.secrets, ['EGO_API_KEY'])
-  assert.equal(secrets.read(old.id, 'EGO_API_KEY'), 'ck_test_value_1234567890')
+  assert.equal(secrets.read(old.id, 'EGO_API_KEY'), 'ck_test_value_1234567890', 'the value, not the value plus an escaped newline')
+  const oldLog = fs.readFileSync(path.join(root, 'data', 'logs', `${old.id}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+  assert.ok(oldLog.some((l) => l.text === 'ok I used {{secret:EGO_API_KEY}}\nthen ran it'), 'the log line is intact around the placeholder')
   await fetch(`${base}/api/tasks/${old.id}`, { method: 'DELETE' })
+
+  // A run that has not reported its session yet cannot be "continued" into an
+  // older session when the server dies under it: it is a plain failure.
+  await post(`/api/tasks/${napping.id}/follow-up`, { request: 'SLOWSTART' })
+  await waitFor(napping.id, (t) => t.status === 'running', 'the slow follow-up to start')
+  await restart({ FLOW_AUTO_RESUME: '0' })
+  const slow = await (await fetch(`${base}/api/tasks/${napping.id}`)).json()
+  assert.equal(slow.status, 'failed', 'no session of its own, so nothing to continue')
+  assert.equal(slow.lastSession, null, 'and the older session is not offered in its place')
 
   console.log(
     'ok: a restart mid-run leaves the task interrupted and resume continues its session,\n' +
