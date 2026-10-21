@@ -18,7 +18,7 @@ import { invalidate as forgetDiskSize } from './disk.js'
 import * as browser from './browser.js'
 import * as secrets from './secrets.js'
 import * as repoConfig from './repo-config.js'
-import { toPick, statusRow } from './git.js'
+import { toPick, statusRow, targetsOf } from './git.js'
 
 export const PORT = Number(process.env.FLOW_PORT || 7777)
 export { listRepos, roots, addRoot, removeRoot, browse, DEFAULT_ROOT } from './roots.js'
@@ -111,6 +111,7 @@ const questionWaiters = new Map() // questionId -> resolve(answer)
 const queue = []
 let running = 0
 
+const quiet = (fn) => { try { return fn() } catch { return '' } }
 const git = (cwd, ...args) =>
   execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 
@@ -593,21 +594,31 @@ export function catchUp(id, repo) {
  * one run, in the worktree, and stops rather than guessing when the checkout
  * is somewhere it should not be touched.
  */
-export function mergeViaAgent(id, repo) {
+export function mergeViaAgent(id, repo, { target } = {}) {
   const task = readyForSideRun(id)
   const tree = task.trees?.find((t) => t.repo === repo)
   if (!tree) throw new Error(`unknown repo: ${repo}`)
+  target = String(target || tree.baseBranch).trim()
+  if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(target)) throw new Error(`not a branch name: ${target}`)
+  // A branch that exists somewhere, or at least a name git would accept: the
+  // push creates a new one, which is a thing people ask for (a release branch).
+  if (!targetsOf(tree).includes(target)) {
+    try { git(tree.repoPath, 'check-ref-format', '--branch', target) } catch { throw new Error(`not a branch name: ${target}`) }
+  }
+  if (target === tree.branch) throw new Error('that is the task branch itself')
+  repoConfig.set(tree.repoPath, { landTarget: target })
 
+  const hasRemote = Boolean(quiet(() => git(tree.repoPath, 'remote')).split('\n')[0])
   log(id, {
     kind: 'decision',
-    text: `Push ${tree.branch}, open a merge request, then merge into ${tree.baseBranch}`,
+    text: `Push ${tree.branch}, open a merge request, then land on ${target}`,
   })
   return sideRun(
     task,
-    `landing on ${tree.baseBranch}`,
-    buildMergePrompt(tree, { ...task, node: NODE_BIN, askScript: ASK_SCRIPT, guardScript: GUARD_SCRIPT }),
+    `landing on ${target}`,
+    buildMergePrompt(tree, { ...task, target, hasRemote, node: NODE_BIN, askScript: ASK_SCRIPT, guardScript: GUARD_SCRIPT }),
     tree.worktree,
-    `Landed: ${task.title}`,
+    `Landed on ${target}: ${task.title}`,
   )
 }
 

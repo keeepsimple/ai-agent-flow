@@ -177,7 +177,11 @@ export function buildCatchUpPrompt(tree, ctx) {
 
 /** Get this branch into the base with nothing left behind it, and a merge request on record. */
 export function buildMergePrompt(tree, ctx) {
-  return render(load('land'), sideContext(tree, ctx))
+  return render(load('land'), {
+    ...sideContext(tree, ctx),
+    target: ctx.target || tree.baseBranch,
+    hasRemote: ctx.hasRemote !== false,
+  })
 }
 
 /** The task's landed commits, cherry-picked onto prod in a worktree of their own, pushed, watched. */

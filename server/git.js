@@ -102,9 +102,22 @@ function statusOf(tree) {
     baseUpstream,
     baseUnpushed,
     prod: prodOf(tree),
+    // Where Land may put this branch: the base first, then every branch the
+    // remote or the checkout knows, never the task branch itself.
+    targets: targetsOf(tree),
+    landTarget: repoConfig.get(tree.repoPath).landTarget || tree.baseBranch,
     uncommitted: uncommitted.length,
     mergeBlockedBy: blocked,
   }
+}
+
+export function targetsOf(tree) {
+  const remote = lines(quiet(() => git(tree.repoPath, 'branch', '-r', '--format=%(refname:short)')))
+    .map((b) => b.replace(/^origin\//, ''))
+    .filter((b) => b && b !== 'HEAD')
+  const local = lines(quiet(() => git(tree.repoPath, 'branch', '--format=%(refname:short)')))
+  const all = [tree.baseBranch, ...remote, ...local].filter((b, i, arr) => b && b !== tree.branch && arr.indexOf(b) === i)
+  return all
 }
 
 function prodOf(tree) {

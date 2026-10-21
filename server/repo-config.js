@@ -23,12 +23,14 @@ export function get(repoPath) {
     prodBranch: saved.prodBranch || 'prod',
     jenkins,
     hasJenkinsToken: secrets.read(owner(repoPath), 'JENKINS_TOKEN') !== null,
+    landTarget: saved.landTarget || null,
   }
 }
 
-export function set(repoPath, { prodBranch, jenkins, jenkinsToken } = {}) {
+export function set(repoPath, { prodBranch, jenkins, jenkinsToken, landTarget } = {}) {
   const all = load()
   const mine = all[repoPath] || {}
+  if (landTarget !== undefined) mine.landTarget = landTarget || null
   if (prodBranch !== undefined) {
     if (!/^[A-Za-z0-9._\/-]+$/.test(prodBranch || '')) throw new Error('bad branch name')
     mine.prodBranch = prodBranch

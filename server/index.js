@@ -26,6 +26,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
   '.json': 'application/json',
 }
 
@@ -292,8 +293,8 @@ async function api(req, res, url) {
   // The agent does it: catch up first, then fast-forward. `merge-now` is the
   // plain git merge, which refuses the moment the base has moved.
   if (req.method === 'POST' && action === 'merge') {
-    const { repo } = JSON.parse((await body(req)) || '{}')
-    return json(res, 200, runner.mergeViaAgent(id, repo))
+    const { repo, target } = JSON.parse((await body(req)) || '{}')
+    try { return json(res, 200, runner.mergeViaAgent(id, repo, { target })) } catch (err) { return json(res, 400, { error: err.message }) }
   }
   if (req.method === 'POST' && action === 'merge-now') {
     const { repo } = JSON.parse((await body(req)) || '{}')

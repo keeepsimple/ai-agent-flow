@@ -177,8 +177,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   onPushBase: () => _act('base:${repo['repo']}',
                       () => widget.flow.api
                           .push(widget.task.id, repo['repo'] as String, base: true)),
-                  onMerge: () => _act('merge:${repo['repo']}',
-                      () => widget.flow.api.merge(widget.task.id, repo['repo'] as String)),
+                  onMerge: (target) => _act('merge:${repo['repo']}',
+                      () => widget.flow.api.merge(widget.task.id, repo['repo'] as String, target: target)),
                   onCatchUp: () => _act('catch:${repo['repo']}',
                       () => widget.flow.api.catchUp(widget.task.id, repo['repo'] as String)),
                   onShip: () => _act('ship:${repo['repo']}',
@@ -217,7 +217,8 @@ class RepoCard extends StatelessWidget {
   final String busy;
   final VoidCallback onPush;
   final VoidCallback onPushBase;
-  final VoidCallback onMerge;
+  /// Land on the given branch: the remembered target, or one picked from the menu.
+  final void Function(String target) onMerge;
   final VoidCallback onCatchUp;
   final VoidCallback onShip;
   final VoidCallback onConfigureProd;
@@ -233,6 +234,8 @@ class RepoCard extends StatelessWidget {
     final blocked = repo['mergeBlockedBy'] as String?;
     final pipeline = repo['pipeline'] as Map?;
     final reviewUrl = repo['reviewUrl'] as String?;
+    final targets = ((repo['targets'] as List?) ?? const []).cast<String>();
+    final landTarget = (repo['landTarget'] as String?) ?? base;
     final prod = repo['prod'] as Map?;
     final prodBranch = (prod?['branch'] ?? 'prod') as String;
     final toPick = (prod?['toPick'] ?? 0) as int;
@@ -278,20 +281,41 @@ class RepoCard extends StatelessWidget {
                 busy: busy == 'base:$name',
                 onPressed: onPushBase,
               ),
-            FlowButton(
-              label: 'Land on $base',
-              tone: Tone.primary,
-              busy: busy == 'merge:$name',
-              // Being behind is no longer a reason to refuse: the agent brings
-              // the base in first, which is what makes the merge itself a
-              // fast-forward. It stops and says so if the checkout is busy.
-              onPressed: ahead == 0 ? null : onMerge,
-              tooltip: ahead == 0
-                  ? 'Nothing on this branch that $base does not have'
-                  : 'Catch up, run the checks, push, open a merge request, '
-                      'then fast-forward $base'
-                      '${behind > 0 ? ' — $behind commits behind right now' : ''}',
-            ),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              FlowButton(
+                label: 'Land on $landTarget',
+                tone: Tone.primary,
+                busy: busy == 'merge:$name',
+                // Being behind is no longer a reason to refuse: the agent brings
+                // the target in first, which is what makes the landing itself a
+                // fast-forward. The remote is what counts; the checkout is a courtesy.
+                onPressed: ahead == 0 ? null : () => onMerge(landTarget),
+                tooltip: ahead == 0
+                    ? 'Nothing on this branch that $base does not have'
+                    : 'Catch up with $landTarget, run the checks, push, open a merge request, '
+                        'then put it on origin/$landTarget'
+                        '${behind > 0 ? ' — $behind commits behind right now' : ''}',
+              ),
+              // Pick another branch to land on: anything the remote or the
+              // checkout knows, or a name typed in (the push creates it).
+              PopupMenuButton<String>(
+                tooltip: 'Land somewhere else',
+                padding: EdgeInsets.zero,
+                enabled: ahead > 0,
+                icon: const Icon(Icons.expand_more, size: 16, color: Tern.muted),
+                color: Tern.raised,
+                onSelected: (picked) async {
+                  if (picked != '\u0000other') return onMerge(picked);
+                  final typed = await _askBranch(context);
+                  if (typed != null && typed.isNotEmpty) onMerge(typed);
+                },
+                itemBuilder: (_) => [
+                  for (final t in targets)
+                    PopupMenuItem(value: t, height: 32, child: Text(t, style: t12(t == landTarget))),
+                  PopupMenuItem(value: '\u0000other', height: 32, child: Text('Other…', style: t12(false))),
+                ],
+              ),
+            ]),
             if (behind > 0)
               FlowButton(
                 label: 'Catch up with $base',
@@ -337,6 +361,31 @@ class RepoCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(blocked, style: t(11, color: Tern.warn)),
           ],
+        ],
+      ),
+    );
+  }
+
+  static TextStyle t12(bool current) => t(12, color: current ? Tern.ink : Tern.muted, code: true);
+
+  Future<String?> _askBranch(BuildContext context) {
+    final field = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Tern.raised,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('Land on which branch?', style: t(14, color: Tern.ink)),
+        content: TextField(
+          controller: field,
+          autofocus: true,
+          style: t(12.5, color: Tern.ink, code: true),
+          decoration: const InputDecoration(isDense: true, hintText: 'release/2026-10'),
+          onSubmitted: (v) => Navigator.pop(context, v.trim()),
+        ),
+        actions: [
+          FlowButton(label: 'Cancel', onPressed: () => Navigator.pop(context, null)),
+          FlowButton(label: 'Land there', tone: Tone.primary, onPressed: () => Navigator.pop(context, field.text.trim())),
         ],
       ),
     );

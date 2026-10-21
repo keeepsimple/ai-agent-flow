@@ -45,6 +45,8 @@ git('web', 'push', '-q', '-u', 'origin', 'main')
 // And only 'web' has a prod branch, so a repo without one stays covered too.
 git('web', 'branch', 'prod')
 git('web', 'push', '-q', 'origin', 'prod')
+git('web', 'branch', 'release')
+git('web', 'push', '-q', 'origin', 'release')
 
 // The stub reads the prompt from stdin exactly as the real CLI does, writes the
 // artifact its phase is supposed to write, and blocks on `ask` once so the
@@ -124,10 +126,17 @@ if (args.includes('--resume') && process.env.STUB_REFUSE_RESUME) {
   const at = (text, after, before) => text.split(after)[1].split(before)[0]
   const branch = at(prompt, ', on ', ',')
   const repoPath = at(prompt, 'git -C ', ' status --short')
-  const target = at(prompt, 'put it into ', ',')
-  execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'merge', target])
-  execFileSync('git', ['-C', repoPath, 'merge', '--ff-only', branch])
-  say('caught up, checks pass, fast-forwarded ' + target)
+  const target = at(prompt, 'end up in ', ',')
+  const g = (...a) => execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', ...a], { stdio: 'pipe' })
+  try { g('merge', 'origin/' + target) } catch { try { g('merge', target) } catch {} }
+  if (prompt.includes('git push origin ' + branch + ':' + target)) g('push', '-q', 'origin', branch + ':' + target)
+  const current = execFileSync('git', ['-C', repoPath, 'branch', '--show-current']).toString().trim()
+  if (current === target) {
+    try { g('-C', repoPath, 'merge', '--ff-only', branch) } catch { say('untracked files block the fast-forward in your checkout; the remote has it') }
+  } else {
+    say('your checkout is on ' + current + ', not ' + target + '; left it alone, the remote has it')
+  }
+  say('caught up, checks pass, landed on ' + target)
 } else if (prompt.includes('into this branch')) {
   // Catch-up run: do the merge for real, in the worktree we were started in.
   execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'merge', 'main'])
@@ -897,6 +906,7 @@ try {
   )
   assert.notEqual(git('api', 'rev-parse', 'main'), beforeMerge, 'and main should have moved')
 
+
   // Ship: once a branch is on the base, its commits go to prod by cherry-pick,
   // in a worktree on prod, never by merging the base in. Refused when there
   // is nothing left to pick, or when the branch has not landed yet.
@@ -920,7 +930,7 @@ try {
   const prodBefore = git('web', 'rev-parse', 'prod')
   await post(`/api/tasks/${shipping.id}/ship`, { repo: 'web' })
   const shipped = await waitFor(shipping.id, (t) => t.status === 'done' || t.status === 'failed', 'the ship run')
-  assert.equal(shipped.status, 'done', `ship run failed: ${shipped.error}\n` + shipped.log.slice(-6).map((l) => `  [${l.kind}] ${l.text}`).join('\n'))
+  assert.equal(shipped.status, 'done', `ship run failed: ${shipped.error}\n` + shipped.log.slice(-12).map((l) => `  [${l.kind}] ${String(l.text).slice(0, 300)}`).join('\n'))
   assert.ok(shipped.log.some((l) => l.kind === 'decision' && /cherry-pick/.test(l.text)), 'the conversation says what was asked')
   assert.notEqual(git('web', 'rev-parse', 'prod'), prodBefore, 'prod moved')
   assert.equal(git('web', 'rev-parse', 'prod'), execFileSync('git', ['-C', origin, 'rev-parse', 'prod'], { encoding: 'utf8' }), 'and was pushed')
@@ -1004,6 +1014,45 @@ try {
   assert.equal(flaky.code, 2, 'a Jenkins that stops answering mid-watch is "could not tell", not "failed": ' + flaky.out)
   jenkins.closeAllConnections()
   jenkins.close()
+
+  // Land on a chosen target, and the remote is what counts: the person's
+  // checkout is fast-forwarded only when that is free, and never stops the run.
+  const landing2 = await post('/api/tasks', { repos: ['web'], prompt: 'land me elsewhere', run: 'quick', autoApprove: true })
+  await waitFor(landing2.id, (t) => t.status === 'done', 'the second landing run')
+  const webRow2 = (await (await fetch(`${base}/api/tasks/${landing2.id}/git`)).json()).find((r) => r.repo === 'web')
+  assert.equal(webRow2.targets[0], 'main', 'the base comes first')
+  assert.ok(webRow2.targets.includes('release') && webRow2.targets.includes('prod'), 'remote branches are offered')
+  assert.ok(!webRow2.targets.includes(webRow2.branch), 'not the task branch itself')
+  assert.equal(webRow2.landTarget, 'main')
+  const badTarget = await fetch(`${base}/api/tasks/${landing2.id}/merge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'web', target: 'nope branch' }) })
+  assert.equal(badTarget.status, 400, 'a bad target is refused: ' + (await badTarget.text()).slice(0, 300))
+  await post(`/api/tasks/${landing2.id}/merge`, { repo: 'web', target: 'release' })
+  const landed2 = await waitFor(landing2.id, (t) => t.status === 'done' || t.status === 'failed', 'landing on release')
+  assert.equal(landed2.status, 'done', `landing on release failed: ${landed2.error}`)
+  assert.ok(landed2.log.some((l) => l.kind === 'decision' && /land on release/.test(l.text)))
+  assert.equal(execFileSync('git', ['-C', origin, 'rev-parse', 'release'], { encoding: 'utf8' }).trim(), git('web', 'rev-parse', webRow2.branch).trim(), 'origin release is the branch tip')
+  assert.equal(git('web', 'branch', '--show-current').trim(), 'main', 'the checkout was left on main')
+  assert.equal((await (await fetch(`${base}/api/tasks/${landing2.id}/git`)).json()).find((r) => r.repo === 'web').landTarget, 'release', 'the target is remembered')
+  // A target nobody has yet is created by the push.
+  const landing3 = await post('/api/tasks', { repos: ['web'], prompt: 'land me fresh', run: 'quick', autoApprove: true })
+  await waitFor(landing3.id, (t) => t.status === 'done', 'the third landing run')
+  await post(`/api/tasks/${landing3.id}/merge`, { repo: 'web', target: 'fresh-release' })
+  const landed3 = await waitFor(landing3.id, (t) => t.status === 'done' || t.status === 'failed', 'landing on a new branch')
+  assert.equal(landed3.status, 'done', landed3.error)
+  assert.doesNotThrow(() => execFileSync('git', ['-C', origin, 'rev-parse', '--verify', 'fresh-release'], { stdio: 'pipe' }), 'origin now has it')
+  // Untracked files in the checkout do not stop a landing on main: the remote gets it.
+  const landing4 = await post('/api/tasks', { repos: ['web'], prompt: 'land me past clutter', run: 'quick', autoApprove: true })
+  await waitFor(landing4.id, (t) => t.status === 'done', 'the fourth landing run')
+  fs.writeFileSync(path.join(repos, 'web', 'app', 'services', 'discount.server.ts.bak'), 'clutter')
+  fs.writeFileSync(path.join(repos, 'web', 'CLUTTER.md'), 'untracked')
+  const originMainBefore = execFileSync('git', ['-C', origin, 'rev-parse', 'main'], { encoding: 'utf8' }).trim()
+  await post(`/api/tasks/${landing4.id}/merge`, { repo: 'web', target: 'main' })
+  const landed4 = await waitFor(landing4.id, (t) => t.status === 'done' || t.status === 'failed', 'landing past clutter')
+  assert.equal(landed4.status, 'done', landed4.error)
+  assert.notEqual(execFileSync('git', ['-C', origin, 'rev-parse', 'main'], { encoding: 'utf8' }).trim(), originMainBefore, 'origin main moved')
+  fs.rmSync(path.join(repos, 'web', 'CLUTTER.md'), { force: true })
+  fs.rmSync(path.join(repos, 'web', 'app', 'services', 'discount.server.ts.bak'), { force: true })
+  git('web', 'pull', '-q', '--ff-only', 'origin', 'main') // the person's later `git pull`
   assert.equal(
     git('api', 'rev-parse', 'main'),
     git('api', 'rev-parse', landed.trees[0].branch),
@@ -1179,14 +1228,14 @@ try {
   // Per-repo config: where prod is, and how to watch its deploy. The Jenkins
   // token goes to the keychain, and never comes back out through the API.
   const cfg0 = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
-  assert.deepEqual(cfg0, { prodBranch: 'prod', jenkins: null, hasJenkinsToken: false })
+  assert.deepEqual(cfg0, { prodBranch: 'prod', jenkins: null, hasJenkinsToken: false, landTarget: 'main' }, 'the api landing above remembered main')
   const putCfg = await fetch(`${base}/api/repos/config?repo=api`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, jenkinsToken: 't' }),
   })
   assert.ok(putCfg.ok, 'config saved')
   const cfg1 = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
-  assert.deepEqual(cfg1, { prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, hasJenkinsToken: true })
+  assert.deepEqual(cfg1, { prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, hasJenkinsToken: true, landTarget: 'main' })
   assert.equal(secrets.read('repo:' + path.join(repos, 'api'), 'JENKINS_TOKEN'), 't')
   assert.ok(!fs.readFileSync(path.join(root, 'data', 'repos.json'), 'utf8').includes('"t"'), 'the token is not in the file')
   const badCfg = await fetch(`${base}/api/repos/config?repo=nope`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' })

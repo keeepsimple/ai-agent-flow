@@ -455,11 +455,13 @@ void main() {
             'reviewUrl': 'https://gitlab.example.com/x/-/merge_requests/new',
             'pipeline': {'status': 'success', 'url': 'https://gitlab.example.com/p/1'},
             'mergeBlockedBy': null,
+            'targets': ['main', 'release', 'prod'],
+            'landTarget': 'main',
           },
           busy: '',
           onPush: () {},
           onPushBase: () {},
-          onMerge: () {},
+          onMerge: (_) {},
           onCatchUp: () {},
           onShip: () {},
           onConfigureProd: () {},
@@ -467,6 +469,41 @@ void main() {
       ),
       const Size(430, 230),
     );
+  });
+
+  testWidgets('Land can be pointed at another branch from the card', (tester) async {
+    final landed = <String>[];
+    tester.view.physicalSize = const Size(600, 400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        body: RepoCard(
+          repo: const {
+            'repo': 'web', 'branch': 'flow/x-1', 'base': 'main', 'ahead': 2, 'behind': 0, 'unpushed': 0,
+            'baseUnpushed': 0, 'remote': 'origin', 'targets': ['main', 'release'], 'landTarget': 'release',
+          },
+          busy: '',
+          onPush: () {},
+          onPushBase: () {},
+          onMerge: landed.add,
+          onCatchUp: () {},
+          onShip: () {},
+          onConfigureProd: () {},
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('Land on release'), findsOneWidget, reason: 'the remembered target is the default');
+    await tester.tap(find.text('Land on release'));
+    expect(landed, ['release']);
+    await tester.tap(find.byIcon(Icons.expand_more));
+    await tester.pumpAndSettle();
+    expect(find.text('Other…'), findsOneWidget);
+    await tester.tap(find.text('main'));
+    await tester.pumpAndSettle();
+    expect(landed, ['release', 'main']);
   });
 
   testWidgets('a landed repo row, with a prod to ship to', (tester) async {
@@ -499,7 +536,7 @@ void main() {
           busy: '',
           onPush: () {},
           onPushBase: () {},
-          onMerge: () {},
+          onMerge: (_) {},
           onCatchUp: () {},
           onShip: () {},
           onConfigureProd: () {},

@@ -191,8 +191,8 @@ class Api {
       _send('POST', '/api/tasks/$id/catch-up', {'repo': repo});
   Future<dynamic> push(String id, String repo, {bool base = false}) =>
       _send('POST', '/api/tasks/$id/push', {'repo': repo, 'base': base});
-  Future<dynamic> merge(String id, String repo) =>
-      _send('POST', '/api/tasks/$id/merge', {'repo': repo});
+  Future<dynamic> merge(String id, String repo, {String? target}) =>
+      _send('POST', '/api/tasks/$id/merge', {'repo': repo, if (target != null) 'target': target});
   Future<dynamic> ship(String id, String repo) =>
       _send('POST', '/api/tasks/$id/ship', {'repo': repo});
   Future<Map<String, dynamic>> repoConfig(String repo) async =>
