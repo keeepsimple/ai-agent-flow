@@ -23,9 +23,17 @@ Future<void> openExternal(String url) async {
 /// Renders the blocks the splitter produced. No HTML anywhere: agent output
 /// cannot carry markup into this window.
 class MarkdownView extends StatelessWidget {
-  const MarkdownView(this.source, {super.key, this.colour = Tern.ink2, this.size = 12.5});
+  const MarkdownView(this.source, {super.key, this.colour = Tern.ink2, this.size = 12.5, this.onFile});
 
   final String? source;
+
+  /// Called with an inline code span that reads like a file name, when tapped.
+  final void Function(String name)? onFile;
+
+  /// `spec.md`, `app/x.ts`, `.vi.xlsx`: a dot-extension, path characters only, no URL.
+  static final _fileLike = RegExp(r'^[A-Za-z0-9_.\-/\\]*\.[A-Za-z0-9]{1,8}$');
+  static bool looksLikeFile(String s) =>
+      _fileLike.hasMatch(s) && !s.contains('://') && !s.startsWith('-') && s.contains(RegExp(r'[A-Za-z]'));
   final Color colour;
   final double size;
 
@@ -134,9 +142,18 @@ class MarkdownView extends StatelessWidget {
     for (final part in splitInline(line)) {
       final link = linkFrom(part);
       if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
+        final code = part.substring(1, part.length - 1);
+        final file = onFile != null && looksLikeFile(code);
         spans.add(TextSpan(
-          text: part.substring(1, part.length - 1),
-          style: base.copyWith(fontFamily: mono, color: accent, fontSize: base.fontSize! - 0.5),
+          text: code,
+          style: base.copyWith(
+            fontFamily: mono,
+            color: accent,
+            fontSize: base.fontSize! - 0.5,
+            decoration: file ? TextDecoration.underline : null,
+            decorationStyle: TextDecorationStyle.dotted,
+          ),
+          recognizer: file ? (TapGestureRecognizer()..onTap = () => onFile!(code)) : null,
         ));
       } else if (link != null) {
         spans.add(TextSpan(

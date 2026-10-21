@@ -164,6 +164,10 @@ class Api {
     return text;
   }
 
+  /// Reveal a file the conversation named, in Finder or the folder it is in.
+  Future<dynamic> reveal(String id, String name) =>
+      _send('POST', '/api/tasks/$id/reveal', {'name': name});
+
   Future<dynamic> switchRun(String id, String run) =>
       _send('PUT', '/api/tasks/$id/run', {'run': run});
 

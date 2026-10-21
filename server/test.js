@@ -183,6 +183,7 @@ const startServer = (extra = {}) =>
       FLOW_REPO_ROOT: repos,
       FLOW_PORT: String(PORT),
       FLOW_NOTIFY: 'off',
+      FLOW_REVEAL: 'off',
       ...extra,
     },
     stdio: ['ignore', 'pipe', 'inherit'],
@@ -1156,6 +1157,24 @@ try {
   await fetch(`${base}/api/tasks/${hidden.id}`, { method: 'DELETE' })
   console.log('ok: secrets are named on the task, valued only in the shell, and forgotten with it,\n' +
     '    and a diff that carries one is refused by the push button and by the guard')
+
+  // A file name in the conversation reveals the file: bare names are looked
+  // up in the task's worktrees, artifacts and repos; nothing outside them.
+  const reveal = (name) => fetch(`${base}/api/tasks/${created.id}/reveal`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+  })
+  const byName = await reveal('discount.server.ts')
+  assert.equal(byName.status, 200)
+  // This task's worktrees were reclaimed above, so the repo checkout is where it is found.
+  assert.match((await byName.json()).path, /\/api\/app\/services\/discount\.server\.ts$/, 'a bare name finds the tracked file')
+  const byRel = await reveal('app/discount-notes.md')
+  assert.match((await byRel.json()).path, /\/api\/app\/discount-notes\.md$/, 'a relative path resolves against the worktree')
+  const artifact = await reveal('spec.md')
+  assert.match((await artifact.json()).path, new RegExp(`tasks/${created.id}/spec\\.md$`), 'an artifact by name')
+  assert.equal((await reveal('nope.xlsx')).status, 404)
+  assert.equal((await reveal('../../../../etc/passwd')).status, 404, 'nothing outside the task')
+  assert.equal((await reveal('/etc/passwd')).status, 404, 'not even by absolute path')
+  console.log('ok: a file name in the conversation resolves to the file, inside the task only')
 
   // Per-repo config: where prod is, and how to watch its deploy. The Jenkins
   // token goes to the keychain, and never comes back out through the API.

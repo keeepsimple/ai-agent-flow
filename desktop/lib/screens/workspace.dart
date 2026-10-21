@@ -119,6 +119,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                       child: Conversation(
                         task: task,
                         jumpToEnd: _jump,
+                        onFile: (name) => widget.flow.run(() => widget.flow.api.reveal(task.id, name), refresh: false),
                         footer: task.waiting
                             ? Decision(task: task, flow: widget.flow)
                             : null,

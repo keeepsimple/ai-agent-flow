@@ -900,6 +900,56 @@ export function switchRun(id, run) {
   return task
 }
 
+/**
+ * A file the conversation named, found inside the task: its worktrees, its
+ * artifacts, its work folder, its repos. Bare names are looked up among the
+ * tracked files of each worktree. Nothing outside those folders resolves,
+ * whatever the name says.
+ */
+export function resolveFile(id, name) {
+  const task = tasks[id]
+  if (!task) throw new Error('unknown task')
+  const given = String(name || '').trim()
+  if (!given) throw new Error('no file name')
+  const dir = task.artifactDir || artifactDir(id)
+  const homes = [
+    ...(task.trees || []).map((t) => t.worktree),
+    task.root,
+    path.join(dir, 'work'),
+    dir,
+    ...(task.repoPaths || []),
+  ].filter((h, i, all) => h && all.indexOf(h) === i)
+  const inside = (file) => homes.some((h) => file === h || file.startsWith(h + path.sep))
+
+  const direct = path.isAbsolute(given) ? [given] : homes.map((h) => path.resolve(h, given))
+  for (const file of direct) {
+    if (inside(file) && fs.existsSync(file)) return file
+  }
+  const base = path.basename(given)
+  for (const home of homes) {
+    let listed = ''
+    try { listed = execFileSync('git', ['-C', home, 'ls-files', '--', `*/${base}`, base], { encoding: 'utf8', maxBuffer: 32 << 20 }) } catch { continue }
+    const hit = listed.split('\n').find((f) => f && path.basename(f) === base)
+    if (hit) {
+      const file = path.resolve(home, hit)
+      if (inside(file) && fs.existsSync(file)) return file
+    }
+  }
+  throw Object.assign(new Error(`no file called ${given} in this task`), { status: 404 })
+}
+
+/** Show the file where it lives: Finder, Explorer, or the folder it is in. */
+export function reveal(id, name) {
+  const file = resolveFile(id, name)
+  if (process.env.FLOW_REVEAL !== 'off') {
+    const [cmd, args] = process.platform === 'darwin'
+      ? ['open', ['-R', file]]
+      : WIN ? ['explorer', [`/select,${file}`]] : ['xdg-open', [path.dirname(file)]]
+    spawn(cmd, args, { stdio: 'ignore', detached: true }).unref()
+  }
+  return { path: file }
+}
+
 /** On launch: pick every interrupted task back up, unless told to leave them for the button. */
 export function resumeInterrupted() {
   if (process.env.FLOW_AUTO_RESUME === '0') return []

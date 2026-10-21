@@ -8,9 +8,12 @@ import 'markdown_view.dart';
 /// The transcript. Tool calls arrive in runs of dozens, so they are collapsed
 /// to a line saying how many; the rest reads as what it is.
 class Conversation extends StatefulWidget {
-  const Conversation({super.key, required this.task, this.footer, this.jumpToEnd});
+  const Conversation({super.key, required this.task, this.footer, this.jumpToEnd, this.onFile});
   final Task task;
   final Widget? footer;
+
+  /// A file name in a message was tapped.
+  final void Function(String name)? onFile;
 
   /// Bump it to scroll to the end: the status line is a shortcut to the last message.
   final ValueNotifier<int>? jumpToEnd;
@@ -262,7 +265,7 @@ class _ConversationState extends State<Conversation> {
           ),
         );
       default:
-        return MarkdownView((block.items.first['text'] ?? '') as String);
+        return MarkdownView((block.items.first['text'] ?? '') as String, onFile: widget.onFile);
     }
   }
 

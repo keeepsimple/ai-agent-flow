@@ -26,6 +26,7 @@ import 'package:agent_flow/widgets/header.dart';
 import 'package:agent_flow/widgets/secrets.dart';
 import 'package:agent_flow/widgets/sidebar.dart';
 import 'package:agent_flow/widgets/status_line.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -631,6 +632,32 @@ void main() {
     expect(find.textContaining('Document route'), findsOneWidget);
     expect(find.text('Switch'), findsOneWidget);
     await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('a file name in a message is a click away from Finder', (tester) async {
+    final names = <String>[];
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        body: MarkdownView(
+          'Changed `omise-hold-refund-estimate.xlsx` and `app/services/discount.server.ts`; see `foo()` and `--ff-only`.',
+          onFile: names.add,
+        ),
+      ),
+    ));
+    await tester.pump();
+    final rich = tester.widget<SelectableText>(find.byType(SelectableText));
+    final spans = <TextSpan>[];
+    rich.textSpan!.visitChildren((s) {
+      if (s is TextSpan) spans.add(s);
+      return true;
+    });
+    final tappable = spans.where((s) => s.recognizer is TapGestureRecognizer).map((s) => s.text).toList();
+    expect(tappable, ['omise-hold-refund-estimate.xlsx', 'app/services/discount.server.ts']);
+    for (final s in spans) {
+      if (s.recognizer is TapGestureRecognizer) (s.recognizer as TapGestureRecognizer).onTap!();
+    }
+    expect(names, ['omise-hold-refund-estimate.xlsx', 'app/services/discount.server.ts']);
   });
 
   testWidgets('the header with nothing open', (tester) async {

@@ -302,6 +302,10 @@ async function api(req, res, url) {
   if (req.method === 'POST' && action === 'cancel') return json(res, 200, runner.cancel(id))
   if (req.method === 'POST' && action === 'retry') return json(res, 200, runner.retry(id))
   if (req.method === 'POST' && action === 'resume') return json(res, 200, runner.resume(id))
+  if (req.method === 'POST' && action === 'reveal') {
+    const { name } = JSON.parse((await body(req)) || '{}')
+    try { return json(res, 200, runner.reveal(id, name)) } catch (err) { return json(res, err.status || 400, { error: err.message }) }
+  }
   if (req.method === 'PUT' && action === 'run') {
     const { run } = JSON.parse((await body(req)) || '{}')
     try { return json(res, 200, runner.switchRun(id, run)) } catch (err) { return json(res, 400, { error: err.message }) }
