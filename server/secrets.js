@@ -164,3 +164,32 @@ export function scanDiff(diff, values = []) {
   }
   return hits
 }
+
+// ---- Several sources at once ---------------------------------------------
+
+export const TEXT_ATTACHMENT = /\.(txt|md|env|json|csv|log|diff|patch|yml|yaml|toml|ini)$/i
+
+/**
+ * Detect across several texts (the prompt and its text attachments) with one
+ * numbering and one name per value, and redact each of them.
+ * texts: [{ key, text }] -> { secrets: [{ name, value }], texts: { key: redacted } }
+ */
+export function hide(texts) {
+  const byValue = new Map()
+  let unnamed = 0
+  const out = {}
+  for (const { key, text } of texts) {
+    const found = detect(text)
+    for (const f of found) {
+      const known = byValue.get(f.value)
+      if (known) {
+        f.name = known
+      } else {
+        if (/^SECRET_\d+$/.test(f.name)) f.name = `SECRET_${++unnamed}`
+        byValue.set(f.value, f.name)
+      }
+    }
+    out[key] = redact(text, found)
+  }
+  return { secrets: [...byValue].map(([value, name]) => ({ name, value })), texts: out }
+}

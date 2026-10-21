@@ -6,6 +6,7 @@ import '../flow.dart';
 import '../paste.dart';
 import '../theme.dart';
 import 'bits.dart';
+import 'secrets.dart';
 import 'mentions.dart';
 
 /// The box at the foot of a task: ask for one more thing on the same branches.
@@ -44,8 +45,19 @@ class _ComposerState extends State<Composer> {
     if (body.isEmpty || _busy) return;
     setState(() => _busy = true);
     final request = [body, ..._attached.map((p) => 'Attached: $p')].join('\n');
+    final hide = await askToHideSecrets(
+      context,
+      widget.flow,
+      text: request,
+      attachments: _attached,
+      editsOnly: widget.task.raw['permissionMode'] == 'acceptEdits',
+    );
+    if (hide == null) {
+      if (mounted) setState(() => _busy = false);
+      return;
+    }
     final ok = await widget.flow.run(
-      () => widget.flow.api.followUp(widget.task.id, request),
+      () => widget.flow.api.followUp(widget.task.id, request, hideSecrets: hide),
     );
     if (!mounted) return;
     if (ok) {

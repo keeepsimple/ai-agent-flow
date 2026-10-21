@@ -8,6 +8,7 @@ import '../paste.dart';
 import '../theme.dart';
 import '../widgets/bits.dart';
 import '../widgets/mentions.dart';
+import '../widgets/secrets.dart';
 import '../widgets/sidebar.dart';
 
 /// The board: start a task, and see every one at a glance.
@@ -278,8 +279,20 @@ class _NewTaskState extends State<NewTask> {
     if (_prompt.text.trim().isEmpty || _target().isEmpty || _busy) return;
     setState(() => _busy = true);
     try {
+      final hide = await askToHideSecrets(
+        context,
+        widget.flow,
+        text: _prompt.text.trim(),
+        attachments: _attached,
+        editsOnly: (_mode ?? _defaults['permissionMode']) == 'acceptEdits',
+      );
+      if (hide == null) {
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
       final task = await widget.flow.api.create({
         'prompt': _prompt.text.trim(),
+        'hideSecrets': hide,
         if (_title.text.trim().isNotEmpty) 'title': _title.text.trim(),
         'repos': _target(),
         'autoApprove': _unattended,

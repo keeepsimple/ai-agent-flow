@@ -173,9 +173,8 @@ async function api(req, res, url) {
 
   // What in this text looks like a secret: names and counts, never values.
   if (section === 'secrets' && id === 'scan' && req.method === 'POST') {
-    const { text } = JSON.parse((await body(req)) || '{}')
-    const found = secrets.detect(String(text || '')).map((f) => ({ name: f.name, count: f.spans.length }))
-    return json(res, 200, { found })
+    const { text, attachments } = JSON.parse((await body(req)) || '{}')
+    return json(res, 200, { found: runner.scanSecrets(String(text || ''), attachments || []) })
   }
 
   if (section !== 'tasks') return json(res, 404, { error: 'not found' })
@@ -224,8 +223,8 @@ async function api(req, res, url) {
     return json(res, 200, await runner.preview(id, where))
   }
   if (req.method === 'POST' && action === 'follow-up') {
-    const { request, secrets: kept } = JSON.parse(await body(req))
-    return json(res, 200, runner.followUp(id, request, { secrets: kept }))
+    const { request, secrets: kept, hideSecrets } = JSON.parse(await body(req))
+    return json(res, 200, runner.followUp(id, request, { secrets: kept, hideSecrets }))
   }
   if (req.method === 'POST' && action === 'catch-up') {
     const { repo } = JSON.parse((await body(req)) || '{}')

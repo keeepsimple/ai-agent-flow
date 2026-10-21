@@ -71,8 +71,8 @@ const diff = [
   '@@ -10,2 +10,3 @@', ' text', '+the value ck_test_value_1234567890 is here', ' more',
 ].join('\n')
 assert.deepEqual(scanDiff(diff, ['ck_test_value_1234567890']), [
-  { file: '.env.dev', line: 3 },
+  { file: '.env.dev', line: 4 },
   { file: 'README.md', line: 11 },
 ])
-assert.deepEqual(scanDiff(diff.replace('ck_test_value_1234567890', 'nothing'), []), [{ file: '.env.dev', line: 3 }])
+assert.deepEqual(scanDiff(diff.replace('ck_test_value_1234567890', 'nothing'), []), [{ file: '.env.dev', line: 4 }])
 console.log('ok: the guard reads added lines with their line numbers')

@@ -971,6 +971,41 @@ try {
     'the guard the agent runs says the same, with the file and line',
   )
   await fetch(`${base}/api/tasks/${leaky.id}`, { method: 'DELETE' })
+
+  // The form's way: it asks "keep these out of the transcript?" and, on yes,
+  // sends the text as typed with hideSecrets. The server finds, keeps and
+  // redacts, so the values never make a second trip.
+  const cleanNote = await (
+    await fetch(`${base}/api/uploads`, {
+      method: 'POST', headers: { 'X-Filename': 'clean.txt' }, body: Buffer.from('nothing secret here\n'),
+    })
+  ).json()
+  const scanned = await post('/api/secrets/scan', { text: 'nothing here', attachments: [cleanNote.path] })
+  assert.deepEqual(scanned.found, [], 'a clean prompt and attachment find nothing')
+  const rawNote = await (
+    await fetch(`${base}/api/uploads`, {
+      method: 'POST', headers: { 'X-Filename': 'raw.txt' }, body: Buffer.from('SMTP_TOKEN=abcdefgh12345678\n'),
+    })
+  ).json()
+  const scanned2 = await post('/api/secrets/scan', { text: 'plain', attachments: [rawNote.path] })
+  assert.deepEqual(scanned2.found.map((f) => f.name), ['SMTP_TOKEN'], 'attachments are scanned too')
+  const hidden = await post('/api/tasks', {
+    title: 'hidden', repos: ['api'], run: 'ask',
+    prompt: 'set EGO_API_KEY=ck_test_value_1234567890 in .env.dev',
+    attachments: [rawNote.path],
+    hideSecrets: true,
+  })
+  assert.equal(hidden.prompt, 'set EGO_API_KEY={{secret:EGO_API_KEY}} in .env.dev')
+  assert.deepEqual(hidden.secrets, ['EGO_API_KEY', 'SMTP_TOKEN'])
+  assert.equal(fs.readFileSync(rawNote.path, 'utf8'), 'SMTP_TOKEN={{secret:SMTP_TOKEN}}\n')
+  await waitFor(hidden.id, (t) => t.status === 'done', 'the hidden task')
+  assert.equal(fs.readFileSync(path.join(root, 'data', 'tasks', hidden.id, 'seen-env.txt'), 'utf8'), 'ck_test_value_1234567890')
+  assert.equal(secrets.read(hidden.id, 'SMTP_TOKEN'), 'abcdefgh12345678')
+  await post(`/api/tasks/${hidden.id}/follow-up`, { request: 'also glpat-ABCDEFGHIJKLMNOPQRST', hideSecrets: true })
+  const hiddenMore = await waitFor(hidden.id, (t) => t.status === 'done' && t.phase === null, 'the hidden follow-up')
+  assert.ok(hiddenMore.log.some((l) => l.text === 'Follow-up: also {{secret:SECRET_1}}'), 'the follow-up is logged redacted')
+  assert.deepEqual(hiddenMore.secrets, ['EGO_API_KEY', 'SMTP_TOKEN', 'SECRET_1'])
+  await fetch(`${base}/api/tasks/${hidden.id}`, { method: 'DELETE' })
   console.log('ok: secrets are named on the task, valued only in the shell, and forgotten with it,\n' +
     '    and a diff that carries one is refused by the push button and by the guard')
 
@@ -1047,8 +1082,33 @@ try {
   assert.ok(back.root && fs.existsSync(back.root), 'the worktree is back on disk')
   assert.equal(fs.readFileSync(path.join(root, 'data', 'tasks', dozy.id, 'resumed.txt'), 'utf8'), dozed.lastSession.id)
 
+  // What is already in the data from before: a one-off script moves it.
+  const old = await post('/api/tasks', {
+    title: 'old', repos: ['api'], run: 'ask', prompt: 'use EGO_API_KEY=ck_test_value_1234567890 please',
+  })
+  await waitFor(old.id, (t) => t.status === 'done', 'the old-style task')
+  fs.appendFileSync(path.join(root, 'data', 'logs', `${old.id}.jsonl`),
+    JSON.stringify({ t: Date.now(), kind: 'text', text: 'ok I used ck_test_value_1234567890' }) + '\n')
+  await sleep(300)
+  server.kill('SIGKILL')
+  await sleep(300)
+  const migration = execFileSync(process.execPath, [path.join(here, '..', 'scripts', 'redact-existing.mjs')], {
+    env: { ...process.env, FLOW_DATA: path.join(root, 'data') }, encoding: 'utf8',
+  })
+  assert.match(migration, /rotate these: EGO_API_KEY/)
+  assert.ok(!fs.readFileSync(path.join(root, 'data', 'tasks.json'), 'utf8').includes('ck_test_value'))
+  assert.ok(!fs.readFileSync(path.join(root, 'data', 'logs', `${old.id}.jsonl`), 'utf8').includes('ck_test_value'))
+  server = startServer({ FLOW_AUTO_RESUME: '0' })
+  await up()
+  const migrated = await (await fetch(`${base}/api/tasks/${old.id}`)).json()
+  assert.equal(migrated.prompt, 'use EGO_API_KEY={{secret:EGO_API_KEY}} please')
+  assert.deepEqual(migrated.secrets, ['EGO_API_KEY'])
+  assert.equal(secrets.read(old.id, 'EGO_API_KEY'), 'ck_test_value_1234567890')
+  await fetch(`${base}/api/tasks/${old.id}`, { method: 'DELETE' })
+
   console.log(
     'ok: a restart mid-run leaves the task interrupted and resume continues its session,\n' +
+    '    what was already in the data is moved to the keychain by the one-off script,\n' +
     '    a run gone quiet after a sleep is interrupted and stopped, a dropped worktree is rebuilt on resume,\n' +
     '    interrupted work resumes on launch, a refused session re-runs fresh out loud,\n' +
     '    and "tiếp tục" continues the last session',

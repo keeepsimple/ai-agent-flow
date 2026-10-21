@@ -168,9 +168,41 @@ function keepSecrets(id, given, attached) {
   return kept
 }
 
+/** The prompt and the text attachments, as texts to scan together. */
+function sources(prompt, attached) {
+  return [
+    { key: 'prompt', text: prompt },
+    ...attached
+      .filter((f) => secrets.TEXT_ATTACHMENT.test(f))
+      .map((f) => ({ key: f, text: fs.readFileSync(f, 'utf8') })),
+  ]
+}
+
+/** What in this prompt and these attachments looks like a secret: names and where, never values. */
+export function scanSecrets(prompt, attachments) {
+  const attached = attachments.map(verifyUpload)
+  const found = []
+  for (const { key, text } of sources(prompt, attached)) {
+    for (const f of secrets.detect(text)) {
+      found.push({ name: f.name, count: f.spans.length, where: key === 'prompt' ? 'prompt' : path.basename(key) })
+    }
+  }
+  return found
+}
+
+/**
+ * hideSecrets: find them here, keep them, and carry on with the redacted
+ * texts, so the values never make a second trip through the client.
+ */
+function hideIn(prompt, attached) {
+  const { secrets: found, texts } = secrets.hide(sources(prompt, attached))
+  for (const [key, text] of Object.entries(texts)) if (key !== 'prompt') fs.writeFileSync(key, text)
+  return { prompt: texts.prompt, secrets: found }
+}
+
 export function createTask({
   title, prompt, repos, attachments = [], images = [], autoApprove = false, run, model, effort,
-  permissionMode, shopify, secrets: given = [],
+  permissionMode, shopify, secrets: given = [], hideSecrets = false,
 }) {
   if (!prompt?.trim()) throw new Error('prompt is required')
   // Repos can live under more than one folder now, so what the human picked is
@@ -182,6 +214,11 @@ export function createTask({
   const attached = [...attachments, ...images].map(verifyUpload)
 
   const id = randomUUID().slice(0, 8)
+  if (hideSecrets) {
+    const hid = hideIn(prompt, attached)
+    prompt = hid.prompt
+    given = [...given, ...hid.secrets]
+  }
   const kept = keepSecrets(id, given, attached)
   // A title is optional: with none, the first line of the prompt stands in
   // until the spec phase has read the code and can name the work properly.
@@ -570,8 +607,13 @@ function drain(id) {
  * one more thing. Same worktrees, same branches, no new task to lose the
  * context of what this already is.
  */
-export function followUp(id, request, { secrets: given = [] } = {}) {
+export function followUp(id, request, { secrets: given = [], hideSecrets = false } = {}) {
   if (!request?.trim()) throw new Error('say what you want changed')
+  if (hideSecrets) {
+    const hid = hideIn(request, [])
+    request = hid.prompt
+    given = [...given, ...hid.secrets]
+  }
 
   // Busy is not a reason to lose what someone just typed. It waits in line
   // and goes as soon as the run in front of it is done.

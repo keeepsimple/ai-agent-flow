@@ -147,8 +147,14 @@ class Api {
   Future<dynamic> cancel(String id) => _send('POST', '/api/tasks/$id/cancel');
   Future<dynamic> retry(String id) => _send('POST', '/api/tasks/$id/retry');
   Future<dynamic> resume(String id) => _send('POST', '/api/tasks/$id/resume');
-  Future<dynamic> followUp(String id, String request) =>
-      _send('POST', '/api/tasks/$id/follow-up', {'request': request});
+  Future<dynamic> followUp(String id, String request, {bool hideSecrets = false}) =>
+      _send('POST', '/api/tasks/$id/follow-up', {'request': request, 'hideSecrets': hideSecrets});
+
+  /// What in this text and these attachments looks like a secret: names, never values.
+  Future<List<Map<String, dynamic>>> scanSecrets(String text, List<String> attachments) async {
+    final out = await _send('POST', '/api/secrets/scan', {'text': text, 'attachments': attachments});
+    return ((out as Map)['found'] as List? ?? const []).cast<Map<String, dynamic>>();
+  }
   Future<dynamic> catchUp(String id, String repo) =>
       _send('POST', '/api/tasks/$id/catch-up', {'repo': repo});
   Future<dynamic> push(String id, String repo, {bool base = false}) =>

@@ -22,6 +22,7 @@ import 'package:agent_flow/widgets/composer.dart';
 import 'package:agent_flow/widgets/conversation.dart';
 import 'package:agent_flow/widgets/markdown_view.dart';
 import 'package:agent_flow/widgets/header.dart';
+import 'package:agent_flow/widgets/secrets.dart';
 import 'package:agent_flow/widgets/sidebar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -208,6 +209,18 @@ void main() {
     prefs.set(autoResume: false);
     expect(prefs.autoResume, isFalse);
     expect(FlowServer.environment(1, prefs)['FLOW_AUTO_RESUME'], '0');
+  });
+
+  testWidgets('the form asks before a secret goes into the transcript', (tester) async {
+    await _shoot(
+      tester,
+      'secrets-dialog',
+      const Center(child: SecretsDialog(found: ['EGO_API_KEY', 'SECRET_1'], editsOnly: true)),
+      const Size(640, 360),
+    );
+    expect(find.text('Keep out of the transcript'), findsOneWidget);
+    expect(find.text('EGO_API_KEY'), findsOneWidget);
+    expect(find.textContaining('Edits only has no shell'), findsOneWidget);
   });
 
   testWidgets('the workspaces, and what has been going on in them', (tester) async {
