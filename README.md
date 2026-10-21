@@ -289,6 +289,40 @@ node scripts/redact-existing.mjs
 It moves what it finds to the keychain, rewrites the files, and lists what to
 rotate, because those values have already been in a model's context.
 
+## Landing: the remote is the truth
+
+**Land on main ▾** on the repo card: the base by default, or any branch the
+remote or the checkout knows, or a name typed in (the push creates it). The
+last target is remembered per repo. The run catches the target up, runs the
+checks and the secrets guard, pushes the branch, opens the merge request,
+and then pushes `branch:target` to the remote — a fast-forward or nothing.
+That is the step that counts: the deploy reads the remote. Your own checkout
+is fast-forwarded only as a courtesy, when it is on that branch and nothing
+untracked sits in the way; otherwise the run says so in one line and
+finishes, and a `git pull` later is yours.
+
+## A worktree that arrives ready
+
+**Repo…** on the card, under *Worktree*:
+
+- **Setup command** runs in every fresh worktree before the first phase
+  (`pnpm install --frozen-lockfile && pnpm prisma generate`). Its output is
+  in the conversation; a failure is said and the run still starts; a command
+  that never ends is cut after ten minutes.
+- **Copy from the checkout**: generated, gitignored files a fresh worktree
+  lacks (`@types/api-routes.d.ts`, `android/key.properties`).
+- **Checks**: the repo's gate (`pnpm tsc`, `pnpm verify-all`). They run once
+  at the base commit before the agent starts, into `baseline/` under the
+  task's artifacts, and the prompt names which were already red. A failure
+  that was red at base is not the agent's, and it is told so.
+
+## What the review leaves
+
+The self-review fixes what it finds in the files it touched. What it leaves
+goes under `## Left` in `review.md`, one line each, tagged `fixable:` or
+`decision:`. The explorer lists them; **Fix the N left** sends one follow-up
+that clears the fixable ones. Decisions are shown, never sent.
+
 ## Ship to prod
 
 Land puts a branch on its base. **Ship to prod** on the repo card, enabled once
@@ -565,7 +599,10 @@ well inside it.
 
 `npm test` drives the whole machine end to end against a stubbed `claude`: it
 creates a worktree, walks all four phases, answers both gates, answers a
-blocking question, lands, ships to a prod branch, kills the server mid-run and
-continues the session, keeps a secret out of every file and refuses to push it,
-and overrides a prompt. No network, no spend. The stub is plain Node behind a
+blocking question, lands on the base and on a branch the remote does not have
+yet, pushes past untracked files in the checkout, ships to a prod branch,
+kills the server mid-run and continues the session, keeps a secret out of
+every file and refuses to push it (but not for a token that came in from
+main), runs a repo's setup and baseline into a fresh worktree, and overrides
+a prompt. No network, no spend. The stub is plain Node behind a
 one-line launcher, so the check runs on all three platforms.
