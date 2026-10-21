@@ -34,6 +34,8 @@ const STALE = {
   awaiting_answer: 'Server restarted while waiting for your answer. Retry to re-run this phase.',
 }
 for (const t of Object.values(tasks)) {
+  // Worktrees made before setup existed were prepared by hand; do not redo them.
+  if (t.root && t.prepared === undefined) t.prepared = t.root
   // A run that had a session is not lost: it was interrupted, and the session
   // can be continued. Only a run that never got that far is a plain failure.
   if (t.status === 'running') {

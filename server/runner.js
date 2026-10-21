@@ -347,14 +347,34 @@ const capWords = () => (SETUP_MAX_MS >= 60_000 ? `${Math.round(SETUP_MAX_MS / 60
  */
 async function prepareWorktrees(task) {
   if (!task.trees?.length || task.prepared === task.root) return
+  const needed = task.trees.some((t) => { const c = repoConfig.get(t.repoPath); return c.setup || (c.checks.length && !task.baseline?.[t.repo]) })
+  if (!needed) return update(task.id, { prepared: task.root })
+  // Visible while it runs: a ten-minute install that reads as "queued" is a mystery.
+  const before = { status: task.status, phase: task.phase }
+  update(task.id, { status: 'running', phase: 'setup' })
+  try {
+    await prepareEach(task)
+  } finally {
+    if (!stopped(task)) update(task.id, before)
+  }
+}
+
+async function prepareEach(task) {
   for (const tree of task.trees) {
     const cfg = repoConfig.get(tree.repoPath)
     if (cfg.setup) {
       const r = await runCommand(task, tree.worktree, cfg.setup, 'Setup')
+      update(task.id, { setupResult: { ...(task.setupResult || {}), [tree.repo]: { cmd: cfg.setup, code: r.code, capped: r.capped } } })
       if (r.capped) log(task.id, { kind: 'error', text: `setup capped at ${capWords()} for ${tree.repo}; the run starts anyway` })
       else if (r.code !== 0) log(task.id, { kind: 'error', text: `setup exited ${r.code} for ${tree.repo}:\n${r.tail}` })
       else if (r.tail) log(task.id, { kind: 'text', text: r.tail })
       if (stopped(task)) return
+    }
+    if (cfg.checks.length && !task.baseline?.[tree.repo] && quiet(() => git(tree.worktree, 'rev-parse', 'HEAD')).trim() !== tree.baseRef) {
+      // Checks run on the branch tip would be the branch's failures, labelled as base's.
+      log(task.id, { kind: 'text', text: `Baseline skipped for ${tree.repo}: the worktree is past its base, so the checks were not run as a baseline.` })
+      update(task.id, { baseline: { ...(task.baseline || {}), [tree.repo]: null } })
+      continue
     }
     if (cfg.checks.length && !task.baseline?.[tree.repo]) {
       const dir = path.join(task.artifactDir, 'baseline', tree.repo)
@@ -437,7 +457,12 @@ async function runTask(task) {
     log(task.id, { kind: 'error', text: `worktree setup failed: ${err.message}` })
     return fail(task, err.message)
   }
-  await prepareWorktrees(task)
+  try {
+    await prepareWorktrees(task)
+  } catch (err) {
+    log(task.id, { kind: 'error', text: `worktree preparation failed: ${err.message}` })
+    return fail(task, err.message)
+  }
   if (stopped(task)) return
 
   let feedback = null
@@ -624,7 +649,9 @@ async function runPhase(task, phase, prompt) {
 
 function sideRun(task, label, prompt, cwd, finished, opts = {}) {
   const previous = task.status
-  update(task.id, { status: 'running', phase: label, error: null })
+  // The previous run's session is not this run's: a restart during setup must
+  // not continue it in place of what was just asked for.
+  update(task.id, { status: 'running', phase: label, error: null, lastSession: null })
 
   prepareWorktrees(task)
     .then(() => (stopped(task) ? null : runClaude(task, prompt, cwd, { ...opts, meta: { kind: 'side', label } })))
@@ -693,7 +720,7 @@ export function mergeViaAgent(id, repo, { target } = {}) {
     try { git(tree.repoPath, 'check-ref-format', '--branch', target) } catch { throw new Error(`not a branch name: ${target}`) }
   }
   if (target === tree.branch) throw new Error('that is the task branch itself')
-  repoConfig.set(tree.repoPath, { landTarget: target })
+  repoConfig.set(tree.repoPath, { landTarget: target === tree.baseBranch ? null : target })
 
   const hasRemote = Boolean(quiet(() => git(tree.repoPath, 'remote')).split('\n')[0])
   log(id, {

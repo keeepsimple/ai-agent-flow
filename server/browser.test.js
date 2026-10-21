@@ -113,4 +113,15 @@ const { captureWith } = await import('./browser-capture.js')
   await assert.rejects(captureWith(send), /failed twice/)
   assert.equal(attempt, 2)
 }
+{
+  // Bringing the window back can itself fail (a crashed tab): the capture is still tried twice.
+  let attempt = 0
+  const send = async (method) => {
+    if (method === 'Emulation.setDeviceMetricsOverride') throw new Error('no emulation')
+    if (method === 'Page.captureScreenshot') { attempt++; if (attempt === 1) throw new Error('0 width'); return { data: 'ok' } }
+    return {}
+  }
+  assert.equal((await captureWith(send)).data, 'ok')
+  assert.equal(attempt, 2)
+}
 console.log('ok: a hidden window is brought back before the screenshot, and the retry is one')

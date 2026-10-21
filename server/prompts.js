@@ -91,6 +91,10 @@ function checksNote(ctx) {
   const out = []
   for (const tree of ctx.trees || []) {
     const { checks } = repoConfig.get(tree.repoPath)
+    const setup = ctx.setupResult?.[tree.repo]
+    if (setup && (setup.capped || setup.code !== 0)) {
+      out.push(`Setup \`${setup.cmd}\` for ${tree.repo} ${setup.capped ? 'was capped and cut off' : `exited ${setup.code}`} (see the conversation): expect missing dependencies or generated files, and say so rather than guessing.`)
+    }
     if (!checks.length) continue
     const red = (ctx.baseline?.[tree.repo] || []).filter((b) => b.code !== 0)
     out.push(
@@ -179,6 +183,7 @@ const sideContext = (tree, ctx) => ({
   repo: tree.repo,
   repoPath: tree.repoPath,
   baseBranch: tree.baseBranch,
+  baseRef: tree.baseRef,
   artifactDir: ctx.artifactDir,
   node: ctx.node,
   askScript: ctx.askScript,

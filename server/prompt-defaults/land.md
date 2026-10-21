@@ -29,7 +29,7 @@ first thing that is not yours to decide.
 {{#if hasRemote}}
 3.  Check the diff for secrets, then push the branch:
 
-        "{{node}}" "{{guardScript}}" "{{repoPath}}" {{target}} {{branch}}
+        "{{node}}" "{{guardScript}}" "{{repoPath}}" "{{baseRef}}" {{branch}}
         git push -u origin {{branch}}
 
     If the guard exits non-zero it names file:line of something that looks

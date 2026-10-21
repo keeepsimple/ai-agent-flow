@@ -39,7 +39,8 @@ export function set(repoPath, { prodBranch, jenkins, jenkinsToken, landTarget, s
   if (copy !== undefined) {
     const list = (Array.isArray(copy) ? copy : []).map((p) => String(p).trim()).filter(Boolean)
     for (const p of list) {
-      if (path.isAbsolute(p) || p.split(/[\\/]/).includes('..')) throw new Error(`copy paths must stay inside the repo: ${p}`)
+      const parts = p.split(/[\\/]/)
+      if (path.isAbsolute(p) || parts.includes('..') || parts[0] === '.git' || p === '.' || p === './') throw new Error(`copy paths must stay inside the repo and never be the repo itself: ${p}`)
     }
     mine.copy = list
   }

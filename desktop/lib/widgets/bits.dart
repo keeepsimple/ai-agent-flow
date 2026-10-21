@@ -34,6 +34,7 @@ class FlowButton extends StatefulWidget {
 
 class _FlowButtonState extends State<FlowButton> {
   bool _over = false;
+  bool _down = false;
 
   @override
   Widget build(BuildContext context) {
@@ -56,15 +57,30 @@ class _FlowButtonState extends State<FlowButton> {
         border = Tern.lineStrong;
     }
 
+    // A dead control must not keep claiming to be the live one, so the glow
+    // goes with the press when the button is off.
+    final shadow = off
+        ? null
+        : switch (widget.tone) {
+            Tone.primary => accentGlow(accent, lifted: _over),
+            Tone.quiet => e1,
+            // A shadow under a transparent pill reads as a smudge, not height.
+            Tone.danger => null,
+          };
+
     final child = Opacity(
       opacity: off ? 0.4 : 1,
-      child: Container(
+      child: AnimatedContainer(
+        duration: smooth,
+        curve: ease,
         height: widget.dense ? 28 : 32,
         padding: EdgeInsets.symmetric(horizontal: widget.dense ? 11 : 13),
+        transform: Matrix4.translationValues(0, _down ? 1 : (_over && !off ? -1 : 0), 0),
         decoration: BoxDecoration(
           color: bg,
-          border: Border.all(color: border),
+          border: raised(border),
           borderRadius: BorderRadius.circular(widget.dense ? 14 : 16),
+          boxShadow: _down ? null : shadow,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -91,7 +107,13 @@ class _FlowButtonState extends State<FlowButton> {
         cursor: off ? SystemMouseCursors.basic : SystemMouseCursors.click,
         onEnter: (_) => setState(() => _over = true),
         onExit: (_) => setState(() => _over = false),
-        child: GestureDetector(onTap: off ? null : widget.onPressed, child: child),
+        child: GestureDetector(
+          onTap: off ? null : widget.onPressed,
+          onTapDown: off ? null : (_) => setState(() => _down = true),
+          onTapUp: off ? null : (_) => setState(() => _down = false),
+          onTapCancel: off ? null : () => setState(() => _down = false),
+          child: child,
+        ),
       ),
     );
   }
@@ -120,22 +142,36 @@ class Chip2 extends StatefulWidget {
 
 class _Chip2State extends State<Chip2> {
   bool _over = false;
+  bool _down = false;
 
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
     final body = AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
+      duration: smooth,
+      curve: ease,
       height: 30,
       padding: const EdgeInsets.symmetric(horizontal: 11),
+      transform: Matrix4.translationValues(0, _down ? 1 : 0, 0),
       decoration: BoxDecoration(
         color: widget.selected
             ? accent.withValues(alpha: 0.14)
             : (_over ? Tern.selected : Tern.raised),
-        border: Border.all(
-          color: widget.selected ? accent.withValues(alpha: 0.65) : Tern.lineStrong,
+        border: raised(
+          widget.selected ? accent.withValues(alpha: 0.65) : Tern.lineStrong,
         ),
         borderRadius: BorderRadius.circular(15),
+        boxShadow: _down
+            ? null
+            : widget.selected
+                ? [
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.30),
+                      blurRadius: 16,
+                      spreadRadius: -6,
+                    ),
+                  ]
+                : e1,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -159,7 +195,13 @@ class _Chip2State extends State<Chip2> {
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _over = true),
         onExit: (_) => setState(() => _over = false),
-        child: GestureDetector(onTap: widget.onTap, child: body),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          onTapDown: (_) => setState(() => _down = true),
+          onTapUp: (_) => setState(() => _down = false),
+          onTapCancel: () => setState(() => _down = false),
+          child: body,
+        ),
       ),
     );
   }
@@ -234,6 +276,7 @@ class Panel extends StatelessWidget {
     this.colour = Tern.panel,
     this.border = Tern.line,
     this.radius = 12,
+    this.elevation = 1,
   });
 
   final Widget child;
@@ -242,13 +285,19 @@ class Panel extends StatelessWidget {
   final Color border;
   final double radius;
 
+  /// 0 flat, 1 resting, 2 floating. Every panel lifts by default: the flat
+  /// version is what made the app read as one grey field.
+  final int elevation;
+
   @override
   Widget build(BuildContext context) => Container(
         padding: padding,
         decoration: BoxDecoration(
-          color: colour,
-          border: Border.all(color: border),
+          color: elevation == 0 ? colour : null,
+          gradient: elevation == 0 ? null : litFill(colour),
+          border: elevation == 0 ? Border.all(color: border) : raised(border),
           borderRadius: BorderRadius.circular(radius),
+          boxShadow: switch (elevation) { 0 => null, 1 => e1, _ => e2 },
         ),
         child: child,
       );

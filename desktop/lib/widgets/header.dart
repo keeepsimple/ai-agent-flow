@@ -64,8 +64,20 @@ class Header extends StatelessWidget {
         // A shade above the page, not level with it. At panel colour the bar
         // and the body were the same dark, and the hairline between them read
         // as a stray line rather than the edge of a toolbar.
-        color: Tern.raised,
-        border: Border(bottom: BorderSide(color: Tern.lineStrong)),
+        //
+        // The gradient plus the lit top edge is what gives it thickness. A drop
+        // shadow would be the obvious move but the bar is a Column sibling, so
+        // the body paints over it; the gradient does the same job in paint
+        // order that cannot lose.
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Tern.selected, Tern.raised],
+        ),
+        border: Border(
+          top: BorderSide(color: Color(0x14FFFFFF)),
+          bottom: BorderSide(color: Tern.lineStrong),
+        ),
       ),
       child: Row(
         children: [
@@ -172,8 +184,12 @@ class Header extends StatelessWidget {
               FlowButton(
                 dense: true,
                 label: promptsOpen ? 'Board' : 'Prompts',
-                icon: promptsOpen ? Icons.view_agenda_outlined : Icons.edit_note,
-                tooltip: promptsOpen ? 'Back to the board' : 'What each agent is told, editable',
+                icon: promptsOpen
+                    ? Icons.view_agenda_outlined
+                    : Icons.edit_note,
+                tooltip: promptsOpen
+                    ? 'Back to the board'
+                    : 'What each agent is told, editable',
                 onPressed: onPrompts,
               ),
               const SizedBox(width: 8),
@@ -226,7 +242,10 @@ class Header extends StatelessWidget {
       builder: (context) => AlertDialog(
         backgroundColor: Tern.raised,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text('The browser opened, but signed out', style: t(14, color: Tern.ink)),
+        title: Text(
+          'The browser opened, but signed out',
+          style: t(14, color: Tern.ink),
+        ),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 430),
           child: Column(
@@ -240,13 +259,18 @@ class Header extends StatelessWidget {
                 style: t(12.5, color: Tern.muted, height: 1.5),
               ),
               const SizedBox(height: 12),
-              Text('1.  Add Agent Flow to Full Disk Access\n'
-                  '2.  Delete the browser profile below\n'
-                  '3.  Press Test browser again',
-                  style: t(12.5, color: Tern.ink3, height: 1.7)),
+              Text(
+                '1.  Add Agent Flow to Full Disk Access\n'
+                '2.  Delete the browser profile below\n'
+                '3.  Press Test browser again',
+                style: t(12.5, color: Tern.ink3, height: 1.7),
+              ),
               if (profile != null) ...[
                 const SizedBox(height: 10),
-                SelectableText(profile, style: t(11, color: Tern.faint, code: true)),
+                SelectableText(
+                  profile,
+                  style: t(11, color: Tern.faint, code: true),
+                ),
               ],
               const SizedBox(height: 10),
               Text(
@@ -258,7 +282,10 @@ class Header extends StatelessWidget {
           ),
         ),
         actions: [
-          FlowButton(label: 'Not now', onPressed: () => Navigator.pop(context, false)),
+          FlowButton(
+            label: 'Not now',
+            onPressed: () => Navigator.pop(context, false),
+          ),
           FlowButton(
             label: 'Open Settings',
             tone: Tone.primary,
@@ -269,7 +296,8 @@ class Header extends StatelessWidget {
     );
     if (open == true) {
       await openExternal(
-          'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles');
+        'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
+      );
     }
   }
 
@@ -313,7 +341,8 @@ class _Tabs extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(3),
     decoration: BoxDecoration(
-      color: Tern.raised,
+      color: Tern.page,
+      border: Border.all(color: Tern.line),
       borderRadius: BorderRadius.circular(16),
     ),
     child: Row(
@@ -324,14 +353,20 @@ class _Tabs extends StatelessWidget {
             onTap: () => onTab(name),
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
-              child: Container(
+              child: AnimatedContainer(
+                duration: smooth,
+                curve: ease,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 13,
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
                   color: tab == name ? Tern.selected : Colors.transparent,
+                  border: tab == name
+                      ? raised(Tern.lineStrong)
+                      : Border.all(color: Colors.transparent),
                   borderRadius: BorderRadius.circular(13),
+                  boxShadow: tab == name ? e1 : null,
                 ),
                 child: Text(
                   name == 'workspace' ? 'Workspace' : 'Review',
@@ -371,15 +406,33 @@ class _AccentPicker extends StatelessWidget {
                 cursor: SystemMouseCursors.click,
                 child: GestureDetector(
                   onTap: () => onPick(option),
-                  child: Container(
-                    width: 13,
-                    height: 13,
-                    decoration: BoxDecoration(
-                      color: option.color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: option == accent ? Tern.ink : Colors.transparent,
-                        width: 2,
+                  child: AnimatedScale(
+                    duration: smooth,
+                    curve: ease,
+                    scale: option == accent ? 1.15 : 1,
+                    child: AnimatedContainer(
+                      duration: smooth,
+                      curve: ease,
+                      width: 13,
+                      height: 13,
+                      decoration: BoxDecoration(
+                        color: option.color,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: option == accent
+                              ? Tern.ink
+                              : Colors.transparent,
+                          width: 2,
+                        ),
+                        boxShadow: option == accent
+                            ? [
+                                BoxShadow(
+                                  color: option.color.withValues(alpha: 0.65),
+                                  blurRadius: 12,
+                                  spreadRadius: -2,
+                                ),
+                              ]
+                            : null,
                       ),
                     ),
                   ),

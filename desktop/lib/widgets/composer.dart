@@ -57,7 +57,8 @@ class _ComposerState extends State<Composer> {
       return;
     }
     final ok = await widget.flow.run(
-      () => widget.flow.api.followUp(widget.task.id, request, hideSecrets: hide),
+      () =>
+          widget.flow.api.followUp(widget.task.id, request, hideSecrets: hide),
     );
     if (!mounted) return;
     if (ok) {
@@ -68,17 +69,17 @@ class _ComposerState extends State<Composer> {
   }
 
   Future<void> _attachFile() => attachInto(
-        api: widget.flow.api,
-        onAttached: (path) => setState(() => _attached.add(path)),
-        onError: widget.flow.fail,
-      );
+    api: widget.flow.api,
+    onAttached: (path) => setState(() => _attached.add(path)),
+    onError: widget.flow.fail,
+  );
 
   Future<void> _paste() => pasteInto(
-        controller: _text,
-        api: widget.flow.api,
-        onAttached: (path) => setState(() => _attached.add(path)),
-        onError: widget.flow.fail,
-      );
+    controller: _text,
+    api: widget.flow.api,
+    onAttached: (path) => setState(() => _attached.add(path)),
+    onError: widget.flow.fail,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -92,6 +93,7 @@ class _ComposerState extends State<Composer> {
         colour: Tern.input,
         border: Tern.lineStrong,
         radius: 16,
+        elevation: 2,
         padding: const EdgeInsets.fromLTRB(14, 12, 12, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,14 +204,16 @@ class _Repos extends StatelessWidget {
           used += width + 6;
         }
 
-        return Row(children: [
-          for (final name in shown) _pill('@$name', null),
-          if (shown.length < names.length)
-            _pill(
-              '+${names.length - shown.length} more',
-              names.skip(shown.length).join('\n'),
-            ),
-        ]);
+        return Row(
+          children: [
+            for (final name in shown) _pill('@$name', null),
+            if (shown.length < names.length)
+              _pill(
+                '+${names.length - shown.length} more',
+                names.skip(shown.length).join('\n'),
+              ),
+          ],
+        );
       },
     );
   }
@@ -230,7 +234,9 @@ class _Repos extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: Tern.selected,
+        border: raised(Tern.line),
         borderRadius: BorderRadius.circular(13),
+        boxShadow: e1,
       ),
       child: Text(label, style: t(11, color: Tern.ink3, code: true)),
     );
@@ -269,6 +275,7 @@ class _Round extends StatelessWidget {
               decoration: BoxDecoration(
                 color: filled ? accent : Colors.transparent,
                 shape: BoxShape.circle,
+                boxShadow: filled && onTap != null ? accentGlow(accent) : null,
               ),
               child: Icon(
                 icon,

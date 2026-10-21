@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -41,11 +40,19 @@ class SessionsScreen extends StatelessWidget {
                   flow.workspace == null
                       ? 'Sessions'
                       : 'Sessions in ${Sidebar.nameOf(flow.workspace!)}',
-                  style: t(12, color: Tern.muted),
+                  style: t(
+                    26,
+                    color: Tern.ink,
+                    weight: FontWeight.w600,
+                    height: 1.1,
+                  ).copyWith(letterSpacing: -0.6),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 14),
                 if (tasks != null && tasks.any((t) => t.interrupted))
-                  _Interrupted(flow: flow, tasks: tasks.where((t) => t.interrupted).toList()),
+                  _Interrupted(
+                    flow: flow,
+                    tasks: tasks.where((t) => t.interrupted).toList(),
+                  ),
                 if (tasks == null)
                   Text('Loading…', style: t(12.5, color: Tern.muted))
                 else if (tasks.isEmpty)
@@ -59,10 +66,18 @@ class SessionsScreen extends StatelessWidget {
                     ),
                   )
                 else
+                  // Keyed by id: this list reorders by recency, and without a
+                  // key Flutter reuses row state by position, so a hover or an
+                  // in-flight fade lands on whichever task slid into that slot.
                   for (final task in tasks)
                     Padding(
+                      key: ValueKey(task.id),
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: _TaskRow(task: task, flow: flow, onTap: () => onOpen(task.id)),
+                      child: _TaskRow(
+                        task: task,
+                        flow: flow,
+                        onTap: () => onOpen(task.id),
+                      ),
                     ),
               ],
             ),
@@ -81,35 +96,37 @@ class _Interrupted extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-        decoration: BoxDecoration(
-          color: Tern.warnBg,
-          border: Border.all(color: Tern.warnLine),
-          borderRadius: BorderRadius.circular(8),
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+    decoration: BoxDecoration(
+      color: Tern.warnBg,
+      border: Border.all(color: Tern.warnLine),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.pause_circle_outline, size: 15, color: Tern.warn),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Text(
+            '${tasks.length} interrupted',
+            style: t(12.5, color: Tern.ink, weight: FontWeight.w600),
+          ),
         ),
-        child: Row(children: [
-          const Icon(Icons.pause_circle_outline, size: 15, color: Tern.warn),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              '${tasks.length} interrupted',
-              style: t(12.5, color: Tern.ink, weight: FontWeight.w600),
-            ),
-          ),
-          FlowButton(
-            dense: true,
-            label: 'Continue all',
-            tone: Tone.primary,
-            icon: Icons.play_arrow,
-            onPressed: () => flow.run(() async {
-              for (final task in tasks) {
-                await flow.api.resume(task.id);
-              }
-            }),
-          ),
-        ]),
-      );
+        FlowButton(
+          dense: true,
+          label: 'Continue all',
+          tone: Tone.primary,
+          icon: Icons.play_arrow,
+          onPressed: () => flow.run(() async {
+            for (final task in tasks) {
+              await flow.api.resume(task.id);
+            }
+          }),
+        ),
+      ],
+    ),
+  );
 }
 
 class _TaskRow extends StatefulWidget {
@@ -122,81 +139,166 @@ class _TaskRow extends StatefulWidget {
   State<_TaskRow> createState() => _TaskRowState();
 }
 
-class _TaskRowState extends State<_TaskRow> {
+class _TaskRowState extends State<_TaskRow>
+    with SingleTickerProviderStateMixin {
   bool _over = false;
+
+  // One-shot, and only for a row that was not on screen a moment ago: the list
+  // is keyed by task id, so an existing row keeps its state across the poll and
+  // does not re-animate every few seconds.
+  late final AnimationController _in = AnimationController(
+    vsync: this,
+    duration: smooth,
+  )..forward();
+
+  @override
+  void dispose() {
+    _in.dispose();
+    super.dispose();
+  }
+
+  /// How far through its phases a running task is. Null when there is nothing
+  /// to show: a finished task's bar is noise, not information.
+  double? get _progress {
+    if (!widget.task.running) return null;
+    final phases = widget.task.phases;
+    if (phases.isEmpty) return null;
+    final done = phases.values
+        .where((p) => (p as Map)['status'] == 'done')
+        .length;
+    return (done / phases.length).clamp(0.04, 1.0);
+  }
 
   @override
   Widget build(BuildContext context) {
     final task = widget.task;
-    final words = statusWords(Task2(task.status, task.phase, task.awaitingPhase));
+    final accent = Theme.of(context).colorScheme.primary;
+    final words = statusWords(
+      Task2(task.status, task.phase, task.awaitingPhase),
+    );
     final needs = needsOf(task);
+    final progress = _progress;
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _over = true),
-      onExit: (_) => setState(() => _over = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
-          decoration: BoxDecoration(
-            color: _over ? Tern.raised : Tern.panel,
-            border: Border.all(color: _over ? Tern.lineStrong : Tern.line),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(children: [
-            StatusDot(task.status),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(task.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: t(13, color: Tern.ink, weight: FontWeight.w500)),
-                  const SizedBox(height: 3),
-                  Text.rich(
-                    TextSpan(children: [
-                      TextSpan(text: '${task.repos.join(' + ')}  ·  $words'),
-                      if (needs != null && needs != words)
-                        TextSpan(text: '  ·  $needs', style: t(11.5, color: Tern.warn)),
-                    ]),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: t(11.5, color: Tern.muted),
-                  ),
-                ],
-              ),
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: _in, curve: ease),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _over = true),
+        onExit: (_) => setState(() => _over = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: smooth,
+            curve: ease,
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+            transform: Matrix4.translationValues(0, _over ? -1 : 0, 0),
+            decoration: BoxDecoration(
+              gradient: litFill(_over ? Tern.raised : Tern.panel),
+              border: raised(_over ? Tern.lineStrong : Tern.line),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: _over ? e2 : e1,
             ),
-            if (task.cost > 0)
-              Text('\$${task.cost.toStringAsFixed(2)}',
-                  style: t(11.5, color: Tern.muted, code: true)),
-            // Free the checkout from here, without opening the conversation.
-            // The branches stay, so there is nothing to confirm.
-            if (task.root != null && !task.active) ...[
-              const SizedBox(width: 10),
-              Tooltip(
-                message: 'Drop the worktree. The conversation and the branches stay.',
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(6),
-                  onTap: () async {
-                    if (await widget.flow.run(() => widget.flow.api.dropWorktree(task.id), refresh: false)) {
-                      await widget.flow.loadState();
-                      widget.flow.loadDisk();
-                    }
-                  },
-                  child: const Padding(
-                    padding: EdgeInsets.all(4),
-                    child: Icon(Icons.folder_off_outlined, size: 15, color: Tern.faint),
+            child: Row(
+              children: [
+                StatusDot(task.status),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        task.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t(13, color: Tern.ink, weight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 3),
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '${task.repos.join(' + ')}  ·  $words',
+                            ),
+                            if (needs != null && needs != words)
+                              TextSpan(
+                                text: '  ·  $needs',
+                                style: t(11.5, color: Tern.warn),
+                              ),
+                          ],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t(11.5, color: Tern.muted),
+                      ),
+                      if (progress != null) ...[
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: Stack(
+                            children: [
+                              Container(height: 3, color: Tern.lineDim),
+                              AnimatedFractionallySizedBox(
+                                duration: const Duration(milliseconds: 700),
+                                curve: ease,
+                                widthFactor: progress,
+                                child: Container(
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: accent,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: accent.withValues(alpha: 0.9),
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-              ),
-            ],
-            const SizedBox(width: 10),
-            const Icon(Icons.chevron_right, size: 16, color: Tern.faint),
-          ]),
+                if (task.cost > 0)
+                  Text(
+                    '\$${task.cost.toStringAsFixed(2)}',
+                    style: t(11.5, color: Tern.muted, code: true),
+                  ),
+                // Free the checkout from here, without opening the conversation.
+                // The branches stay, so there is nothing to confirm.
+                if (task.root != null && !task.active) ...[
+                  const SizedBox(width: 10),
+                  Tooltip(
+                    message: 'Drop the worktree. The conversation and the branches stay.',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () async {
+                        if (await widget.flow.run(
+                          () => widget.flow.api.dropWorktree(task.id),
+                          refresh: false,
+                        )) {
+                          await widget.flow.loadState();
+                          widget.flow.loadDisk();
+                        }
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.folder_off_outlined,
+                          size: 15,
+                          color: Tern.faint,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 10),
+                const Icon(Icons.chevron_right, size: 16, color: Tern.faint),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -278,19 +380,19 @@ class _NewTaskState extends State<NewTask> {
   }
 
   Future<void> _attach() => attachInto(
-        api: widget.flow.api,
-        onAttached: (path) => setState(() => _attached.add(path)),
-        onError: widget.flow.fail,
-      );
+    api: widget.flow.api,
+    onAttached: (path) => setState(() => _attached.add(path)),
+    onError: widget.flow.fail,
+  );
 
   /// The same Cmd-V as the follow-up box: a screenshot becomes an attachment,
   /// anything else is pasted as text. This box had neither.
   Future<void> _paste() => pasteInto(
-        controller: _prompt,
-        api: widget.flow.api,
-        onAttached: (path) => setState(() => _attached.add(path)),
-        onError: widget.flow.fail,
-      );
+    controller: _prompt,
+    api: widget.flow.api,
+    onAttached: (path) => setState(() => _attached.add(path)),
+    onError: widget.flow.fail,
+  );
 
   /// Which repos a task would run against. Ticking none means the whole
   /// workspace: every repo in the folder being shown, one worktree each.
@@ -330,7 +432,10 @@ class _NewTaskState extends State<NewTask> {
         if (_mode != null) 'permissionMode': _mode,
         if (_attached.isNotEmpty) 'attachments': _attached,
         if (_shopConfig != null)
-          'shopify': {'config': _shopConfig, if (_shopStore != null) 'store': _shopStore},
+          'shopify': {
+            'config': _shopConfig,
+            if (_shopStore != null) 'store': _shopStore,
+          },
       });
       if (!mounted) return;
       _prompt.clear();
@@ -356,7 +461,10 @@ class _NewTaskState extends State<NewTask> {
         ? widget.flow.repos
         : widget.flow.repos.where((r) => r['root'] == workspace).toList();
     final runs = (_options['runs'] as List?) ?? const [];
-    final plain = runs.cast<Map>().where((r) => r['value'] == 'ask').firstOrNull;
+    final plain = runs
+        .cast<Map>()
+        .where((r) => r['value'] == 'ask')
+        .firstOrNull;
     final target = _target();
     final ready = _prompt.text.trim().isNotEmpty && target.isNotEmpty;
 
@@ -380,17 +488,21 @@ class _NewTaskState extends State<NewTask> {
               api: widget.flow.api,
               child: CallbackShortcuts(
                 bindings: {
-                  const SingleActivator(LogicalKeyboardKey.enter, meta: true): _start,
-                  const SingleActivator(LogicalKeyboardKey.enter, control: true): _start,
-                  const SingleActivator(LogicalKeyboardKey.keyV, meta: true): _paste,
+                  const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+                      _start,
+                  const SingleActivator(
+                    LogicalKeyboardKey.enter,
+                    control: true,
+                  ): _start,
+                  const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
+                      _paste,
                 },
                 child: TextField(
                   controller: _prompt,
                   maxLines: null,
                   style: t(14.5, color: Tern.ink2),
                   decoration: InputDecoration.collapsed(
-                    hintText:
-                        'e.g. get-discounts should return targeted product and collection names, capped at 5',
+                    hintText: 'e.g. get-discounts should return targeted product and collection names, capped at 5',
                     hintStyle: t(14.5, color: Tern.faint),
                   ),
                 ),
@@ -413,20 +525,22 @@ class _NewTaskState extends State<NewTask> {
             ),
           ],
           const SizedBox(height: 14),
-          Row(children: [
-            Text('Repos', style: t(11.5, color: Tern.muted)),
-            const SizedBox(width: 8),
-            // Ticking none is a choice, not an omission, and it is the
-            // expensive one: a worktree per repo.
-            Text(
-              _picked.isEmpty
-                  ? (target.isEmpty
-                      ? 'no repos in this workspace'
-                      : 'none ticked — the whole workspace, ${target.length} repos')
-                  : '${_picked.length} of ${repos.length}',
-              style: t(11, color: _picked.isEmpty ? Tern.warn : Tern.faint),
-            ),
-          ]),
+          Row(
+            children: [
+              Text('Repos', style: t(11.5, color: Tern.muted)),
+              const SizedBox(width: 8),
+              // Ticking none is a choice, not an omission, and it is the
+              // expensive one: a worktree per repo.
+              Text(
+                _picked.isEmpty
+                    ? (target.isEmpty
+                          ? 'no repos in this workspace'
+                          : 'none ticked — the whole workspace, ${target.length} repos')
+                    : '${_picked.length} of ${repos.length}',
+                style: t(11, color: _picked.isEmpty ? Tern.warn : Tern.faint),
+              ),
+            ],
+          ),
           const SizedBox(height: 7),
           Wrap(
             spacing: 6,
@@ -442,17 +556,19 @@ class _NewTaskState extends State<NewTask> {
             ],
           ),
           const SizedBox(height: 14),
-          Row(children: [
-            Text('Route', style: t(11.5, color: Tern.muted)),
-            const SizedBox(width: 8),
-            Tooltip(
-              message: (plain?['hint'] as String?) ?? '',
-              child: Text(
-                _run == null ? 'normal — no documents, no self review' : '',
-                style: t(11, color: Tern.faint),
+          Row(
+            children: [
+              Text('Route', style: t(11.5, color: Tern.muted)),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: (plain?['hint'] as String?) ?? '',
+                child: Text(
+                  _run == null ? 'normal — no documents, no self review' : '',
+                  style: t(11, color: Tern.faint),
+                ),
               ),
-            ),
-          ]),
+            ],
+          ),
           const SizedBox(height: 7),
           Wrap(
             spacing: 6,
@@ -465,7 +581,9 @@ class _NewTaskState extends State<NewTask> {
                   selected: _run == run['value'],
                   tooltip: run['hint'] as String?,
                   onTap: () => setState(
-                    () => _run = _run == run['value'] ? null : run['value'] as String,
+                    () => _run = _run == run['value']
+                        ? null
+                        : run['value'] as String,
                   ),
                 ),
               Chip2(
@@ -486,15 +604,28 @@ class _NewTaskState extends State<NewTask> {
             _row('Title', [
               SizedBox(
                 width: 320,
-                child: _field(_title, 'Optional. The agent names it otherwise.'),
+                child: _field(
+                  _title,
+                  'Optional. The agent names it otherwise.',
+                ),
               ),
             ]),
             const SizedBox(height: 10),
-            _choices('Model', 'model', (_options['models'] as List?)?.cast<String>() ?? const [],
-                _model, (v) => setState(() => _model = v)),
+            _choices(
+              'Model',
+              'model',
+              (_options['models'] as List?)?.cast<String>() ?? const [],
+              _model,
+              (v) => setState(() => _model = v),
+            ),
             const SizedBox(height: 10),
-            _choices('Effort', 'effort', (_options['efforts'] as List?)?.cast<String>() ?? const [],
-                _effort, (v) => setState(() => _effort = v)),
+            _choices(
+              'Effort',
+              'effort',
+              (_options['efforts'] as List?)?.cast<String>() ?? const [],
+              _effort,
+              (v) => setState(() => _effort = v),
+            ),
             const SizedBox(height: 10),
             _modes(),
             if (_shopify != null) ...[
@@ -503,69 +634,78 @@ class _NewTaskState extends State<NewTask> {
             ],
           ],
           const SizedBox(height: 16),
-          Row(children: [
-            Chip2(label: 'Attach', icon: Icons.attach_file, onTap: _attach),
-            const Spacer(),
-            Text(sendHint, style: t(10.5, color: Tern.muted, code: true)),
-            const SizedBox(width: 10),
-            FlowButton(
-              label: 'Start',
-              tone: Tone.primary,
-              icon: Icons.play_arrow_rounded,
-              busy: _busy,
-              onPressed: ready ? _start : null,
-            ),
-          ]),
+          Row(
+            children: [
+              Chip2(label: 'Attach', icon: Icons.attach_file, onTap: _attach),
+              const Spacer(),
+              Text(sendHint, style: t(10.5, color: Tern.muted, code: true)),
+              const SizedBox(width: 10),
+              FlowButton(
+                label: 'Start',
+                tone: Tone.primary,
+                icon: Icons.play_arrow_rounded,
+                busy: _busy,
+                onPressed: ready ? _start : null,
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
   Widget _field(TextEditingController c, String hint) => Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 11),
-        alignment: Alignment.centerLeft,
-        decoration: BoxDecoration(
-          color: Tern.raised,
-          border: Border.all(color: Tern.lineStrong),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: TextField(
-          controller: c,
-          style: t(12, color: Tern.ink2),
-          decoration: InputDecoration.collapsed(
-            hintText: hint,
-            hintStyle: t(12, color: Tern.faint),
-          ),
-        ),
-      );
+    height: 32,
+    padding: const EdgeInsets.symmetric(horizontal: 11),
+    alignment: Alignment.centerLeft,
+    decoration: BoxDecoration(
+      color: Tern.raised,
+      border: Border.all(color: Tern.lineStrong),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: TextField(
+      controller: c,
+      style: t(12, color: Tern.ink2),
+      decoration: InputDecoration.collapsed(
+        hintText: hint,
+        hintStyle: t(12, color: Tern.faint),
+      ),
+    ),
+  );
 
   Widget _row(String label, List<Widget> children) => Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(width: 72, child: Text(label, style: t(11.5, color: Tern.muted))),
-          ...children,
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: [
+      SizedBox(
+        width: 72,
+        child: Text(label, style: t(11.5, color: Tern.muted)),
+      ),
+      ...children,
+    ],
+  );
 
-  Widget _choices(String label, String key, List<String> values, String? chosen,
-          void Function(String?) pick) =>
-      _row(label, [
-        Expanded(
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final value in values)
-                Chip2(
-                  label: value.isEmpty ? 'Default (${_defaultWord(key)})' : value,
-                  selected: value.isEmpty ? chosen == null : chosen == value,
-                  onTap: () => pick(value.isEmpty ? null : value),
-                ),
-            ],
-          ),
-        ),
-      ]);
+  Widget _choices(
+    String label,
+    String key,
+    List<String> values,
+    String? chosen,
+    void Function(String?) pick,
+  ) => _row(label, [
+    Expanded(
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final value in values)
+            Chip2(
+              label: value.isEmpty ? 'Default (${_defaultWord(key)})' : value,
+              selected: value.isEmpty ? chosen == null : chosen == value,
+              onTap: () => pick(value.isEmpty ? null : value),
+            ),
+        ],
+      ),
+    ),
+  ]);
 
   Widget _modes() {
     final modes = (_options['modes'] as List?) ?? const [];
@@ -605,7 +745,9 @@ class _NewTaskState extends State<NewTask> {
               children: [
                 for (final config in configs)
                   Chip2(
-                    label: (config as Map)['appName'] as String? ?? config['config'] as String,
+                    label:
+                        (config as Map)['appName'] as String? ??
+                        config['config'] as String,
                     selected: _shopConfig == config['config'],
                     tooltip: 'shopify app dev will repoint this app',
                     onTap: () => setState(() {
@@ -619,7 +761,9 @@ class _NewTaskState extends State<NewTask> {
         ]),
         if (_shopStore != null) ...[
           const SizedBox(height: 8),
-          _row('Store', [Text(_shopStore!, style: t(12, color: Tern.ink3, code: true))]),
+          _row('Store', [
+            Text(_shopStore!, style: t(12, color: Tern.ink3, code: true)),
+          ]),
         ],
       ],
     );

@@ -105,3 +105,71 @@ TextStyle t(double size,
       fontWeight: weight,
       height: height,
     );
+
+/// Depth.
+///
+/// The five Tern surfaces sit within a few points of luminance of each other,
+/// so a 1px border was doing all the work of separating them and the app read
+/// flat. On the web the fix is `inset 0 1px 0 rgb(255 255 255 / .05)`: a
+/// hairline of light along the top edge, which is what actually tells the eye a
+/// surface is raised. The shadow underneath only confirms it.
+///
+/// Flutter has no inset shadow, and it refuses a borderRadius on a Border whose
+/// sides differ in colour. So the light cannot be a brighter top BorderSide:
+/// on a rounded surface that throws during paint, and in this app every surface
+/// is rounded.
+///
+/// It goes in two places instead. [raised] lightens the whole outline, which is
+/// uniform and so survives the radius; [litFill] puts the actual hairline into
+/// the surface's own fill as a gradient that is brightest at the top edge and
+/// has settled to the base colour a few percent down.
+Border raised(Color colour, {double light = 0.07}) => Border.all(
+      color: Color.alphaBlend(Colors.white.withValues(alpha: light), colour),
+    );
+
+/// The top-edge light, as a fill. Only for opaque surfaces: run it on a
+/// transparent one and the gradient paints a grey ghost where nothing should be.
+LinearGradient litFill(Color surface, {double light = 0.045}) => LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color.alphaBlend(Colors.white.withValues(alpha: light), surface),
+        surface,
+      ],
+      stops: const [0.0, 0.06],
+    );
+
+/// Three steps of elevation, tuned to the same values the web tokens use.
+/// Shadows are never pure black at full strength: on a near-black page that
+/// reads as a hole rather than as height.
+const e1 = <BoxShadow>[
+  BoxShadow(color: Color(0x99000000), blurRadius: 2, spreadRadius: -1, offset: Offset(0, 1)),
+];
+
+const e2 = <BoxShadow>[
+  BoxShadow(color: Color(0x66000000), blurRadius: 2, offset: Offset(0, 1)),
+  BoxShadow(color: Color(0xA6000000), blurRadius: 16, spreadRadius: -6, offset: Offset(0, 6)),
+];
+
+const e3 = <BoxShadow>[
+  BoxShadow(color: Color(0x66000000), blurRadius: 6, offset: Offset(0, 2)),
+  BoxShadow(color: Color(0xCC000000), blurRadius: 44, spreadRadius: -14, offset: Offset(0, 18)),
+];
+
+/// The accent's own glow. Only the one primary action on a screen wears it, and
+/// it is the accent's hue, never a generic neon ring.
+List<BoxShadow> accentGlow(Color accent, {bool lifted = false}) => [
+      BoxShadow(color: const Color(0x80000000), blurRadius: 2, offset: const Offset(0, 1)),
+      BoxShadow(
+        color: accent.withValues(alpha: lifted ? 0.60 : 0.45),
+        blurRadius: lifted ? 32 : 22,
+        spreadRadius: -8,
+        offset: Offset(0, lifted ? 14 : 8),
+      ),
+    ];
+
+/// One easing and two durations, so motion across the app agrees with itself.
+/// The curve is the same cubic-bezier(0.16, 1, 0.3, 1) the web side uses.
+const ease = Cubic(0.16, 1, 0.3, 1);
+const fast = Duration(milliseconds: 140);
+const smooth = Duration(milliseconds: 220);

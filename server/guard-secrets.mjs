@@ -16,7 +16,13 @@ const values = Object.entries(process.env)
   .map(([, v]) => v)
 // The task's own commits only (first-parent, no merges): a token that came in
 // from the base is the base's problem, not a reason to stop this push.
-const diff = execFileSync('git', ['-C', repo, 'log', '--first-parent', '--no-merges', '-p', '--format=', `${base}..${branch}`], { encoding: 'utf8', maxBuffer: 64 << 20 })
+let diff
+try {
+  diff = execFileSync('git', ['-C', repo, 'log', '--first-parent', '--no-merges', '-p', '--format=', `${base}..${branch}`], { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] })
+} catch (err) {
+  console.error(`cannot read the range ${base}..${branch}: ${String(err.stderr || err.message).trim().split('\n')[0]}`)
+  process.exit(2) // not a secret: say so with a different code
+}
 const hits = scanDiff(diff, values)
 if (hits.length) {
   console.error('this diff carries something that looks like a secret; do not push it:')

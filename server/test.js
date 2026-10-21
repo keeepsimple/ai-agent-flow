@@ -47,6 +47,10 @@ git('web', 'branch', 'prod')
 git('web', 'push', '-q', 'origin', 'prod')
 git('web', 'branch', 'release')
 git('web', 'push', '-q', 'origin', 'release')
+git('web', 'remote', 'set-head', 'origin', '-a')
+git('web', 'branch', 'local-only')
+git('web', 'branch', 'flow/other-task-deadbeef')
+git('web', 'push', '-q', 'origin', 'flow/other-task-deadbeef')
 
 // The stub reads the prompt from stdin exactly as the real CLI does, writes the
 // artifact its phase is supposed to write, and blocks on `ask` once so the
@@ -1021,15 +1025,25 @@ try {
   await waitFor(landing2.id, (t) => t.status === 'done', 'the second landing run')
   const webRow2 = (await (await fetch(`${base}/api/tasks/${landing2.id}/git`)).json()).find((r) => r.repo === 'web')
   assert.equal(webRow2.targets[0], 'main', 'the base comes first')
-  assert.ok(webRow2.targets.includes('release') && webRow2.targets.includes('prod'), 'remote branches are offered')
+  assert.ok(webRow2.targets.includes('release') && webRow2.targets.includes('prod'), 'branches on both the remote and the checkout are offered')
   assert.ok(!webRow2.targets.includes(webRow2.branch), 'not the task branch itself')
-  assert.equal(webRow2.landTarget, 'main')
+  assert.ok(!webRow2.targets.includes('origin'), 'origin/HEAD is not a branch')
+  assert.ok(!webRow2.targets.includes('local-only'), 'a branch the remote lacks is not a landing target')
+  assert.ok(!webRow2.targets.some((t) => t.startsWith('flow/')), "other tasks' branches are not landing targets")
+  assert.equal(webRow2.landTarget, null, 'nothing remembered yet: the base is the default')
   const badTarget = await fetch(`${base}/api/tasks/${landing2.id}/merge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: 'web', target: 'nope branch' }) })
   assert.equal(badTarget.status, 400, 'a bad target is refused: ' + (await badTarget.text()).slice(0, 300))
   await post(`/api/tasks/${landing2.id}/merge`, { repo: 'web', target: 'release' })
   const landed2 = await waitFor(landing2.id, (t) => t.status === 'done' || t.status === 'failed', 'landing on release')
   assert.equal(landed2.status, 'done', `landing on release failed: ${landed2.error}`)
   assert.ok(landed2.log.some((l) => l.kind === 'decision' && /land on release/.test(l.text)))
+  const landPrompt = fs.readFileSync(path.join(root, 'data', 'tasks', landing2.id, 'prompt.txt'), 'utf8')
+  assert.ok(landPrompt.includes(`"${webRow2.baseRef || (await (await fetch(`${base}/api/tasks/${landing2.id}`)).json()).trees[0].baseRef}" ${webRow2.branch}`), 'the guard is run against the task\'s own base, never the target')
+  assert.throws(
+    () => execFileSync(process.execPath, [path.join(here, 'guard-secrets.mjs'), path.join(repos, 'web'), 'no-such-ref-anywhere', webRow2.branch], { stdio: 'pipe' }),
+    (e) => e.status === 2 && /cannot read/.test(String(e.stderr)),
+    'a range git cannot read is exit 2, never mistaken for a secret',
+  )
   assert.equal(execFileSync('git', ['-C', origin, 'rev-parse', 'release'], { encoding: 'utf8' }).trim(), git('web', 'rev-parse', webRow2.branch).trim(), 'origin release is the branch tip')
   assert.equal(git('web', 'branch', '--show-current').trim(), 'main', 'the checkout was left on main')
   assert.equal((await (await fetch(`${base}/api/tasks/${landing2.id}/git`)).json()).find((r) => r.repo === 'web').landTarget, 'release', 'the target is remembered')
@@ -1054,6 +1068,7 @@ try {
   fs.rmSync(path.join(repos, 'web', 'app', 'services', 'discount.server.ts.bak'), { force: true })
   git('web', 'pull', '-q', '--ff-only', 'origin', 'main') // the person's later `git pull`
 
+  const putRepo = (name, patch) => fetch(`${base}/api/repos/config?repo=${name}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
   // The guard blames only the task's own commits. The shape from real life: a
   // token committed on origin/main long ago, the local main behind it, and a
   // landing that merges origin/main into the branch. The branch did not add it.
@@ -1082,14 +1097,24 @@ try {
   assert.match((await pushOwnToken.json()).error, /notes\.txt:1/)
   assert.throws(() => execFileSync(process.execPath, [path.join(here, 'guard-secrets.mjs'), tree5.repoPath, 'main', tree5.branch], { stdio: 'pipe' }), (e) => e.status === 1 && /notes\.txt:1/.test(String(e.stderr)))
   git('web', 'pull', '-q', '--ff-only', 'origin', 'main')
+  // Checks configured after a task's worktree moved past its base: the
+  // baseline is skipped and says so, never recorded against the branch tip.
+  await putRepo('web', { checks: ['true'] })
+  await fetch(`${base}/api/tasks/${landing5.id}/worktree`, { method: 'DELETE' }) // rebuilt at the branch tip
+  await post(`/api/tasks/${landing5.id}/follow-up`, { request: 'one more' })
+  const pastBase = await waitFor(landing5.id, (t) => t.status === 'done' && t.phase === null, 'the follow-up past base')
+  assert.ok(pastBase.log.some((l) => /Baseline skipped for web: the worktree is past its base/.test(l.text)), 'said, not faked')
+  assert.ok(!fs.existsSync(path.join(root, 'data', 'tasks', landing5.id, 'baseline')), 'and nothing written')
+  await putRepo('web', { checks: [] })
   console.log('ok: the guard blames only the task\'s own commits')
 
   // A worktree that arrives ready: the repo's setup ran in it, generated files
   // came over from the checkout, and the checks were run once at base so a
   // failure that was already there is known before the agent starts.
-  const putRepo = (name, patch) => fetch(`${base}/api/repos/config?repo=${name}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
   assert.ok((await putRepo('api', { setup: 'echo ran > SETUP_MARK', copy: ['generated.txt', 'missing.txt'], checks: ['sh -c "echo boom; exit 3"', 'true'] })).ok)
   assert.equal((await putRepo('api', { copy: ['../outside'] })).status, 400, 'copy paths stay inside the repo')
+  assert.equal((await putRepo('api', { copy: ['.git'] })).status, 400, 'and never the repo itself')
+  assert.equal((await putRepo('api', { copy: ['.'] })).status, 400)
   const apiCfg = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
   assert.deepEqual([apiCfg.setup, apiCfg.copy, apiCfg.checks], ['echo ran > SETUP_MARK', ['generated.txt', 'missing.txt'], ['sh -c "echo boom; exit 3"', 'true']])
   fs.writeFileSync(path.join(repos, 'api', 'generated.txt'), 'gen')
@@ -1294,14 +1319,14 @@ try {
   // Per-repo config: where prod is, and how to watch its deploy. The Jenkins
   // token goes to the keychain, and never comes back out through the API.
   const cfg0 = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
-  assert.deepEqual(cfg0, { prodBranch: 'prod', jenkins: null, hasJenkinsToken: false, landTarget: 'main', setup: '', copy: [], checks: [] }, 'the api landing above remembered main')
+  assert.deepEqual(cfg0, { prodBranch: 'prod', jenkins: null, hasJenkinsToken: false, landTarget: null, setup: '', copy: [], checks: [] }, 'landing on the base remembers nothing')
   const putCfg = await fetch(`${base}/api/repos/config?repo=api`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, jenkinsToken: 't' }),
   })
   assert.ok(putCfg.ok, 'config saved')
   const cfg1 = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
-  assert.deepEqual(cfg1, { prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, hasJenkinsToken: true, landTarget: 'main', setup: '', copy: [], checks: [] })
+  assert.deepEqual(cfg1, { prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, hasJenkinsToken: true, landTarget: null, setup: '', copy: [], checks: [] })
   assert.equal(secrets.read('repo:' + path.join(repos, 'api'), 'JENKINS_TOKEN'), 't')
   assert.ok(!fs.readFileSync(path.join(root, 'data', 'repos.json'), 'utf8').includes('"t"'), 'the token is not in the file')
   const badCfg = await fetch(`${base}/api/repos/config?repo=nope`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' })
@@ -1509,14 +1534,18 @@ try {
   await restart({ FLOW_AUTO_RESUME: '0', FLOW_SETUP_MAX_MS: '500' })
   await putRepo('api', { setup: 'sleep 30' })
   const capped = await post('/api/tasks', { repos: ['api'], prompt: 'cap me', run: 'ask' })
+  const duringSetup = await waitFor(capped.id, (t) => t.phase === 'setup', 'the setup phase to show')
+  assert.equal(duringSetup.status, 'running', 'setup shows as running, not queued')
   const cappedDone = await waitFor(capped.id, (t) => t.status === 'done' || t.status === 'failed', 'the capped-setup task')
   assert.equal(cappedDone.status, 'done', cappedDone.error)
   assert.ok(cappedDone.log.some((l) => l.kind === 'error' && /setup capped/.test(l.text)), 'the cap is said, not silent')
+  assert.match(fs.readFileSync(path.join(root, 'data', 'tasks', capped.id, 'prompt.txt'), 'utf8'), /Setup `sleep 30` .*capped/, 'and the agent is told')
   await putRepo('api', { setup: '' })
 
   // A run that has not reported its session yet cannot be "continued" into an
   // older session when the server dies under it: it is a plain failure.
-  await post(`/api/tasks/${napping.id}/follow-up`, { request: 'SLOWSTART' })
+  const slowStarted = await post(`/api/tasks/${napping.id}/follow-up`, { request: 'SLOWSTART' })
+  assert.equal(slowStarted.lastSession, null, 'a side run forgets the previous session the moment it starts')
   await waitFor(napping.id, (t) => t.status === 'running', 'the slow follow-up to start')
   await restart({ FLOW_AUTO_RESUME: '0' })
   const slow = await (await fetch(`${base}/api/tasks/${napping.id}`)).json()

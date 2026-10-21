@@ -235,7 +235,8 @@ class RepoCard extends StatelessWidget {
     final pipeline = repo['pipeline'] as Map?;
     final reviewUrl = repo['reviewUrl'] as String?;
     final targets = ((repo['targets'] as List?) ?? const []).cast<String>();
-    final landTarget = (repo['landTarget'] as String?) ?? base;
+    final landTarget = repo['landTarget'] as String?;
+    final menuTargets = [if (landTarget != null && landTarget != base) landTarget, ...targets.where((t) => t != landTarget)];
     final prod = repo['prod'] as Map?;
     final prodBranch = (prod?['branch'] ?? 'prod') as String;
     final toPick = (prod?['toPick'] ?? 0) as int;
@@ -283,25 +284,25 @@ class RepoCard extends StatelessWidget {
               ),
             Row(mainAxisSize: MainAxisSize.min, children: [
               FlowButton(
-                label: 'Land on $landTarget',
+                label: 'Land on $base',
                 tone: Tone.primary,
                 busy: busy == 'merge:$name',
                 // Being behind is no longer a reason to refuse: the agent brings
-                // the target in first, which is what makes the landing itself a
+                // the base in first, which is what makes the landing itself a
                 // fast-forward. The remote is what counts; the checkout is a courtesy.
-                onPressed: ahead == 0 ? null : () => onMerge(landTarget),
+                onPressed: ahead == 0 ? null : () => onMerge(base),
                 tooltip: ahead == 0
                     ? 'Nothing on this branch that $base does not have'
-                    : 'Catch up with $landTarget, run the checks, push, open a merge request, '
-                        'then put it on origin/$landTarget'
+                    : 'Catch up with $base, run the checks, push, open a merge request, '
+                        'then put it on origin/$base'
                         '${behind > 0 ? ' — $behind commits behind right now' : ''}',
               ),
               // Pick another branch to land on: anything the remote or the
               // checkout knows, or a name typed in (the push creates it).
               PopupMenuButton<String>(
-                tooltip: 'Land somewhere else',
+                tooltip: 'Land somewhere else: the remembered target first, then every branch on both the remote and your checkout',
                 padding: EdgeInsets.zero,
-                enabled: ahead > 0,
+                enabled: true,
                 icon: const Icon(Icons.expand_more, size: 16, color: Tern.muted),
                 color: Tern.raised,
                 onSelected: (picked) async {
@@ -310,7 +311,7 @@ class RepoCard extends StatelessWidget {
                   if (typed != null && typed.isNotEmpty) onMerge(typed);
                 },
                 itemBuilder: (_) => [
-                  for (final t in targets)
+                  for (final t in menuTargets)
                     PopupMenuItem(value: t, height: 32, child: Text(t, style: t12(t == landTarget))),
                   PopupMenuItem(value: '\u0000other', height: 32, child: Text('Other…', style: t12(false))),
                 ],

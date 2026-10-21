@@ -8,7 +8,13 @@ import 'markdown_view.dart';
 /// The transcript. Tool calls arrive in runs of dozens, so they are collapsed
 /// to a line saying how many; the rest reads as what it is.
 class Conversation extends StatefulWidget {
-  const Conversation({super.key, required this.task, this.footer, this.jumpToEnd, this.onFile});
+  const Conversation({
+    super.key,
+    required this.task,
+    this.footer,
+    this.jumpToEnd,
+    this.onFile,
+  });
   final Task task;
   final Widget? footer;
 
@@ -34,14 +40,30 @@ class _ConversationState extends State<Conversation> {
     widget.jumpToEnd?.addListener(_jump);
     _scroll.addListener(() {
       if (!_scroll.hasClients) return;
-      _pinned =
+      final pinned =
           _scroll.position.pixels >= _scroll.position.maxScrollExtent - 60;
+      if (pinned == _pinned) return;
+      setState(() => _pinned = pinned);
     });
   }
 
   void _jump() {
-    _pinned = true;
+    // Through setState: the listener below would otherwise see the value it
+    // already holds, take its early return, and leave the button on screen.
+    setState(() => _pinned = true);
     if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+  }
+
+  /// The button's own scroll. Animated, unlike the stick-to-bottom that runs
+  /// while the agent is talking: that one has to land before the next frame of
+  /// log arrives, this one is a person asking to be taken somewhere.
+  void _toBottom() {
+    if (!_scroll.hasClients) return;
+    _scroll.animateTo(
+      _scroll.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 260),
+      curve: ease,
+    );
   }
 
   @override
@@ -100,23 +122,58 @@ class _ConversationState extends State<Conversation> {
     // Lazy on purpose: with `children:` every block was built on every frame,
     // which meant re-parsing the markdown of the whole conversation each time
     // a log line arrived. Only what is on screen is built now.
-    return Scrollbar(
-      controller: _scroll,
-      child: ListView.builder(
-        controller: _scroll,
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-        itemCount: blocks.length + 2,
-        itemBuilder: (context, i) {
-          if (i == 0) return _opening(task);
-          if (i <= blocks.length) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: _render(context, blocks[i - 1], i - 1, i == blocks.length),
-            );
-          }
-          return _closing(task, blocks);
-        },
-      ),
+    return Stack(
+      children: [
+        Scrollbar(
+          controller: _scroll,
+          child: ListView.builder(
+            controller: _scroll,
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+            itemCount: blocks.length + 2,
+            itemBuilder: (context, i) {
+              if (i == 0) return _opening(task);
+              if (i <= blocks.length) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: _render(
+                    context,
+                    blocks[i - 1],
+                    i - 1,
+                    i == blocks.length,
+                  ),
+                );
+              }
+              return _closing(task, blocks);
+            },
+          ),
+        ),
+        // Only while there is something below to go back to. It slides out of
+        // the way rather than vanishing, so the eye can follow where it went.
+        Positioned(
+          right: 20,
+          bottom: 14,
+          child: IgnorePointer(
+            ignoring: _pinned,
+            child: AnimatedSlide(
+              duration: smooth,
+              curve: ease,
+              offset: _pinned ? const Offset(0, 0.6) : Offset.zero,
+              child: AnimatedOpacity(
+                duration: smooth,
+                curve: ease,
+                opacity: _pinned ? 0 : 1,
+                child: FlowButton(
+                  dense: true,
+                  label: 'Latest',
+                  icon: Icons.arrow_downward,
+                  tooltip: 'Jump to the newest message',
+                  onPressed: _toBottom,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -265,7 +322,10 @@ class _ConversationState extends State<Conversation> {
           ),
         );
       default:
-        return MarkdownView((block.items.first['text'] ?? '') as String, onFile: widget.onFile);
+        return MarkdownView(
+          (block.items.first['text'] ?? '') as String,
+          onFile: widget.onFile,
+        );
     }
   }
 
@@ -381,8 +441,9 @@ class _Attachment extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         color: Tern.raised,
-        border: Border.all(color: Tern.line),
+        border: raised(Tern.line),
         borderRadius: BorderRadius.circular(8),
+        boxShadow: e1,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

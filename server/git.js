@@ -105,19 +105,21 @@ function statusOf(tree) {
     // Where Land may put this branch: the base first, then every branch the
     // remote or the checkout knows, never the task branch itself.
     targets: targetsOf(tree),
-    landTarget: repoConfig.get(tree.repoPath).landTarget || tree.baseBranch,
+    landTarget: repoConfig.get(tree.repoPath).landTarget || null,
     uncommitted: uncommitted.length,
     mergeBlockedBy: blocked,
   }
 }
 
 export function targetsOf(tree) {
-  const remote = lines(quiet(() => git(tree.repoPath, 'branch', '-r', '--format=%(refname:short)')))
-    .map((b) => b.replace(/^origin\//, ''))
-    .filter((b) => b && b !== 'HEAD')
+  // Branches that exist both here and on origin: a landing target has to be
+  // somewhere the push can fast-forward and the person can pull. Not
+  // origin/HEAD (which `branch -r` prints as plain `origin`), not a branch
+  // only this machine has, and not the tool's own task branches.
+  const onOrigin = new Set(lines(quiet(() => git(tree.repoPath, 'for-each-ref', '--format=%(refname:lstrip=3)', 'refs/remotes/origin'))).filter((b) => b && b !== 'HEAD'))
   const local = lines(quiet(() => git(tree.repoPath, 'branch', '--format=%(refname:short)')))
-  const all = [tree.baseBranch, ...remote, ...local].filter((b, i, arr) => b && b !== tree.branch && arr.indexOf(b) === i)
-  return all
+  const shared = local.filter((b) => onOrigin.has(b) && !b.startsWith('flow/'))
+  return [tree.baseBranch, ...shared].filter((b, i, arr) => b && b !== tree.branch && arr.indexOf(b) === i)
 }
 
 function prodOf(tree) {

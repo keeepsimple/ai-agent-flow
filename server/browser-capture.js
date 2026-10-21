@@ -13,7 +13,7 @@ async function prepare(send, width, height) {
     // override below is what matters then.
   }
   try { await send('Page.bringToFront') } catch {}
-  await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+  try { await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }) } catch {}
 }
 
 export async function captureWith(send, { width = 1280, height = 900 } = {}) {
