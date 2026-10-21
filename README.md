@@ -316,6 +316,30 @@ finishes, and a `git pull` later is yours.
   task's artifacts, and the prompt names which were already red. A failure
   that was red at base is not the agent's, and it is told so.
 
+## Shell reads, cost, and the phone
+
+Every run gets a hook that refuses a bare file read through the shell
+(`cat`, `sed -n`, `head`, `tail`) with *use the Read tool*; a pipeline or a
+redirection is not a read and passes. The board row says how many reads
+still went through the shell, so the effect is visible.
+
+**Settings…** in the header: a cost line per task (default $20) that, once
+crossed, writes a line in the conversation and notifies, once; and a
+Telegram bot. With a chat id and a bot token (keychain), questions, gates,
+finishes and cost lines go to the chat, and replying to a question message
+answers it. *Test* sends one message.
+
+Each board row carries `$cost · elapsed`, what became of the branch
+(*landed on main*, *shipped to prod*), and the board filters by repo. The
+repo card names other tasks that changed the same files and have not landed.
+**Land & ship to prod** in the Land menu runs both.
+
+**Repo…** gains a *Smoke command* that the ship run executes after the
+deploy and quotes. The workspace's right pane has a screenshot toggle: the
+latest one the agent took, refreshed while it runs, with *Open in browser*.
+**From template** and **Save as template** on the form keep a prompt, its
+repos and its route for next time.
+
 ## What the review leaves
 
 The self-review fixes what it finds in the files it touched. What it leaves
