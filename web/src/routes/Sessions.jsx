@@ -375,6 +375,42 @@ function Card({ task, index = 0 }) {
   )
 }
 
+// Past this a column stops being something you take in and becomes something
+// you scroll past, and the columns beside it are pushed out of sight with it.
+const PAGE = 6
+
+function Column({ group, col }) {
+  const [all, setAll] = useState(false)
+  const shown = all ? group.tasks : group.tasks.slice(0, PAGE)
+  const rest = group.tasks.length - shown.length
+
+  return (
+    <section className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2 px-1 text-[13px] font-medium tracking-[-0.005em]">
+        <span className={`size-2 rounded-full ${group.dot}`} />
+        {group.title}
+        <span className="font-mono text-[11px] font-normal text-muted">{group.tasks.length}</span>
+      </div>
+
+      {shown.map((task, row) => (
+        <Card key={task.id} task={task} index={col + row * 2} />
+      ))}
+
+      {group.tasks.length > PAGE && (
+        <button
+          type="button"
+          onClick={() => setAll((v) => !v)}
+          className="cursor-pointer rounded-xl border border-dashed border-line bg-transparent
+                     px-3 py-2 text-[13px] text-muted transition-colors duration-200 ease-smooth
+                     hover:border-line-strong hover:bg-raised hover:text-ink"
+        >
+          {all ? 'Show less' : `Show ${rest} more`}
+        </button>
+      )}
+    </section>
+  )
+}
+
 const FILTERS = [
   ['all', 'All', () => true],
   ['active', 'Active', (t) => !['done', 'failed', 'cancelled'].includes(t.status)],
@@ -483,16 +519,7 @@ export default function Sessions({ flow }) {
         ) : (
           <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {columns.map((group, col) => (
-              <section key={group.key} className="flex flex-col gap-2.5">
-                <div className="flex items-center gap-2 px-1 text-[13px] font-medium tracking-[-0.005em]">
-                  <span className={`size-2 rounded-full ${group.dot}`} />
-                  {group.title}
-                  <span className="font-mono text-[11px] font-normal text-muted">{group.tasks.length}</span>
-                </div>
-                {group.tasks.map((task, row) => (
-                  <Card key={task.id} task={task} index={col + row * 2} />
-                ))}
-              </section>
+              <Column key={group.key} group={group} col={col} />
             ))}
           </div>
         )}

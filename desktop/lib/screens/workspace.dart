@@ -5,6 +5,7 @@ import '../flow.dart';
 import '../left.dart';
 import '../prefs.dart';
 import '../theme.dart';
+import '../widgets/swipe.dart';
 import '../widgets/bits.dart';
 import '../widgets/composer.dart';
 import '../widgets/conversation.dart';
@@ -23,6 +24,7 @@ class WorkspaceScreen extends StatefulWidget {
     required this.flow,
     required this.task,
     required this.prefs,
+    this.onTab,
     this.outputInitial,
     this.outputTextInitial,
     this.previewInitial,
@@ -31,6 +33,8 @@ class WorkspaceScreen extends StatefulWidget {
   /// For tests of the preview pane: skips the fetch and the polling.
   final List<Map<String, dynamic>>? previewInitial;
 
+  /// Optional so the screen can still be mounted on its own in a test.
+  final void Function(String tab)? onTab;
   final FlowState flow;
   final Task task;
   final Prefs prefs;
@@ -126,7 +130,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(width: 232, child: _explorer(task, files)),
+              SwipeBetween(
+                onNext: () => widget.onTab?.call('review'),
+                child: SizedBox(width: 232, child: _explorer(task, files)),
+              ),
               const VerticalDivider(width: 1, color: Tern.line),
               Expanded(
                 child: Column(

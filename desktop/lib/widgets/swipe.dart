@@ -81,6 +81,10 @@ class _SwipeBetweenState extends State<SwipeBetween> {
 
   @override
   Widget build(BuildContext context) => Listener(
+    // Opaque, so the gesture is read across the whole pane and not only where
+    // the child happens to paint something. Children are hit-tested first and
+    // still get everything: this only adds the listener to the path.
+    behavior: HitTestBehavior.opaque,
     onPointerSignal: (event) {
       if (event is! PointerScrollEvent) return;
       _feed(event.scrollDelta.dx, event.scrollDelta.dy);

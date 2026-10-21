@@ -18,6 +18,7 @@ import 'package:agent_flow/prefs.dart';
 import 'package:agent_flow/server.dart';
 import 'package:agent_flow/screens/workspace.dart';
 import 'package:agent_flow/theme.dart';
+import 'package:agent_flow/widgets/swipe.dart';
 import 'package:agent_flow/widgets/bits.dart';
 import 'package:agent_flow/widgets/composer.dart';
 import 'package:agent_flow/widgets/conversation.dart';
@@ -224,6 +225,51 @@ Future<void> _shoot(
 
 void main() {
   setUpAll(loadFonts);
+
+  testWidgets('two fingers sideways step between the screens', (tester) async {
+    final moves = <String>[];
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        body: SwipeBetween(
+          onNext: () => moves.add('next'),
+          onBack: () => moves.add('back'),
+          child: const SizedBox.expand(),
+        ),
+      ),
+    ));
+    final at = tester.getCenter(find.byType(SwipeBetween));
+
+    Future<void> pan(List<Offset> steps) async {
+      final g = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+      await g.panZoomStart(at);
+      for (final step in steps) {
+        await g.panZoomUpdate(at, pan: step);
+      }
+      await g.panZoomEnd();
+      await tester.pump();
+    }
+
+    await pan(const [Offset(-120, 0)]);
+    expect(moves, ['next']);
+
+    await pan(const [Offset(120, 0)]);
+    expect(moves, ['next', 'back']);
+
+    // The pane is a list. A vertical flick has to stay a scroll, or the thing
+    // cannot be read at all.
+    await pan(const [Offset(0, -400)]);
+    expect(moves, ['next', 'back'], reason: 'up and down belong to the list');
+
+    // Momentum keeps the events arriving long after the fingers are gone.
+    await pan(const [
+      Offset(-80, 0),
+      Offset(-200, 0),
+      Offset(-340, 0),
+      Offset(-460, 0),
+    ]);
+    expect(moves, ['next', 'back', 'next'], reason: 'one gesture, one switch');
+  });
 
   testWidgets('the board, with a task on it', (tester) async {
     final flow = _flow();

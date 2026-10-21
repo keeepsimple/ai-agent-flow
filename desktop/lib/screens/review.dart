@@ -6,11 +6,14 @@ import '../theme.dart';
 import '../widgets/bits.dart';
 import '../widgets/diff_view.dart';
 import '../widgets/markdown_view.dart';
+import '../widgets/swipe.dart';
 
 /// What changed, what the review made of it, and the only buttons that touch
 /// a remote. Nothing here happens on its own.
 class ReviewScreen extends StatefulWidget {
-  const ReviewScreen({super.key, required this.flow, required this.task});
+  const ReviewScreen({super.key, required this.flow, required this.task, this.onTab});
+  /// Optional so the screen can still be mounted on its own in a test.
+  final void Function(String tab)? onTab;
   final FlowState flow;
   final Task task;
 
@@ -85,7 +88,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
     final review = widget.task.docs['review.md'] as String?;
 
     return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SizedBox(
+      SwipeBetween(
+        onBack: () => widget.onTab?.call('workspace'),
+        child: SizedBox(
         width: 268,
         child: Container(
           color: Tern.panel,
@@ -131,6 +136,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
             ],
           ),
         ),
+      ),
       ),
       const VerticalDivider(width: 1, color: Tern.line),
       Expanded(

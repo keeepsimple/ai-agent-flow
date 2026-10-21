@@ -220,11 +220,12 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                             ),
                             child: showing
                                 ? (_tab == 'review'
-                                      ? ReviewScreen(flow: _flow, task: task)
+                                      ? ReviewScreen(flow: _flow, task: task, onTab: (name) => setState(() => _tab = name))
                                       : WorkspaceScreen(
                                           flow: _flow,
                                           task: task,
                                           prefs: _prefs,
+                                          onTab: (name) => setState(() => _tab = name),
                                         ))
                                 : (_prompts
                                       ? PromptsScreen(flow: _flow)
