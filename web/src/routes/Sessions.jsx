@@ -5,20 +5,19 @@ import {
 import {
   AttachStrip, Button, Chip, GROUPS, Stat, ago, inputClass, selectChip, useAttachments,
 } from '../components/bits.jsx'
-import Header, { AccentPicker } from '../components/Header.jsx'
+import Header, { AccentPicker, Mark } from '../components/Header.jsx'
 import { api } from '../api.js'
 import { go, to } from '../router.js'
 
 const named = (v) => v || 'default'
 
-function NewTask({ flow, onError }) {
+function NewTask({ flow, onError, showRepos, setShowRepos }) {
   const { repos, options, defaults } = flow
   const [prompt, setPrompt] = useState('')
   // Repos are picked by path: two folders can hold repos of the same name.
   const [picked, setPicked] = useState(repos.slice(0, 1).map((r) => r.path))
   const [folder, setFolder] = useState('')
   const [adding, setAdding] = useState(false)
-  const [showRepos, setShowRepos] = useState(false)
   const [filter, setFilter] = useState('')
   const [run, setRun] = useState('full')
   const [model, setModel] = useState(defaults.model)
@@ -132,9 +131,13 @@ function NewTask({ flow, onError }) {
       onDrop={attach.onDrop}
       onDragOver={attach.onDragOver}
       onDragLeave={attach.onDragLeave}
-      className={`flex flex-col gap-2.5 rounded-2xl border bg-input p-4 transition-colors duration-150
-                  focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15
-                  ${attach.dragging ? 'border-accent ring-2 ring-accent/25' : 'border-line-strong'}`}
+      className={`animate-rise flex flex-col gap-2.5 rounded-2xl border bg-input p-4 shadow-e2
+                  transition-all duration-300 ease-smooth
+                  focus-within:border-accent/60
+                  focus-within:shadow-[inset_0_1px_0_rgb(255_255_255/0.05),0_1px_2px_rgb(0_0_0/0.4),0_6px_16px_-6px_rgb(0_0_0/0.65),0_0_0_4px_color-mix(in_srgb,var(--color-accent)_14%,transparent)]
+                  ${attach.dragging
+                    ? 'border-accent shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-accent)_25%,transparent)]'
+                    : 'border-line-strong'}`}
     >
       <label htmlFor="task" className="text-xs text-muted">New task</label>
       <textarea
@@ -308,7 +311,7 @@ function NewTask({ flow, onError }) {
   )
 }
 
-function Card({ task }) {
+function Card({ task, index = 0 }) {
   const phases = Object.entries(task.phases || {})
   const done = phases.filter(([, p]) => p.status === 'done').length
   const asking = task.questions?.find((q) => q.id === task.openQuestionId)
@@ -319,16 +322,20 @@ function Card({ task }) {
   return (
     <a
       href={merged ? to.review(task.id) : to.workspace(task.id)}
-      className={`flex flex-col gap-2.5 rounded-xl border p-3.5 no-underline transition-colors duration-150
+      style={{ '--i': index }}
+      className={`rise flex flex-col gap-2.5 rounded-xl border p-3.5 no-underline shadow-e1
+        transition-all duration-300 ease-smooth hover:-translate-y-0.5 hover:shadow-e3
         ${attention
-          ? 'border-warn-line bg-warn-bg text-ink'
+          ? 'border-warn-line bg-warn-bg text-ink hover:border-warn/60'
           : merged
             ? 'border-line-dim bg-panel text-ink-3 hover:border-line'
             : working
-              ? 'border-accent/35 bg-input text-ink hover:border-accent/60'
+              ? 'border-accent/35 bg-input text-ink hover:border-accent/70'
               : 'border-line bg-input text-ink hover:border-line-strong'}`}
     >
-      <div className="line-clamp-2 font-medium break-words">{task.title}</div>
+      <div className="line-clamp-2 text-[14.5px] leading-snug font-medium tracking-[-0.01em] break-words">
+        {task.title}
+      </div>
 
       {!merged && task.trees?.[0] && (
         <div className="truncate font-mono text-xs text-muted" title={task.trees[0].branch}>
@@ -345,10 +352,11 @@ function Card({ task }) {
       ) : null}
 
       {working && phases.length > 0 && (
-        <div className="h-[3px] rounded-sm bg-line">
+        <div className="h-1 overflow-hidden rounded-full bg-line-dim shadow-[inset_0_1px_1px_rgb(0_0_0/0.4)]">
           <div
-            className="h-[3px] rounded-sm bg-accent transition-[width] duration-500"
-            style={{ width: `${Math.round((done / phases.length) * 100)}%` }}
+            className="bar-live h-1 rounded-full bg-accent transition-[width] duration-700 ease-smooth
+                       shadow-[0_0_10px_-1px_color-mix(in_srgb,var(--color-accent)_90%,transparent)]"
+            style={{ width: `${Math.max(4, Math.round((done / phases.length) * 100))}%` }}
           />
         </div>
       )}
@@ -375,6 +383,7 @@ const FILTERS = [
 
 export default function Sessions({ flow }) {
   const [filter, setFilter] = useState('all')
+  const [showRepos, setShowRepos] = useState(false)
   const tasks = flow.tasks || []
   const visible = tasks.filter(FILTERS.find(([k]) => k === filter)[2])
 
@@ -390,6 +399,8 @@ export default function Sessions({ flow }) {
     <>
       <Header
         active="sessions"
+        onRepos={() => setShowRepos((v) => !v)}
+        reposOpen={showRepos}
         repoLabel={
           flow.roots.length === 1
             ? flow.roots[0].split('/').pop()
@@ -419,15 +430,15 @@ export default function Sessions({ flow }) {
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[1360px] flex-col gap-6 px-6 pt-8 pb-12">
-        <div>
-          <h1 className="m-0 text-[28px] font-semibold tracking-[-0.02em]">Sessions</h1>
-          <p className="mt-1 mb-0 text-muted">
+        <div className="animate-rise">
+          <h1 className="m-0 text-[34px] leading-[1.1] font-semibold tracking-[-0.035em]">Sessions</h1>
+          <p className="mt-1.5 mb-0 max-w-[62ch] text-[15px] text-muted">
             Each agent works in its own worktree and branch. You review before anything merges.
           </p>
         </div>
 
         {flow.options && flow.defaults ? (
-          <NewTask flow={flow} onError={flow.setError} />
+          <NewTask flow={flow} onError={flow.setError} showRepos={showRepos} setShowRepos={setShowRepos} />
         ) : (
           <div className="skeleton h-32 rounded-[14px]" />
         )}
@@ -435,7 +446,8 @@ export default function Sessions({ flow }) {
         <div
           role="tablist"
           aria-label="Filter sessions"
-          className="flex gap-1 self-start rounded-full border border-line bg-input p-[3px]"
+          className="flex gap-1 self-start rounded-full border border-line bg-input p-[3px]
+                     shadow-[inset_0_1px_2px_rgb(0_0_0/0.35)]"
         >
           {FILTERS.map(([key, label, match]) => (
             <button
@@ -444,10 +456,13 @@ export default function Sessions({ flow }) {
               role="tab"
               aria-selected={filter === key}
               onClick={() => setFilter(key)}
-              className={`h-8 cursor-pointer rounded-full px-3.5 text-[13px] transition-colors duration-150
-                          ${filter === key ? 'bg-line text-ink' : 'text-muted hover:text-ink'}`}
+              className={`h-8 cursor-pointer rounded-full px-3.5 text-[13px] transition-all duration-200 ease-smooth
+                          ${filter === key
+                            ? 'bg-selected text-ink shadow-e1'
+                            : 'text-muted hover:bg-raised hover:text-ink'}`}
             >
-              {label} <span className="text-muted">{tasks.filter(match).length}</span>
+              {label}{' '}
+              <span className="font-mono text-[11px] text-muted">{tasks.filter(match).length}</span>
             </button>
           ))}
         </div>
@@ -457,19 +472,26 @@ export default function Sessions({ flow }) {
             {[0, 1, 2, 3].map((i) => <div key={i} className="skeleton h-28 rounded-xl" />)}
           </div>
         ) : !columns.length ? (
-          <p className="py-16 text-center text-muted">
-            Nothing here yet. Describe a change above and an agent takes it from there.
-          </p>
+          <div className="animate-fade flex flex-col items-center gap-3 rounded-2xl border border-dashed
+                          border-line bg-panel/40 py-16 text-center">
+            <span className="opacity-30"><Mark size={34} /></span>
+            <p className="m-0 text-[15px] text-ink-3">No sessions yet</p>
+            <p className="m-0 max-w-[44ch] text-[13px] text-muted">
+              Describe a change in the box above and an agent takes it from there.
+            </p>
+          </div>
         ) : (
           <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {columns.map((group) => (
+            {columns.map((group, col) => (
               <section key={group.key} className="flex flex-col gap-2.5">
-                <div className="flex items-center gap-2 px-1 text-[13px] font-medium">
+                <div className="flex items-center gap-2 px-1 text-[13px] font-medium tracking-[-0.005em]">
                   <span className={`size-2 rounded-full ${group.dot}`} />
                   {group.title}
-                  <span className="font-normal text-muted">{group.tasks.length}</span>
+                  <span className="font-mono text-[11px] font-normal text-muted">{group.tasks.length}</span>
                 </div>
-                {group.tasks.map((task) => <Card key={task.id} task={task} />)}
+                {group.tasks.map((task, row) => (
+                  <Card key={task.id} task={task} index={col + row * 2} />
+                ))}
               </section>
             ))}
           </div>

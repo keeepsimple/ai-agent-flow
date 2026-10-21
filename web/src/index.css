@@ -1,5 +1,32 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap');
 @import 'tailwindcss';
+
+/* Self-hosted: this ships as a desktop app, and a Google Fonts @import meant
+   the whole UI fell back to system-ui the moment the machine was offline, as
+   well as blocking first paint on a network round trip. */
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Regular.ttf') format('truetype');
+  font-weight: 400 500;
+  font-display: swap;
+}
 
 /* Tokens read straight off the Tern artboards. */
 @theme {
@@ -41,6 +68,45 @@
 
   --font-sans: 'Geist', system-ui, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, monospace;
+
+  /* Depth. The artboard surfaces sit within five points of luminance of each
+     other, so a 1px border was doing all the work of separating them and the
+     whole app read flat. A hairline of light along the top edge is what tells
+     the eye a surface is raised; the shadow underneath only confirms it. Every
+     shadow carries the inner highlight with it, because Tailwind lets one
+     shadow utility win and a separate highlight class would be dropped. */
+  --shadow-hairline: inset 0 1px 0 rgb(255 255 255 / 0.05);
+  --shadow-e1: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.6);
+  --shadow-e2:
+    inset 0 1px 0 rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.4),
+    0 6px 16px -6px rgb(0 0 0 / 0.65);
+  --shadow-e3:
+    inset 0 1px 0 rgb(255 255 255 / 0.06), 0 2px 6px rgb(0 0 0 / 0.4),
+    0 18px 44px -14px rgb(0 0 0 / 0.8);
+  /* For anything the accent owns: the glow is the accent's own hue, never a
+     generic black drop or a neon ring. */
+  --shadow-accent:
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    0 1px 2px rgb(0 0 0 / 0.5),
+    0 8px 22px -8px color-mix(in srgb, var(--color-accent) 50%, transparent);
+  --shadow-accent-lift:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    0 2px 4px rgb(0 0 0 / 0.5),
+    0 14px 32px -8px color-mix(in srgb, var(--color-accent) 60%, transparent);
+
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-rise: rise 0.5s var(--ease-smooth) backwards;
+  --animate-fade: fade 0.35s var(--ease-smooth) backwards;
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 }
 
 html, body, #root { height: 100%; }
@@ -57,9 +123,36 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
+/* One ambient wash of the accent behind everything, so the page has a light
+   source rather than being an even field of near-black. Fixed and
+   pointer-events-none: it must never repaint on scroll. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120vw 60vh at 50% -20vh,
+      color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 70%),
+    radial-gradient(70vw 50vh at 100% 100%, rgb(255 255 255 / 0.015), transparent 70%);
+}
+
+#root { position: relative; z-index: 1; }
+
 input, select, textarea, button { font: inherit; color: inherit; }
+
+/* Numbers that sit in a column (costs, line counts, durations) must not shift
+   width as they tick. */
+.font-mono, code, pre, kbd { font-variant-numeric: tabular-nums; }
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  color: var(--color-ink);
+}
 
 :focus-visible {
   outline: 2px solid var(--color-accent);
@@ -82,9 +175,20 @@ select:focus-visible {
   outline: none;
 }
 
+/* A 10px bar of solid line colour down the side of every pane was the loudest
+   thing on the screen. Let it stay out of the way until the pointer is in the
+   pane that owns it. */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 6px; }
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  box-shadow: inset 0 0 0 10px var(--color-line-strong);
+}
+::-webkit-scrollbar-thumb:hover { box-shadow: inset 0 0 0 10px var(--color-ghost); }
+::-webkit-scrollbar-corner { background: transparent; }
 
 /* The accent dot in the artboards carries a soft ring around it. */
 .ring-dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 20%, transparent); }
@@ -99,7 +203,34 @@ select:focus-visible {
   animation: shimmer 1.5s linear infinite;
 }
 
+/* A board of cards appearing all at once reads as a flash; in sequence it
+   reads as the board being dealt. --i is the card's index, set inline. */
+.rise { animation: var(--animate-rise); animation-delay: calc(var(--i, 0) * 45ms); }
+
+/* A live progress bar: the accent fill carries its own light, and a sheen
+   travels along it so a bar that has not moved in a while still reads as
+   running rather than as stuck. */
+@keyframes sheen { from { transform: translateX(-100%) } to { transform: translateX(300%) } }
+.bar-live { position: relative; overflow: hidden; }
+.bar-live::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.5), transparent);
+  animation: sheen 1.8s var(--ease-smooth) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .dot-live, .skeleton { animation: none; }
-  * { transition-duration: 0ms !important; }
+  .dot-live, .skeleton, .bar-live::after { animation: none; }
+  .rise { animation: none; opacity: 1; }
+  *, *::before, *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass { backdrop-filter: none; background: var(--color-panel); }
 }

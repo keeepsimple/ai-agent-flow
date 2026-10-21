@@ -45,15 +45,16 @@ export default function App() {
       {flow.error && (
         <div
           role="alert"
-          className="fixed bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg
-                     border border-bad/50 bg-input px-3.5 py-2.5 text-[13px] text-bad shadow-2xl"
+          className="animate-fade fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3
+                     rounded-full border border-bad/50 bg-input px-4 py-2.5 text-[13px] text-bad
+                     shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_2px_6px_rgb(0_0_0/0.4),0_18px_44px_-14px_rgb(255_128_128/0.35)]"
         >
           <span>{flow.error}</span>
           <button
             type="button"
             onClick={() => flow.setError(null)}
             aria-label="Dismiss"
-            className="cursor-pointer text-muted transition-colors duration-150 hover:text-ink"
+            className="cursor-pointer text-muted transition-colors duration-200 ease-smooth hover:text-ink"
           >
             <IconX size={14} />
           </button>

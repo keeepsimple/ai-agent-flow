@@ -43,7 +43,7 @@ export default function Workspace({ task, flow }) {
             <IconRefresh size={14} /> Retry
           </Button>
         )}
-<TaskActions task={task} onError={flow.setError} />
+        <TaskActions task={task} onError={flow.setError} />
         <Button variant="primary" as="a" href={to.review(task.id)}>Review changes</Button>
       </Header>
 
@@ -55,12 +55,24 @@ export default function Workspace({ task, flow }) {
           <FileList repos={repos} selected={open?.key} onSelect={setSelected} title="Explorer" />
 
           <div className="mt-5 border-t border-line px-2 pt-3.5">
-            <div className="mb-2 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Run</div>
-            <dl className="m-0 flex flex-col gap-1.5 text-xs text-ink-3">
-              <div className="flex justify-between gap-3"><dt>Cost</dt><dd className="m-0 font-mono">${(task.cost || 0).toFixed(3)}</dd></div>
-              <div className="flex justify-between gap-3"><dt>Turns</dt><dd className="m-0 font-mono">{task.turns || 0}</dd></div>
-              <div className="flex justify-between gap-3 text-muted"><dt className="shrink-0">Permissions</dt><dd className="m-0 truncate">{task.permissionMode}</dd></div>
-              <div className="flex justify-between gap-3 text-muted"><dt className="shrink-0">Effort</dt><dd className="m-0 truncate">{task.effort || 'default'}</dd></div>
+            <div className="mb-2.5 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Run</div>
+            <dl className="m-0 flex flex-col gap-2 text-xs">
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-muted">Cost</dt>
+                <dd className="m-0 font-mono text-[13px] text-ink">${(task.cost || 0).toFixed(3)}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-muted">Turns</dt>
+                <dd className="m-0 font-mono text-[13px] text-ink">{task.turns || 0}</dd>
+              </div>
+              <div className="flex justify-between gap-3 text-muted">
+                <dt className="shrink-0">Permissions</dt>
+                <dd className="m-0 truncate text-ink-3">{task.permissionMode}</dd>
+              </div>
+              <div className="flex justify-between gap-3 text-muted">
+                <dt className="shrink-0">Effort</dt>
+                <dd className="m-0 truncate text-ink-3">{task.effort || 'default'}</dd>
+              </div>
             </dl>
           </div>
         </aside>
@@ -87,9 +99,11 @@ export default function Workspace({ task, flow }) {
                   aria-selected={on}
                   onClick={() => setSelected(file.key)}
                   title={`${file.repo}/${file.path}`}
-                  className={`flex h-10 cursor-pointer items-center gap-2 border-r border-line px-3.5
-                              font-mono text-xs transition-colors duration-150
-                              ${on ? 'border-b-2 border-b-accent bg-page text-ink' : 'text-muted hover:text-ink'}`}
+                  className={`flex h-10 shrink-0 cursor-pointer items-center gap-2 border-r border-line px-3.5
+                              font-mono text-xs transition-colors duration-200 ease-smooth
+                              ${on
+                                ? 'border-b-2 border-b-accent bg-page text-ink'
+                                : 'text-muted hover:bg-raised hover:text-ink'}`}
                 >
                   {file.path.split('/').pop()}
                   <span className={markOf(file) === 'A' ? 'text-ok' : markOf(file) === 'D' ? 'text-bad' : 'text-warn'}>
@@ -116,9 +130,12 @@ export default function Workspace({ task, flow }) {
                 </p>
               )
             ) : (
-              <p className="px-4 py-6 text-center text-sm text-muted">
-                Nothing has changed yet. Edits show up here as the agent makes them.
-              </p>
+              <div className="flex h-full flex-col items-center justify-center gap-1.5 px-6 text-center">
+                <p className="m-0 text-sm text-ink-3">No changes yet</p>
+                <p className="m-0 max-w-[36ch] text-[13px] text-muted">
+                  Edits show up here as the agent makes them.
+                </p>
+              </div>
             )}
           </div>
         </section>

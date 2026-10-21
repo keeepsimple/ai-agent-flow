@@ -33,9 +33,12 @@ export default function Composer({ task, onError }) {
         onDrop={attach.onDrop}
         onDragOver={attach.onDragOver}
         onDragLeave={attach.onDragLeave}
-        className={`rounded-2xl border bg-input p-3.5 transition-colors duration-150
-                    focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15
-                    ${attach.dragging ? 'border-accent ring-2 ring-accent/25' : 'border-line-strong'}`}
+        className={`rounded-2xl border bg-input p-3.5 shadow-e3 transition-all duration-300 ease-smooth
+                    focus-within:border-accent/60
+                    focus-within:shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_2px_6px_rgb(0_0_0/0.4),0_18px_44px_-14px_rgb(0_0_0/0.8),0_0_0_4px_color-mix(in_srgb,var(--color-accent)_14%,transparent)]
+                    ${attach.dragging
+                      ? 'border-accent shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-accent)_25%,transparent)]'
+                      : 'border-line-strong'}`}
       >
         <label htmlFor="prompt" className="sr-only">Message Tern</label>
         <textarea
@@ -61,7 +64,8 @@ export default function Composer({ task, onError }) {
           {task.trees?.map((tree) => (
             <span
               key={tree.repo}
-              className="inline-flex h-7 items-center rounded-md bg-selected px-2 font-mono text-xs text-ink-3"
+              className="inline-flex h-7 items-center rounded-full border border-line bg-selected px-2.5
+                         font-mono text-xs text-ink-3 shadow-e1"
             >
               @{tree.repo}
             </span>
@@ -74,7 +78,7 @@ export default function Composer({ task, onError }) {
             onClick={attach.pick}
             title="Attach a screenshot, a log, a diff"
             className="flex size-9 cursor-pointer items-center justify-center rounded-full text-muted
-                       transition-colors duration-150 hover:text-ink"
+                       transition-all duration-200 ease-smooth hover:bg-selected hover:text-ink"
           >
             <IconPaperclip size={16} />
           </button>
@@ -84,7 +88,9 @@ export default function Composer({ task, onError }) {
             onClick={send}
             disabled={busy || running || !text.trim()}
             className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-accent
-                       text-on-accent transition-opacity duration-150 disabled:opacity-30"
+                       text-on-accent shadow-accent transition-all duration-200 ease-smooth
+                       hover:scale-105 hover:shadow-accent-lift active:scale-95
+                       disabled:scale-100 disabled:opacity-30 disabled:shadow-none"
           >
             <IconArrowUp size={16} stroke={2.4} />
           </button>

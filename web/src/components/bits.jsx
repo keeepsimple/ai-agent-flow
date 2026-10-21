@@ -71,13 +71,18 @@ const VARIANTS = {
   // Disabled fades to neutral rather than to a washed-out accent: a 40% lime
   // with 40% near-black on it is a muddy block with unreadable text, which
   // reads as broken instead of as unavailable.
+  //
+  // The primary button is the only thing on the page allowed to glow, and it
+  // glows in the accent's own hue. Its shadow goes with it when it is
+  // disabled, otherwise a dead control keeps claiming to be the live one.
   primary:
-    'bg-accent text-on-accent font-semibold border border-transparent hover:bg-accent/90 ' +
-    'disabled:bg-selected disabled:text-faint disabled:border-line',
-  ghost: 'border border-line-strong bg-input text-ink hover:border-ghost',
-  quiet: 'border border-line bg-transparent text-ink-3 hover:border-line-strong hover:text-ink',
-  subtle: 'border border-line-strong bg-selected text-ink hover:border-ghost',
-  danger: 'border border-bad/40 bg-transparent text-bad hover:bg-bad/10',
+    'bg-accent text-on-accent font-semibold border border-transparent shadow-accent ' +
+    'hover:shadow-accent-lift hover:brightness-110 ' +
+    'disabled:bg-selected disabled:text-faint disabled:border-line disabled:shadow-none',
+  ghost: 'border border-line-strong bg-input text-ink shadow-e1 hover:border-ghost hover:bg-selected',
+  quiet: 'border border-line bg-transparent text-ink-3 hover:border-line-strong hover:bg-raised hover:text-ink',
+  subtle: 'border border-line-strong bg-selected text-ink shadow-e1 hover:border-ghost hover:brightness-125',
+  danger: 'border border-bad/40 bg-transparent text-bad hover:border-bad/70 hover:bg-bad/10',
 }
 
 export function Button({ variant = 'ghost', className = '', as: As = 'button', ...props }) {
@@ -85,8 +90,9 @@ export function Button({ variant = 'ghost', className = '', as: As = 'button', .
     <As
       {...(As === 'button' ? { type: 'button' } : {})}
       className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-full px-4 text-[13px]
-                  no-underline transition-colors duration-150 active:translate-y-px
-                  disabled:pointer-events-none disabled:opacity-100
+                  no-underline transition-all duration-200 ease-smooth
+                  hover:-translate-y-px active:translate-y-px active:duration-75
+                  disabled:pointer-events-none disabled:translate-y-0 disabled:opacity-100
                   ${variant === 'primary' ? '' : 'disabled:opacity-40'}
                   ${VARIANTS[variant]} ${className}`}
       {...props}
@@ -100,8 +106,10 @@ export function Chip({ mono = false, active = false, className = '', as: As = 'b
     <As
       {...(As === 'button' ? { type: 'button' } : {})}
       className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs
-                  whitespace-nowrap no-underline transition-colors duration-150
-                  ${active ? 'border-accent/50 bg-accent/10 text-accent' : 'border-line bg-transparent text-ink-3 hover:border-line-strong hover:text-ink'}
+                  whitespace-nowrap no-underline transition-all duration-200 ease-smooth active:scale-[0.97]
+                  ${active
+                    ? 'border-accent/50 bg-accent/10 text-accent shadow-[0_0_16px_-6px_color-mix(in_srgb,var(--color-accent)_70%,transparent)]'
+                    : 'border-line bg-transparent text-ink-3 hover:border-line-strong hover:bg-raised hover:text-ink'}
                   ${mono ? 'font-mono' : ''} ${className}`}
       {...props}
     />
@@ -138,13 +146,19 @@ export function Field({ label, hint, error, children }) {
  */
 export const selectChip =
   'h-8 cursor-pointer rounded-full border border-line bg-transparent pr-7 pl-3 text-xs text-ink-3 ' +
-  'transition-colors duration-150 hover:border-line-strong hover:text-ink focus:outline-none ' +
+  'transition-colors duration-200 ease-smooth hover:border-line-strong hover:bg-raised hover:text-ink ' +
+  'focus:outline-none ' +
   "appearance-none bg-no-repeat bg-[right_0.55rem_center] bg-[length:10px] bg-[image:var(--chevron)]"
 
+// A thing you press is raised and catches light on its top edge; a thing you
+// type into is sunk and catches shadow there instead. That one inversion is
+// what tells the two apart before the pointer ever arrives.
 export const inputClass =
   'w-full rounded-xl border border-line-strong bg-input px-3.5 py-2 text-[13px] text-ink ' +
-  'placeholder:text-faint transition-colors duration-150 hover:border-ghost ' +
-  'focus:border-accent/60 focus:outline-none appearance-none ' +
+  'shadow-[inset_0_1px_2px_rgb(0_0_0/0.35)] ' +
+  'placeholder:text-faint transition-all duration-200 ease-smooth hover:border-ghost ' +
+  'focus:border-accent/60 focus:shadow-[inset_0_1px_2px_rgb(0_0_0/0.35),0_0_0_3px_color-mix(in_srgb,var(--color-accent)_15%,transparent)] ' +
+  'focus:outline-none appearance-none ' +
   "bg-no-repeat bg-[right_0.65rem_center] bg-[length:10px] " +
   "[&:is(select)]:pr-8 [&:is(select)]:bg-[image:var(--chevron)]"
 

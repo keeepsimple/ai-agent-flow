@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  IconAlertTriangle, IconCheck, IconChevronDown, IconFile, IconPencil, IconSearch, IconTerminal2,
+  IconAlertTriangle, IconArrowDown, IconCheck, IconChevronDown, IconFile, IconPencil,
+  IconSearch, IconTerminal2,
 } from '@tabler/icons-react'
 import { Mark } from './Header.jsx'
 import Markdown from './Markdown.jsx'
-import { AttachStrip, duration } from './bits.jsx'
+import { AttachStrip, Button, duration } from './bits.jsx'
 
 const TOOL_ICON = [
   [/grep|glob|search/i, IconSearch],
@@ -18,8 +19,11 @@ function ToolRow({ entry, running = false }) {
   const edited = /edit|write/i.test(entry.tool || '')
   return (
     <div
-      className={`flex min-h-9 items-center gap-2.5 rounded-xl border bg-raised px-3 text-left
-                  ${running ? 'border-accent/50 text-ink' : edited ? 'border-accent/40 text-ink' : 'border-line text-ink-3'}`}
+      className={`flex min-h-9 items-center gap-2.5 rounded-xl border bg-raised px-3 text-left shadow-e1
+                  transition-colors duration-200 ease-smooth
+                  ${running
+                    ? 'border-accent/50 text-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.05),0_0_18px_-8px_color-mix(in_srgb,var(--color-accent)_80%,transparent)]'
+                    : edited ? 'border-accent/40 text-ink' : 'border-line text-ink-3'}`}
     >
       {running ? (
         <span className="ring-dot size-2 shrink-0 rounded-full bg-accent dot-live" />
@@ -116,7 +120,8 @@ function ToolGroup({ items, live }) {
           onClick={() => setOpen(true)}
           title="Show every step"
           className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-xl border border-line
-                     bg-raised px-3 text-left transition-colors duration-150 hover:border-line-strong"
+                     bg-raised px-3 text-left shadow-e1 transition-all duration-200 ease-smooth
+                     hover:border-line-strong hover:bg-selected"
         >
           <IconChevronDown size={12} className="-rotate-90 shrink-0 text-muted" />
           <span className="shrink-0 text-[13px] text-ink-3">
@@ -135,7 +140,7 @@ function Plan({ task }) {
   const entries = Object.entries(task.phases || {})
   if (!entries.length) return null
   return (
-    <ol className="m-0 flex list-none flex-col gap-2 rounded-xl border border-line bg-raised p-3.5 text-[13px]">
+    <ol className="m-0 flex list-none flex-col gap-2 rounded-xl border border-line bg-raised p-3.5 text-[13px] shadow-e1">
       {entries.map(([key, phase]) => {
         const done = phase.status === 'done'
         const running = phase.status === 'running'
@@ -187,7 +192,17 @@ export default function Conversation({ task, children }) {
     else blocks.push({ kind: entry.kind, entry })
   }
 
+  const toBottom = () => {
+    const el = scroller.current
+    if (!el) return
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    })
+  }
+
   return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
     <div
       ref={scroller}
       className="min-h-0 flex-1 overflow-y-auto"
@@ -197,7 +212,10 @@ export default function Conversation({ task, children }) {
       }}
     >
       <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4 px-6 py-5">
-        <div className="max-w-[85%] self-end rounded-xl border border-line-strong bg-selected px-3.5 py-3 break-words">
+        <div
+          className="max-w-[85%] self-end rounded-2xl rounded-br-md border border-line-strong bg-selected
+                     px-4 py-3 text-[14px] break-words shadow-e2"
+        >
           {task.prompt}
         </div>
 
@@ -216,7 +234,8 @@ export default function Conversation({ task, children }) {
 
         <div className="flex items-center gap-2 text-xs text-muted">
           <Mark size={20} />
-          Tern · {task.model || 'default'}
+          <span className="font-medium text-ink-3">Tern</span>
+          <span className="font-mono text-[11px]">{task.model || 'default'}</span>
         </div>
 
         <Plan task={task} />
@@ -247,9 +266,10 @@ export default function Conversation({ task, children }) {
             return (
               <div
                 key={i}
-                className={`rounded-xl border px-3.5 py-3 text-[13px]
-                            break-words
-                            ${mine ? 'border-line-strong bg-selected self-end max-w-[85%]' : 'border-warn-line bg-warn-bg'}`}
+                className={`rounded-2xl border px-4 py-3 text-[13px] break-words shadow-e2
+                            ${mine
+                              ? 'border-line-strong bg-selected self-end max-w-[85%] rounded-br-md'
+                              : 'border-warn-line bg-warn-bg rounded-bl-md'}`}
               >
                 <div className={`mb-1 text-xs ${mine ? 'text-muted' : 'text-warn'}`}>
                   {entry.kind === 'question' ? 'Tern asked you' : 'You'}
@@ -270,6 +290,19 @@ export default function Conversation({ task, children }) {
 
         {children}
       </div>
+    </div>
+
+      {/* Only while there is something below to go back to. */}
+      {!pinned && (
+        <Button
+          variant="subtle"
+          onClick={toBottom}
+          title="Jump to the newest message"
+          className="animate-rise absolute right-5 bottom-4 h-8 px-3.5"
+        >
+          <IconArrowDown size={14} /> Latest
+        </Button>
+      )}
     </div>
   )
 }

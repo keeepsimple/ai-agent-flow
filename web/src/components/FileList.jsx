@@ -39,8 +39,10 @@ export default function FileList({ repos, selected, onSelect, title = 'Changed f
                 type="button"
                 onClick={() => onSelect(key)}
                 className={`flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-left
-                            font-mono text-xs transition-colors duration-150
-                            ${on ? 'bg-selected text-ink' : 'text-ink-3 hover:bg-selected/60'}`}
+                            font-mono text-xs transition-colors duration-200 ease-smooth
+                            ${on
+                              ? 'bg-selected text-ink shadow-[inset_2px_0_0_var(--color-accent)]'
+                              : 'text-ink-3 hover:bg-selected/60 hover:text-ink'}`}
               >
                 <span className={`w-3 shrink-0 ${MARK[mark]}`}>{mark}</span>
                 <span className="flex-1 truncate" title={file.path}>{file.path.split('/').pop()}</span>

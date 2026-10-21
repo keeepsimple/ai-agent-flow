@@ -21,7 +21,7 @@ const PIPELINE = {
 function Check({ ok, warn, children, aside }) {
   return (
     <div
-      className={`flex min-h-9 items-center gap-2.5 rounded-lg border px-2.5 text-[13px]
+      className={`flex min-h-9 items-center gap-2.5 rounded-lg border px-2.5 text-[13px] shadow-e1
                   ${warn ? 'border-warn-line bg-warn-bg' : 'border-line bg-input'}`}
     >
       <span className={warn ? 'text-warn' : ok ? 'text-ok' : 'text-muted'}>
@@ -78,15 +78,15 @@ export default function Review({ task, flow }) {
 
       <div className="flex flex-wrap items-center gap-4 border-b border-line px-6 py-4">
         <div className="min-w-0 flex-[1_1_420px]">
-          <h1 className="m-0 line-clamp-2 text-[22px] font-semibold tracking-[-0.01em] break-words">
+          <h1 className="m-0 line-clamp-2 text-[25px] leading-[1.15] font-semibold tracking-[-0.025em] break-words">
             {task.title}
           </h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[13px] text-muted">
             {task.trees?.map((tree) => (
               <span key={tree.repo} className="flex items-center gap-2">
-                <span className="rounded bg-selected px-1.5 py-px font-mono text-xs text-ink-3">{tree.branch}</span>
-                <span aria-hidden="true">→</span>
-                <span className="rounded bg-selected px-1.5 py-px font-mono text-xs text-ink-3">{tree.baseBranch}</span>
+                <span className="rounded-md border border-line bg-selected px-1.5 py-px font-mono text-xs text-ink-3 shadow-e1">{tree.branch}</span>
+                <span className="text-dim" aria-hidden="true">→</span>
+                <span className="rounded-md border border-line bg-selected px-1.5 py-px font-mono text-xs text-ink-3 shadow-e1">{tree.baseBranch}</span>
               </span>
             ))}
             <span>{files.length} files</span>
@@ -97,7 +97,7 @@ export default function Review({ task, flow }) {
           </div>
         </div>
 
-<TaskActions task={task} onError={flow.setError} />
+        <TaskActions task={task} onError={flow.setError} />
         <Button as="a" href={to.workspace(task.id)}>Open in workspace</Button>
         {primary?.behind > 0 && (
           <Button
@@ -149,7 +149,7 @@ export default function Review({ task, flow }) {
 
         <main className="box-border min-h-0 min-w-0 flex-[999_1_560px] overflow-y-auto p-4">
           {open ? (
-            <div className="overflow-hidden rounded-xl border border-line bg-page">
+            <div className="overflow-hidden rounded-xl border border-line bg-page shadow-e2">
               <div className="flex flex-wrap items-center gap-2.5 border-b border-line bg-raised px-3.5 py-2.5 font-mono text-xs">
                 <span className="text-ink">{open.repo}/{open.path}</span>
                 <Stat added={open.added} removed={open.removed} />
@@ -172,8 +172,9 @@ export default function Review({ task, flow }) {
           className="box-border flex min-h-0 flex-[1_1_320px] flex-col gap-5 overflow-y-auto border-l border-line bg-panel p-4"
         >
           <section className="flex min-h-0 flex-col">
-            <h2 className="m-0 mb-2 text-[13px] font-semibold">What the agent changed</h2>
-            <div className="max-h-[38vh] overflow-y-auto pr-1">
+            <h2 className="m-0 mb-2.5 text-[13px] font-semibold tracking-[-0.005em]">What the agent changed</h2>
+            <div className="max-h-[38vh] overflow-y-auto rounded-xl border border-line bg-raised p-3
+                            shadow-[inset_0_1px_2px_rgb(0_0_0/0.3)]">
             {task.docs?.['review.md'] ? (
               <Markdown source={task.docs['review.md']} className="text-[13px] text-ink-3" />
             ) : task.docs?.['spec.md'] ? (
@@ -185,7 +186,7 @@ export default function Review({ task, flow }) {
           </section>
 
           <section className="shrink-0">
-            <h2 className="m-0 mb-2 text-[13px] font-semibold">Checks</h2>
+            <h2 className="m-0 mb-2.5 text-[13px] font-semibold tracking-[-0.005em]">Checks</h2>
             <div className="flex flex-col gap-1.5">
               {git.map((repo) => {
                 const [tone, label] = PIPELINE[repo.pipeline?.status] || []
@@ -252,7 +253,9 @@ export default function Review({ task, flow }) {
                 disabled={!!busy || !followUp.trim() || !task.root}
                 onClick={() => act('follow-up', () => api.followUp(task.id, followUp).then(() => setFollowUp('')))}
                 className="flex size-[38px] flex-none cursor-pointer items-center justify-center rounded-full
-                           bg-accent text-on-accent disabled:opacity-30"
+                           bg-accent text-on-accent shadow-accent transition-all duration-200 ease-smooth
+                           hover:scale-105 hover:shadow-accent-lift active:scale-95
+                           disabled:scale-100 disabled:opacity-30 disabled:shadow-none"
               >
                 <IconArrowUp size={16} stroke={2.4} />
               </button>

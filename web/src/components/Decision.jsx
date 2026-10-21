@@ -39,8 +39,11 @@ export default function Decision({ task, onError }) {
   if (!gate && !question) return null
 
   return (
-    <section className="flex flex-col gap-2.5 rounded-xl border border-warn-line bg-warn-bg p-3.5">
-      <div className="flex items-center gap-2 text-[13px] font-medium text-warn">
+    <section
+      className="animate-rise flex flex-col gap-2.5 rounded-xl border border-warn-line bg-warn-bg p-4
+                 shadow-[inset_0_1px_0_rgb(255_255_255/0.05),0_2px_6px_rgb(0_0_0/0.4),0_16px_40px_-14px_color-mix(in_srgb,var(--color-warn)_35%,transparent)]"
+    >
+      <div className="flex items-center gap-2 text-[13px] font-semibold tracking-[-0.005em] text-warn">
         {gate ? <IconAlertTriangle size={14} /> : <IconMessageQuestion size={14} />}
         {gate ? `Your call: ${task.awaitingPhase}` : 'Tern needs an answer'}
       </div>

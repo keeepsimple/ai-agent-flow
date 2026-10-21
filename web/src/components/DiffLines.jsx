@@ -26,7 +26,11 @@ export default function DiffLines({ patch, single = false }) {
         }
         const num = NUM[line.type] || 'text-faint'
         return (
-          <div key={i} className={`flex pr-4 whitespace-pre ${ROW[line.type] || ''}`}>
+          <div
+            key={i}
+            className={`flex pr-4 whitespace-pre transition-colors duration-100
+                        hover:bg-ink/[0.035] ${ROW[line.type] || ''}`}
+          >
             {single ? (
               <span className={`w-11 flex-none pr-3 text-right ${num}`}>{line.newNo ?? line.oldNo ?? ''}</span>
             ) : (

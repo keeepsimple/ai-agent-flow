@@ -7,7 +7,9 @@ export function Mark({ size = 26 }) {
   return (
     <span
       style={{ width: size, height: size }}
-      className="flex items-center justify-center rounded-[7px] bg-accent text-on-accent"
+      className="flex shrink-0 items-center justify-center rounded-[8px] bg-accent
+                 bg-[linear-gradient(145deg,color-mix(in_srgb,white_22%,var(--color-accent)),var(--color-accent))]
+                 text-on-accent shadow-accent"
     >
       <svg
         width={size * 0.58}
@@ -45,30 +47,59 @@ export function AccentPicker() {
           aria-label={option.name}
           aria-pressed={accent === option.value}
           title={option.name}
-          style={{ background: option.value }}
-          className={`size-3.5 cursor-pointer rounded-full transition-[box-shadow] duration-150
-                      ${accent === option.value ? 'ring-2 ring-ink/70 ring-offset-2 ring-offset-panel' : 'opacity-60 hover:opacity-100'}`}
+          style={{
+            background: option.value,
+            boxShadow: accent === option.value ? `0 0 12px -2px ${option.value}` : undefined,
+          }}
+          className={`size-3.5 cursor-pointer rounded-full transition-all duration-200 ease-smooth
+                      ${accent === option.value
+                        ? 'scale-110 ring-2 ring-ink/70 ring-offset-2 ring-offset-panel'
+                        : 'opacity-50 hover:scale-110 hover:opacity-100'}`}
         />
       ))}
     </div>
   )
 }
 
-export default function Header({ active, task, repoLabel, children }) {
+export default function Header({ active, task, repoLabel, onRepos, reposOpen, children }) {
+  const repos = repoLabel || task?.repos?.join(' + ') || 'repos'
+
   return (
     <header
-      className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-panel px-4"
+      className="relative z-20 flex h-14 shrink-0 items-center gap-3 border-b border-line px-4
+                 bg-[linear-gradient(to_bottom,var(--color-selected),var(--color-panel))]
+                 shadow-[inset_0_1px_0_rgb(255_255_255/0.05),0_1px_0_rgb(0_0_0/0.5),0_8px_24px_-16px_rgb(0_0_0/0.9)]"
     >
-      <a href={to.sessions()} className="flex items-center gap-2.5 text-[15px] font-semibold text-ink no-underline">
-        <Mark />
+      <a
+        href={to.sessions()}
+        className="group flex items-center gap-2.5 text-[15px] font-semibold tracking-[-0.01em] text-ink no-underline"
+      >
+        <span className="transition-transform duration-300 ease-smooth group-hover:scale-105">
+          <Mark />
+        </span>
         Tern
       </a>
       <span className="text-dim" aria-hidden="true">/</span>
 
-      <Chip as="span" className="max-w-[16rem] cursor-default">
-        <span className="truncate">{repoLabel || task?.repos?.join(' + ') || 'repos'}</span>
-        <IconChevronDown size={12} className="shrink-0 text-muted" />
-      </Chip>
+      {onRepos ? (
+        <Chip
+          active={reposOpen}
+          onClick={onRepos}
+          aria-expanded={reposOpen}
+          title="Choose which repos a new task runs in"
+          className="max-w-[16rem]"
+        >
+          <span className="truncate">{repos}</span>
+          <IconChevronDown
+            size={12}
+            className={`shrink-0 transition-transform duration-200 ease-smooth ${reposOpen ? 'rotate-180' : ''}`}
+          />
+        </Chip>
+      ) : (
+        <Chip as="span" className="max-w-[16rem] cursor-default">
+          <span className="truncate">{repos}</span>
+        </Chip>
+      )}
 
       {task?.trees?.[0] && (
         <span className="hidden min-w-0 xl:block">
@@ -79,12 +110,17 @@ export default function Header({ active, task, repoLabel, children }) {
         </span>
       )}
 
-      <nav aria-label="Primary" className="ml-2 flex shrink-0 gap-0.5">
+      <nav
+        aria-label="Primary"
+        className="ml-2 flex shrink-0 gap-0.5 rounded-full border border-line/70 bg-page/40 p-[3px]"
+      >
         {NAV.map(([key, label]) => {
           const href = key === 'sessions' ? to.sessions() : task ? to[key](task.id) : null
           const current = key === active
-          const className = `rounded-lg px-3 py-2 text-[13px] no-underline transition-colors duration-150 ${
-            current ? 'bg-selected text-ink' : 'text-muted hover:text-ink'
+          const className = `rounded-full px-3.5 py-1.5 text-[13px] no-underline transition-all duration-200 ease-smooth ${
+            current
+              ? 'bg-selected text-ink shadow-e1'
+              : 'text-muted hover:bg-raised hover:text-ink'
           }`
           return href ? (
             <a key={key} href={href} className={className} aria-current={current ? 'page' : undefined}>
