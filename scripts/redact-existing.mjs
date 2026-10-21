@@ -4,7 +4,7 @@
 // Run with the server stopped: FLOW_DATA=<data dir> node scripts/redact-existing.mjs
 import fs from 'node:fs'
 import path from 'node:path'
-import { detect, hide, keep } from '../server/secrets.js'
+import { hide, keep } from '../server/secrets.js'
 
 const DATA = process.env.FLOW_DATA || path.join(import.meta.dirname, '..', 'data')
 const tasksFile = path.join(DATA, 'tasks.json')
@@ -18,11 +18,11 @@ for (const task of Object.values(tasks)) {
   if (!secrets.length) continue
 
   for (const { name, value } of secrets) keep(task.id, name, value)
+  const where = [task.prompt !== texts.prompt ? 'prompt' : null, log !== texts.log ? 'log' : null]
   task.prompt = texts.prompt
   task.secrets = [...new Set([...(task.secrets || []), ...secrets.map((s) => s.name)])]
   if (log !== texts.log) fs.writeFileSync(logFile, texts.log)
-  const where = [task.prompt !== texts.prompt || detect(task.prompt).length ? null : 'prompt', log !== texts.log ? 'log' : null]
-  console.log(`${task.id}: moved ${secrets.map((s) => s.name).join(', ')} (${where.filter(Boolean).join(', ') || 'prompt'})`)
+  console.log(`${task.id}: moved ${secrets.map((s) => s.name).join(', ')} (${where.filter(Boolean).join(', ')})`)
   rotate.push(...secrets.map((s) => `${s.name} (${task.id})`))
 }
 

@@ -5,6 +5,8 @@ import { spawn } from 'node:child_process'
 import { bus, sse, tasks, readLog, artifact } from './store.js'
 import * as runner from './runner.js'
 import * as secrets from './secrets.js'
+import * as repoConfig from './repo-config.js'
+import { resolveRepo } from './roots.js'
 import * as uploads from './uploads.js'
 import * as repoGit from './git.js'
 import * as disk from './disk.js'
@@ -168,6 +170,18 @@ async function api(req, res, url) {
       if (!file) return json(res, 404, { error: 'not found' })
       res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' })
       return fs.createReadStream(file).pipe(res)
+    }
+  }
+
+  // Per-repo: where prod is and what deploys it. The token never comes back out.
+  if (section === 'repos' && id === 'config') {
+    const name = url.searchParams.get('repo') || ''
+    let repo
+    try { repo = resolveRepo(name) } catch (err) { return json(res, 400, { error: err.message }) }
+    if (req.method === 'GET') return json(res, 200, repoConfig.get(repo.path))
+    if (req.method === 'PUT') {
+      const patch = JSON.parse((await body(req)) || '{}')
+      try { return json(res, 200, repoConfig.set(repo.path, patch)) } catch (err) { return json(res, 400, { error: err.message }) }
     }
   }
 

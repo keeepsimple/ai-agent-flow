@@ -1009,6 +1009,24 @@ try {
   console.log('ok: secrets are named on the task, valued only in the shell, and forgotten with it,\n' +
     '    and a diff that carries one is refused by the push button and by the guard')
 
+  // Per-repo config: where prod is, and how to watch its deploy. The Jenkins
+  // token goes to the keychain, and never comes back out through the API.
+  const cfg0 = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
+  assert.deepEqual(cfg0, { prodBranch: 'prod', jenkins: null, hasJenkinsToken: false })
+  const putCfg = await fetch(`${base}/api/repos/config?repo=api`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, jenkinsToken: 't' }),
+  })
+  assert.ok(putCfg.ok, 'config saved')
+  const cfg1 = await (await fetch(`${base}/api/repos/config?repo=api`)).json()
+  assert.deepEqual(cfg1, { prodBranch: 'release', jenkins: { url: 'http://j', job: 'api-prod', user: 'ci' }, hasJenkinsToken: true })
+  assert.equal(secrets.read('repo:' + path.join(repos, 'api'), 'JENKINS_TOKEN'), 't')
+  assert.ok(!fs.readFileSync(path.join(root, 'data', 'repos.json'), 'utf8').includes('"t"'), 'the token is not in the file')
+  const badCfg = await fetch(`${base}/api/repos/config?repo=nope`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+  assert.equal(badCfg.status, 400)
+  secrets.forget('repo:' + path.join(repos, 'api'), ['JENKINS_TOKEN'])
+  console.log('ok: a repo remembers its prod branch and Jenkins job, with the token in the keychain')
+
   // ---- From here on the server is restarted; nothing above may follow. ----
 
   // A crash mid-run used to fail the task, and the only way on was to prompt
