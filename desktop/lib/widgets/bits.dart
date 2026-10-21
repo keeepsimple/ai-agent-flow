@@ -93,7 +93,7 @@ class _FlowButtonState extends State<FlowButton> {
               SizedBox(
                 width: 12,
                 height: 12,
-                child: CircularProgressIndicator(strokeWidth: 1.6, color: fg),
+                child: Working(size: 12, dot: 6, colour: fg),
               )
             else if (widget.icon != null)
               Icon(widget.icon, size: 14, color: fg),
@@ -271,6 +271,95 @@ class _Chip2State extends State<Chip2> {
   }
 }
 
+/// A live pulse: a solid core with rings leaving it.
+///
+/// Reads as working without the generic spin, and keeps a dot's footprint so
+/// nothing around it shifts when a run starts.
+class Working extends StatefulWidget {
+  const Working({super.key, this.size = 13, this.dot = 8, this.colour});
+
+  /// The box it occupies. Rings are drawn past it on purpose: CustomPaint does
+  /// not clip, so the travel costs no layout.
+  final double size;
+
+  /// The solid core, which must match the resting dot it replaces or a glance
+  /// reads a running task as quieter than a finished one.
+  final double dot;
+  final Color? colour;
+
+  @override
+  State<Working> createState() => _WorkingState();
+}
+
+class _WorkingState extends State<Working> with SingleTickerProviderStateMixin {
+  late final AnimationController _loop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1700),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _loop.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colour = widget.colour ?? Theme.of(context).colorScheme.primary;
+    final box = SizedBox(width: widget.size, height: widget.size);
+
+    // Someone who asked the system for less movement still has to be able to
+    // see that this is running, so the core stays and only the rings go.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      return CustomPaint(
+        painter: _Pulse(0, colour, widget.dot, rings: false),
+        child: box,
+      );
+    }
+    return AnimatedBuilder(
+      animation: _loop,
+      builder: (_, child) =>
+          CustomPaint(painter: _Pulse(_loop.value, colour, widget.dot), child: child),
+      child: box,
+    );
+  }
+}
+
+class _Pulse extends CustomPainter {
+  _Pulse(this.t, this.colour, this.dot, {this.rings = true});
+  final double t;
+  final Color colour;
+  final double dot;
+  final bool rings;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centre = size.center(Offset.zero);
+    final core = dot / 2;
+    final reach = size.width * 0.85;
+
+    if (rings) {
+      // Half a cycle apart, so one is always on its way out.
+      for (final phase in [t, (t + 0.5) % 1]) {
+        final out = Curves.easeOut.transform(phase);
+        canvas.drawCircle(
+          centre,
+          core + (reach - core) * out,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4
+            ..color = colour.withValues(alpha: (1 - out) * 0.75),
+        );
+      }
+    }
+    canvas.drawCircle(centre, core, Paint()..color = colour);
+  }
+
+  @override
+  bool shouldRepaint(_Pulse old) =>
+      old.t != t || old.colour != colour || old.dot != dot || old.rings != rings;
+}
+
 /// The status dot, pulsing only while something is actually running.
 class StatusDot extends StatefulWidget {
   const StatusDot(this.status, {super.key, this.size = 8});
@@ -317,18 +406,7 @@ class _StatusDotState extends State<StatusDot>
     // saying it in colour alone says nothing to an eye that cannot separate
     // these two darks. Queued keeps the dot: it is waiting, not working.
     if (widget.status == 'running') {
-      return SizedBox(
-        width: widget.size + 5,
-        height: widget.size + 5,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: colour,
-          // The dim full ring is the point. A bare arc is thinner than the
-          // dot it replaces, so at any one instant it reads as less, not
-          // more: the ring keeps the mass and the arc supplies the motion.
-          backgroundColor: Tern.lineStrong,
-        ),
-      );
+      return Working(size: widget.size + 5, dot: widget.size, colour: colour);
     }
     if (widget.status != 'queued') return dot;
     return AnimatedBuilder(

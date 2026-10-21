@@ -327,14 +327,7 @@ class _TaskRowState extends State<_TaskRow>
                             // git worktree remove is seconds on a big
                             // checkout. Without this the row sat still and
                             // then jumped, which reads as a freeze.
-                            ? const SizedBox(
-                                width: 15,
-                                height: 15,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 1.6,
-                                  color: Tern.muted,
-                                ),
-                              )
+                            ? const Working(size: 15, dot: 7, colour: Tern.muted)
                             : const Icon(
                                 Icons.folder_off_outlined,
                                 size: 15,
