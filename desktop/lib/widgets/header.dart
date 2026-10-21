@@ -27,7 +27,11 @@ class Header extends StatelessWidget {
     required this.onDeleted,
     this.onPrompts,
     this.promptsOpen = false,
+    this.onSettings,
   });
+
+  /// Opens the settings dialog; absent where there is nowhere to open it.
+  final VoidCallback? onSettings;
 
   /// Opens the Prompts screen; absent where there is nowhere to open it.
   final VoidCallback? onPrompts;
@@ -180,6 +184,10 @@ class Header extends StatelessWidget {
               ),
             ],
           ] else ...[
+            if (onSettings != null) ...[
+              FlowButton(dense: true, label: 'Settings…', icon: Icons.tune, onPressed: onSettings),
+              const SizedBox(width: 8),
+            ],
             if (onPrompts != null) ...[
               FlowButton(
                 dense: true,

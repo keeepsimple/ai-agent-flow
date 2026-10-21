@@ -353,7 +353,10 @@ class _TaskRowState extends State<_TaskRow>
 
 /// The form. Everything the server will accept, and nothing it will not.
 class NewTask extends StatefulWidget {
-  const NewTask({super.key, required this.flow, required this.onStarted});
+  const NewTask({super.key, required this.flow, required this.onStarted, this.templatesInitial});
+
+  /// For tests: templates without a server.
+  final List<Map<String, dynamic>>? templatesInitial;
   final FlowState flow;
   final void Function(String id) onStarted;
 
@@ -442,6 +445,102 @@ class _NewTaskState extends State<NewTask> {
 
   /// Which repos a task would run against. Ticking none means the whole
   /// workspace: every repo in the folder being shown, one worktree each.
+  Future<List<Map<String, dynamic>>> _templates() async =>
+      widget.templatesInitial ?? await widget.flow.api.templates();
+
+  /// Pick a saved form. Everything it carries replaces what is typed.
+  Future<void> _fromTemplate() async {
+    List<Map<String, dynamic>> list;
+    try {
+      list = await _templates();
+    } catch (err) {
+      widget.flow.fail(err);
+      return;
+    }
+    if (!mounted) return;
+    final picked = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Tern.raised,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('Start from a template', style: t(14, color: Tern.ink)),
+        content: SizedBox(
+          width: 420,
+          child: list.isEmpty
+              ? Text('No templates yet. Fill the form, then Save as template.', style: t(12.5, color: Tern.muted))
+              : Column(mainAxisSize: MainAxisSize.min, children: [
+                  for (final tpl in list)
+                    ListTile(
+                      dense: true,
+                      title: Text(tpl['name'] as String, style: t(12.5, color: Tern.ink)),
+                      subtitle: Text(((tpl['prompt'] ?? '') as String).split('\n').first, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(11, color: Tern.muted)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 16, color: Tern.faint),
+                        tooltip: 'Delete this template',
+                        onPressed: () async {
+                          if (await widget.flow.run(() => widget.flow.api.deleteTemplate(tpl['id'] as String), refresh: false) && context.mounted) {
+                            Navigator.pop(context);
+                          }
+                        },
+                      ),
+                      onTap: () => Navigator.pop(context, tpl),
+                    ),
+                ]),
+        ),
+        actions: [FlowButton(label: 'Cancel', onPressed: () => Navigator.pop(context))],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _prompt.text = (picked['prompt'] ?? '') as String;
+      _picked
+        ..clear()
+        ..addAll(((picked['repos'] as List?) ?? const []).cast<String>());
+      _run = picked['run'] as String?;
+      _mode = picked['permissionMode'] as String?;
+      _model = picked['model'] as String?;
+      _effort = picked['effort'] as String?;
+    });
+  }
+
+  /// Save what is on the form under a name, to start from again.
+  Future<void> _saveTemplate() async {
+    final name = TextEditingController();
+    final given = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Tern.raised,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('Save the form as a template', style: t(14, color: Tern.ink)),
+        content: TextField(
+          controller: name,
+          autofocus: true,
+          style: t(12.5, color: Tern.ink),
+          decoration: const InputDecoration(isDense: true, hintText: 'Port an MR onto main'),
+          onSubmitted: (v) => Navigator.pop(context, v.trim()),
+        ),
+        actions: [
+          FlowButton(label: 'Cancel', onPressed: () => Navigator.pop(context)),
+          FlowButton(label: 'Save', tone: Tone.primary, onPressed: () => Navigator.pop(context, name.text.trim())),
+        ],
+      ),
+    );
+    name.dispose();
+    if (given == null || given.isEmpty) return;
+    await widget.flow.run(
+      () => widget.flow.api.saveTemplate({
+        'name': given,
+        'prompt': _prompt.text,
+        'repos': _picked.toList(),
+        'run': _run ?? 'ask',
+        if (_mode != null) 'permissionMode': _mode,
+        if (_model != null) 'model': _model,
+        if (_effort != null) 'effort': _effort,
+      }),
+      refresh: false,
+    );
+  }
+
   List<String> _target() {
     if (_picked.isNotEmpty) return _picked.toList();
     final workspace = widget.flow.workspace;
@@ -684,6 +783,10 @@ class _NewTaskState extends State<NewTask> {
           Row(
             children: [
               Chip2(label: 'Attach', icon: Icons.attach_file, onTap: _attach),
+              const SizedBox(width: 6),
+              Chip2(label: 'From template', icon: Icons.bookmark_outline, onTap: _fromTemplate),
+              const SizedBox(width: 6),
+              Chip2(label: 'Save as template', icon: Icons.bookmark_add_outlined, onTap: _saveTemplate),
               const Spacer(),
               Text(sendHint, style: t(10.5, color: Tern.muted, code: true)),
               const SizedBox(width: 10),

@@ -177,6 +177,22 @@ class Api {
   Future<dynamic> switchRun(String id, String run) =>
       _send('PUT', '/api/tasks/$id/run', {'run': run});
 
+  Future<Map<String, dynamic>> settings() async => (await _send('GET', '/api/settings')) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> saveSettings(Map<String, dynamic> patch) async =>
+      (await _send('PUT', '/api/settings', patch)) as Map<String, dynamic>;
+  Future<dynamic> telegramTest() => _send('POST', '/api/settings/telegram-test');
+
+  Future<List<Map<String, dynamic>>> templates() async =>
+      ((await _send('GET', '/api/templates')) as List).cast<Map<String, dynamic>>();
+  Future<Map<String, dynamic>> saveTemplate(Map<String, dynamic> tpl) async =>
+      (await _send('PUT', '/api/templates', tpl)) as Map<String, dynamic>;
+  Future<dynamic> deleteTemplate(String id) => _send('DELETE', '/api/templates/$id');
+
+  /// Screenshots the agent took, newest first.
+  Future<List<Map<String, dynamic>>> shots(String id) async =>
+      ((await _send('GET', '/api/tasks/$id/shots')) as List).cast<Map<String, dynamic>>();
+  String shotUrl(String id, String name) => 'http://127.0.0.1:$port/api/tasks/$id/shots/${Uri.encodeComponent(name)}';
+
   Future<List<Map<String, dynamic>>> prompts() async =>
       ((await _send('GET', '/api/prompts')) as List).cast<Map<String, dynamic>>();
   Future<dynamic> savePrompt(String name, String text) =>

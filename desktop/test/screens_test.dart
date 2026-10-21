@@ -25,6 +25,7 @@ import 'package:agent_flow/widgets/mentions.dart';
 import 'package:agent_flow/widgets/markdown_view.dart';
 import 'package:agent_flow/widgets/header.dart';
 import 'package:agent_flow/widgets/secrets.dart';
+import 'package:agent_flow/widgets/settings_dialog.dart';
 import 'package:agent_flow/widgets/sidebar.dart';
 import 'package:agent_flow/widgets/status_line.dart';
 import 'package:flutter/gestures.dart';
@@ -1486,6 +1487,69 @@ void main() {
     await tester.tap(find.text('Land & ship to prod'));
     await tester.pumpAndSettle();
     expect(calls, ['land&ship']);
+  });
+
+  testWidgets('settings: the cost line and the phone', (tester) async {
+    final flow = _flow();
+    await _shoot(
+      tester,
+      'settings-dialog',
+      Center(child: SettingsDialog(flow: flow, initial: const {'costWarnUsd': 20, 'telegram': {'chatId': '42'}, 'hasTelegramToken': true})),
+      const Size(640, 480),
+    );
+    expect(find.text('Cost line (USD per task)'), findsOneWidget);
+    expect(find.text('Telegram chat id'), findsOneWidget);
+    expect(find.textContaining('token is set'), findsOneWidget);
+    expect(find.text('Test'), findsOneWidget);
+    expect(find.text('Save'), findsOneWidget);
+  });
+
+  testWidgets('the form starts from a template and can save one', (tester) async {
+    final flow = _flow();
+    tester.view.physicalSize = const Size(1000, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: NewTask(
+            flow: flow,
+            onStarted: (_) {},
+            templatesInitial: const [
+              {'id': 'aa', 'name': 'Port an MR', 'prompt': 'Port MR {n} onto main', 'repos': ['notify-service'], 'run': 'quick'},
+            ],
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('Save as template'), findsOneWidget);
+    await tester.tap(find.text('From template'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Port an MR'));
+    await tester.pumpAndSettle();
+    expect(find.text('Port MR {n} onto main'), findsOneWidget, reason: 'the prompt is filled');
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('the preview pane shows the latest screenshot, or says there is none', (tester) async {
+    final flow = _flow();
+    final task = _task({'status': 'done', 'phase': null});
+    tester.view.physicalSize = const Size(1340, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(body: WorkspaceScreen(flow: flow, task: task, prefs: Prefs.memory(), previewInitial: const [])),
+    ));
+    await tester.pump();
+    expect(find.text('No screenshot yet'), findsNothing, reason: 'the diff is the default pane');
+    await tester.tap(find.byTooltip('Show the latest screenshot'));
+    await tester.pump();
+    expect(find.text('No screenshot yet'), findsOneWidget);
+    expect(find.text('Open in browser'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
   });
 
   testWidgets('the header with nothing open', (tester) async {

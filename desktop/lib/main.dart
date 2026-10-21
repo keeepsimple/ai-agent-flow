@@ -7,6 +7,7 @@ import 'api.dart';
 import 'flow.dart';
 import 'notifier.dart';
 import 'screens/prompts.dart';
+import 'widgets/settings_dialog.dart';
 import 'screens/review.dart';
 import 'screens/sessions.dart';
 import 'screens/workspace.dart';
@@ -174,6 +175,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                   onDropped: () {},
                   onDeleted: () => _flow.select(null),
                   onPrompts: () => setState(() => _prompts = !_prompts),
+                  onSettings: () => showDialog<void>(context: context, builder: (_) => SettingsDialog(flow: _flow)),
                   promptsOpen: _prompts,
                 ),
                 Expanded(

@@ -12,6 +12,7 @@ import '../widgets/decision.dart';
 import '../widgets/diff_view.dart';
 import '../widgets/markdown_view.dart';
 import '../widgets/output_pane.dart';
+import '../widgets/preview_pane.dart';
 import '../widgets/splitter.dart';
 import '../widgets/status_line.dart';
 
@@ -24,7 +25,11 @@ class WorkspaceScreen extends StatefulWidget {
     required this.prefs,
     this.outputInitial,
     this.outputTextInitial,
+    this.previewInitial,
   });
+
+  /// For tests of the preview pane: skips the fetch and the polling.
+  final List<Map<String, dynamic>>? previewInitial;
 
   final FlowState flow;
   final Task task;
@@ -45,6 +50,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   /// A document picked in the explorer; shown in the pane instead of the diff.
   String? _doc;
   String? _loadedFor;
+
+  /// What the right pane shows for a code task: the diff, or the latest screenshot.
+  bool _previewMode = false;
   final _jump = ValueNotifier<int>(0);
 
   @override
@@ -254,8 +262,27 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                 style: t(11.5, color: Tern.ink3, code: true),
               ),
             ),
+          if (open)
+            Tooltip(
+              message: _previewMode ? 'Show the diff' : 'Show the latest screenshot',
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => setState(() => _previewMode = !_previewMode),
+                  child: SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: Icon(
+                      _previewMode ? Icons.difference_outlined : Icons.photo_outlined,
+                      size: 15,
+                      color: _previewMode ? Tern.ink : Tern.muted,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Tooltip(
-            message: open ? 'Hide the diff' : 'Show the diff',
+            message: open ? 'Hide the pane' : 'Show the pane',
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
@@ -288,7 +315,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             header,
             if (open)
               Expanded(
-                child: _doc != null
+                child: _previewMode
+                    ? PreviewPane(task: widget.task, flow: widget.flow, initial: widget.previewInitial)
+                    : _doc != null
                     ? SingleChildScrollView(
                         padding: const EdgeInsets.all(16),
                         child: MarkdownView(widget.task.docs[_doc] as String?),
