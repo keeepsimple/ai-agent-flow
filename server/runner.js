@@ -310,11 +310,14 @@ async function runTask(task) {
 
   update(task.id, { status: 'done', phase: null })
   tell(task, `Done: ${task.title}`, `${task.repos.join(' + ')} · $${task.cost.toFixed(2)}`)
+  drain(task.id)
 }
 
 function fail(task, message) {
   update(task.id, { status: 'failed', error: message })
   tell(task, `Failed: ${task.title}`, message.slice(0, 180), true)
+  // A message queued behind a failure is usually about the failure.
+  drain(task.id)
 }
 
 function waitForApproval(task, phase) {
@@ -423,6 +426,7 @@ function sideRun(task, label, prompt, cwd, finished) {
       if (tasks[task.id].status === 'cancelled') return
       update(task.id, { status: previous, phase: null })
       tell(task, finished, task.repos.join(' + '))
+      drain(task.id)
     })
     .catch((err) => {
       if (tasks[task.id].status === 'cancelled') return
@@ -487,13 +491,43 @@ export function mergeViaAgent(id, repo) {
 }
 
 /**
+ * Send whatever was typed while the agent was busy.
+ *
+ * Run after anything that ends a run, including one that failed: a message
+ * queued behind a failure is usually about the failure.
+ */
+function drain(id) {
+  const task = tasks[id]
+  if (!task?.queued?.length) return
+  if (task.status === 'running' || task.status === 'queued') return
+
+  const waiting = task.queued
+  update(id, { queued: [] })
+  // One run for everything that piled up, in the order it was typed: three
+  // separate agent runs for three sentences is three times the price and
+  // loses the thread between them.
+  followUp(id, waiting.join('\n\n'))
+}
+
+/**
  * Keep working on a finished task: the build broke, the fix was not quite it,
  * one more thing. Same worktrees, same branches, no new task to lose the
  * context of what this already is.
  */
 export function followUp(id, request) {
-  const task = readyForSideRun(id)
   if (!request?.trim()) throw new Error('say what you want changed')
+
+  // Busy is not a reason to lose what someone just typed. It waits in line
+  // and goes as soon as the run in front of it is done.
+  const busy = tasks[id]
+  if (!busy) throw new Error('unknown task')
+  if (busy.status === 'running' || busy.status === 'queued') {
+    update(id, { queued: [...(busy.queued || []), request.trim()] })
+    log(id, { kind: 'decision', text: `Queued: ${request.trim()}` })
+    return busy
+  }
+
+  const task = readyForSideRun(id)
 
   log(id, { kind: 'decision', text: `Follow-up: ${request.trim()}` })
   return sideRun(
@@ -530,7 +564,19 @@ export async function preview(id, where = '') {
 export function cancel(id) {
   const task = tasks[id]
   if (!task) throw new Error('unknown task')
-  update(id, { status: 'cancelled', phase: null, awaitingPhase: null, openQuestionId: null })
+
+  // Stop means stop, including the things waiting their turn. Said out loud,
+  // because a message that quietly evaporates is worse than one refused.
+  if (task.queued?.length) {
+    log(id, { kind: 'decision', text: `Dropped ${task.queued.length} queued message(s) on cancel` })
+  }
+  update(id, {
+    status: 'cancelled',
+    phase: null,
+    awaitingPhase: null,
+    openQuestionId: null,
+    queued: [],
+  })
   for (const tree of task.trees || []) devServer.stop(tree.worktree)
   killTree(children.get(id))
   // Anything blocked on this task has to be let go, or the HTTP request that is

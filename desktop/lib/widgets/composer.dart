@@ -41,7 +41,9 @@ class _ComposerState extends State<Composer> {
 
   Future<void> _send() async {
     final body = _text.text.trim();
-    if (body.isEmpty || _busy || widget.task.running) return;
+    // Running is not a reason to refuse it. The server holds it until the
+    // run in front of it is done, which is what you wanted when you typed it.
+    if (body.isEmpty || _busy) return;
     setState(() => _busy = true);
     final request = [body, ..._attached.map((p) => 'Attached: $p')].join('\n');
     final ok = await widget.flow.run(
@@ -136,7 +138,7 @@ class _ComposerState extends State<Composer> {
                     style: t(13, color: Tern.ink2),
                     decoration: InputDecoration.collapsed(
                       hintText: running
-                          ? 'Tern is working. This box opens when it stops.'
+                          ? 'Tern is working. Anything you send waits its turn.'
                           : dropped
                           ? 'The worktree was dropped. Asking for something checks it back out.'
                           : 'Ask for a change.',
@@ -178,12 +180,10 @@ class _ComposerState extends State<Composer> {
                 ),
                 const SizedBox(width: 4),
                 _Round(
-                  icon: Icons.arrow_upward,
-                  tooltip: 'Send',
+                  icon: running ? Icons.schedule_send : Icons.arrow_upward,
+                  tooltip: running ? 'Send when the run finishes' : 'Send',
                   filled: true,
-                  onTap: _text.text.trim().isEmpty || _busy || running
-                      ? null
-                      : _send,
+                  onTap: _text.text.trim().isEmpty || _busy ? null : _send,
                 ),
               ],
             ),

@@ -176,7 +176,22 @@ async function build() {
     fs.utimesSync(app, new Date(), new Date())
 
     console.log(`\n${app}  (${run('du', ['-sh', app]).split('\t')[0]})`)
-    console.log('Move it to /Applications, then grant it Full Disk Access.')
+
+    // Two copies with one bundle id is a trap: macOS resolves the id to
+    // whichever it likes, so a notification asking for "that app" can open a
+    // second instance of a different copy. Installing replaces rather than
+    // adds.
+    if (process.argv.includes('--install')) {
+      const installed = '/Applications/Agent Flow.app'
+      run('ditto', [app, `${installed}.new`])
+      fs.rmSync(installed, { recursive: true, force: true })
+      fs.renameSync(`${installed}.new`, installed)
+      console.log(`installed to ${installed}`)
+      console.log('Full Disk Access is remembered against the certificate, not the path.')
+    } else {
+      console.log('Move it to /Applications, then grant it Full Disk Access.')
+      console.log('Or: npm run app -- --install')
+    }
   } else {
     const built = path.join(DESKTOP, 'build/windows/x64/runner/Release')
     const app = path.join(OUT, 'Agent Flow')

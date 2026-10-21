@@ -750,6 +750,16 @@ try {
   const pid = Number(fs.readFileSync(pidFile, 'utf8'))
   assert.doesNotThrow(() => process.kill(pid, 0), 'the stub should be running before cancel')
 
+  // Busy is not a reason to lose what someone typed: it waits in line.
+  await post(`/api/tasks/${sleepy.id}/follow-up`, { request: 'and fix the other thing' })
+  const waiting = await (await fetch(`${base}/api/tasks/${sleepy.id}`)).json()
+  assert.deepEqual(waiting.queued, ['and fix the other thing'])
+  assert.equal(waiting.status, 'running', 'queueing must not disturb the run in front of it')
+  assert.ok(
+    waiting.log.some((l) => l.kind === 'decision' && l.text === 'Queued: and fix the other thing'),
+    'and it shows in the conversation rather than vanishing until later',
+  )
+
   await post(`/api/tasks/${sleepy.id}/cancel`)
   let stopped = false
   for (let i = 0; i < 70; i++) {
@@ -757,6 +767,14 @@ try {
     await sleep(100)
   }
   assert.ok(stopped, 'cancel must stop a process that ignores SIGTERM')
+
+  // Stop means stop. The queue goes with it, and says so.
+  const cancelled = await (await fetch(`${base}/api/tasks/${sleepy.id}`)).json()
+  assert.deepEqual(cancelled.queued, [], 'cancelling drops what was waiting')
+  assert.ok(
+    cancelled.log.some((l) => l.text?.startsWith('Dropped 1 queued message')),
+    'rather than letting it evaporate quietly',
+  )
 
   const lateAsk = await fetch(`${base}/api/tasks/${sleepy.id}/ask`, {
     method: 'POST',
@@ -806,6 +824,7 @@ try {
     '    the branch follows that name and a request in Vietnamese still slugs readably,\n' +
     '    retrying a finished task is refused rather than silently repeated,\n' +
     '    merging is an agent run that catches up first and fast-forwards,\n' +
+    '    a message typed mid-run waits in line, and cancelling drops it out loud,\n' +
     '    @ finds a tracked file, name matches first,\n' +
     '    choosing no run shape is the plain one: no documents, no review,\n' +
     '    a quick run skips spec and plan but still reviews itself,\n' +
