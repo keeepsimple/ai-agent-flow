@@ -173,7 +173,10 @@ function Plan({ task }) {
 
 export default function Conversation({ task, children }) {
   const scroller = useRef(null)
-  const [pinned, setPinned] = useState(true)
+  // Opens at the top, not the end. A finished run is something you read from
+  // the beginning; following the live tail is what the Latest button is for,
+  // and pressing it pins again from then on.
+  const [pinned, setPinned] = useState(false)
   const log = task.log || []
 
   useEffect(() => {

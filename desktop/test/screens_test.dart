@@ -21,6 +21,7 @@ import 'package:agent_flow/theme.dart';
 import 'package:agent_flow/widgets/bits.dart';
 import 'package:agent_flow/widgets/composer.dart';
 import 'package:agent_flow/widgets/conversation.dart';
+import 'package:agent_flow/widgets/mentions.dart';
 import 'package:agent_flow/widgets/markdown_view.dart';
 import 'package:agent_flow/widgets/header.dart';
 import 'package:agent_flow/widgets/secrets.dart';
@@ -79,6 +80,19 @@ class _CapturingApi extends Api {
     sent.add(request);
     return <String, dynamic>{};
   }
+}
+
+/// Always has something to offer, so the overlay is guaranteed to open.
+class _FilesApi extends Api {
+  _FilesApi() : super(0);
+  @override
+  Future<List<Map<String, dynamic>>> files(
+    List<String> repos,
+    String query,
+  ) async => [
+    {'repo': 'agent-flow', 'path': 'CLAUDE.md'},
+    {'repo': 'agent-flow', 'path': 'README.md'},
+  ];
 }
 
 Task _task(Map<String, dynamic> extra) => Task({
@@ -620,14 +634,75 @@ void main() {
     );
   });
 
-  testWidgets('scrolled up, the conversation offers a way back down', (
+  testWidgets('the @ list opens away from the edge it would run off', (
     tester,
   ) async {
-    // The goldens cannot cover this one: at rest the button is pinned away at
-    // zero opacity, so a regression that never shows it would look identical.
+    tester.view.physicalSize = const Size(900, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    Future<Rect> openAt(MainAxisAlignment where) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ternTheme(Accent.sky),
+          home: Scaffold(
+            backgroundColor: Tern.page,
+            body: Column(
+              mainAxisAlignment: where,
+              children: [
+                Mentions(
+                  key: ValueKey(where),
+                  controller: controller,
+                  repos: const ['agent-flow'],
+                  api: _FilesApi(),
+                  child: TextField(controller: controller),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      controller.text = '@';
+      controller.selection = const TextSelection.collapsed(offset: 1);
+      // Past the 140ms debounce, then a frame for the lookup to land and one
+      // more for the overlay it inserts.
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump();
+      await tester.pump();
+      return tester.getRect(find.byType(ListView));
+    }
+
+    // The New task box sits at the top of the board. Opening upward there ran
+    // the list off the top of the window, which is what this is about.
+    var list = await openAt(MainAxisAlignment.start);
+    var field = tester.getRect(find.byType(TextField));
+    expect(
+      list.top,
+      greaterThanOrEqualTo(field.bottom),
+      reason: 'with no room above, the list opens downward',
+    );
+
+    // The composer sits at the foot of a workspace, where the opposite holds.
+    list = await openAt(MainAxisAlignment.end);
+    field = tester.getRect(find.byType(TextField));
+    expect(
+      list.bottom,
+      lessThanOrEqualTo(field.top),
+      reason: 'with no room below, it still opens upward',
+    );
+  });
+
+  testWidgets('a conversation opens at the top, with a way down', (
+    tester,
+  ) async {
+    // The goldens cannot cover either half: the button lives at an opacity the
+    // golden reads as absent, and where a list is scrolled to is not something
+    // a still frame of the top of it can show.
     final task = _task({
       'log': [
-        for (var i = 0; i < 80; i++) {'kind': 'text', 'text': 'Step \$i'},
+        for (var i = 0; i < 80; i++) {'kind': 'text', 'text': 'Step $i'},
       ],
     });
 
@@ -656,13 +731,18 @@ void main() {
         .first
         .opacity;
 
-    // It opens at the end, so there is nothing below to go back to.
-    expect(shown(), 0);
+    // Where it is scrolled to, asked of the list rather than of the text: the
+    // messages render through markdown, so there is no flat Text to look for.
+    double offset() => tester
+        .widget<ListView>(find.byType(ListView))
+        .controller!
+        .position
+        .pixels;
 
-    await tester.drag(find.byType(ListView), const Offset(0, 500));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(shown(), 1, reason: 'scrolled up, the way back should be offered');
+    // It opens where the run starts, so the whole of it is below and the way
+    // down is offered from the first frame.
+    expect(offset(), 0, reason: 'a conversation opens where the run starts');
+    expect(shown(), 1, reason: 'and the way down should be offered');
 
     await tester.tap(find.text('Latest'));
     // Frame by frame, not pumpAndSettle: the live status dot pulses for ever,
@@ -671,6 +751,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
     expect(shown(), 0, reason: 'and it should retire once it has done its job');
+    expect(
+      offset(),
+      greaterThan(0),
+      reason: 'because it actually took the reader to the end',
+    );
   });
 
   testWidgets('a long conversation only builds what is on screen', (

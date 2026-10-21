@@ -63,11 +63,11 @@ class _AgentFlowAppState extends State<AgentFlowApp>
     }
     // Before listening: it decides whether the server keeps raising its own.
     _flow.onNotify = (event) => _notifier.show(
-          title: (event['title'] ?? 'Agent Flow') as String,
-          body: (event['body'] ?? '') as String,
-          taskId: event['taskId'] as String?,
-          urgent: event['urgent'] == true,
-        );
+      title: (event['title'] ?? 'Agent Flow') as String,
+      body: (event['body'] ?? '') as String,
+      taskId: event['taskId'] as String?,
+      urgent: event['urgent'] == true,
+    );
 
     await _flow.loadState();
     // Only after the roots are known: a remembered workspace that has since
@@ -180,25 +180,58 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (_prefs.sidebarOpen)
-                        Sidebar(
-                          flow: _flow,
-                          onOpen: _open,
-                          onPick: _pickWorkspace,
-                          prefs: _prefs,
+                      // Slides rather than pops. The width animates against a
+                      // clip while the panel itself stays its full 244, which
+                      // is what OverflowBox is holding open: laying a 244-wide
+                      // child into a 0-wide box is an overflow, not a slide.
+                      ClipRect(
+                        child: AnimatedContainer(
+                          duration: smooth,
+                          curve: ease,
+                          width: _prefs.sidebarOpen ? 244 : 0,
+                          child: OverflowBox(
+                            alignment: Alignment.centerLeft,
+                            minWidth: 244,
+                            maxWidth: 244,
+                            child: Sidebar(
+                              flow: _flow,
+                              onOpen: _open,
+                              onPick: _pickWorkspace,
+                              prefs: _prefs,
+                            ),
+                          ),
                         ),
+                      ),
                       Expanded(
-                        child: showing
-                            ? (_tab == 'review'
-                                  ? ReviewScreen(flow: _flow, task: task)
-                                  : WorkspaceScreen(
-                                      flow: _flow,
-                                      task: task,
-                                      prefs: _prefs,
-                                    ))
-                            : (_prompts
-                                  ? PromptsScreen(flow: _flow)
-                                  : SessionsScreen(flow: _flow, onOpen: _open)),
+                        child: AnimatedSwitcher(
+                          duration: smooth,
+                          switchInCurve: ease,
+                          switchOutCurve: ease,
+                          // Keyed on what screen this is, not on the data in
+                          // it: without that the switcher would cross-fade the
+                          // whole screen every time a log line arrived.
+                          child: KeyedSubtree(
+                            key: ValueKey(
+                              showing
+                                  ? '\$_tab/\${task?.id}'
+                                  : (_prompts ? 'prompts' : 'sessions'),
+                            ),
+                            child: showing
+                                ? (_tab == 'review'
+                                      ? ReviewScreen(flow: _flow, task: task)
+                                      : WorkspaceScreen(
+                                          flow: _flow,
+                                          task: task,
+                                          prefs: _prefs,
+                                        ))
+                                : (_prompts
+                                      ? PromptsScreen(flow: _flow)
+                                      : SessionsScreen(
+                                          flow: _flow,
+                                          onOpen: _open,
+                                        )),
+                          ),
+                        ),
                       ),
                     ],
                   ),

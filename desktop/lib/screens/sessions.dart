@@ -142,6 +142,7 @@ class _TaskRow extends StatefulWidget {
 class _TaskRowState extends State<_TaskRow>
     with SingleTickerProviderStateMixin {
   bool _over = false;
+  bool _dropping = false;
 
   // One-shot, and only for a row that was not on screen a moment ago: the list
   // is keyed by task id, so an existing row keeps its state across the poll and
@@ -274,22 +275,43 @@ class _TaskRowState extends State<_TaskRow>
                     message: 'Drop the worktree. The conversation and the branches stay.',
                     child: InkWell(
                       borderRadius: BorderRadius.circular(6),
-                      onTap: () async {
-                        if (await widget.flow.run(
-                          () => widget.flow.api.dropWorktree(task.id),
-                          refresh: false,
-                        )) {
-                          await widget.flow.loadState();
-                          widget.flow.loadDisk();
-                        }
-                      },
-                      child: const Padding(
-                        padding: EdgeInsets.all(4),
-                        child: Icon(
-                          Icons.folder_off_outlined,
-                          size: 15,
-                          color: Tern.faint,
-                        ),
+                      // Null while it runs, so a second press cannot start a
+                      // second remove on a checkout already going away.
+                      onTap: _dropping
+                          ? null
+                          : () async {
+                              setState(() => _dropping = true);
+                              try {
+                                if (await widget.flow.run(
+                                  () => widget.flow.api.dropWorktree(task.id),
+                                  refresh: false,
+                                )) {
+                                  await widget.flow.loadState();
+                                  widget.flow.loadDisk();
+                                }
+                              } finally {
+                                if (mounted) setState(() => _dropping = false);
+                              }
+                            },
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: _dropping
+                            // git worktree remove is seconds on a big
+                            // checkout. Without this the row sat still and
+                            // then jumped, which reads as a freeze.
+                            ? const SizedBox(
+                                width: 15,
+                                height: 15,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.6,
+                                  color: Tern.muted,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.folder_off_outlined,
+                                size: 15,
+                                color: Tern.faint,
+                              ),
                       ),
                     ),
                   ),
@@ -482,9 +504,10 @@ class _NewTaskState extends State<NewTask> {
             constraints: const BoxConstraints(minHeight: 46, maxHeight: 260),
             child: Mentions(
               controller: _prompt,
-              // Only the repos ticked: @ should not offer a file from a repo
-              // this task will never have a worktree for.
-              repos: _picked.toList(),
+              // The repos this task will actually run against, which is not
+              // the same as the ones ticked: ticking none means the whole
+              // workspace, and @ was offering nothing at all in that case.
+              repos: _target(),
               api: widget.flow.api,
               child: CallbackShortcuts(
                 bindings: {

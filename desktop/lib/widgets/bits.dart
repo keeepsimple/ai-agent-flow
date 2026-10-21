@@ -75,7 +75,11 @@ class _FlowButtonState extends State<FlowButton> {
         curve: ease,
         height: widget.dense ? 28 : 32,
         padding: EdgeInsets.symmetric(horizontal: widget.dense ? 11 : 13),
-        transform: Matrix4.translationValues(0, _down ? 1 : (_over && !off ? -1 : 0), 0),
+        transform: Matrix4.translationValues(
+          0,
+          _down ? 1 : (_over && !off ? -1 : 0),
+          0,
+        ),
         decoration: BoxDecoration(
           color: bg,
           border: raised(border),
@@ -94,7 +98,10 @@ class _FlowButtonState extends State<FlowButton> {
             else if (widget.icon != null)
               Icon(widget.icon, size: 14, color: fg),
             if (widget.busy || widget.icon != null) const SizedBox(width: 6),
-            Text(widget.label, style: t(12.5, color: fg, weight: FontWeight.w500)),
+            Text(
+              widget.label,
+              style: t(12.5, color: fg, weight: FontWeight.w500),
+            ),
           ],
         ),
       ),
@@ -117,6 +124,59 @@ class _FlowButtonState extends State<FlowButton> {
       ),
     );
   }
+}
+
+/// A FlowButton for work that takes long enough to notice.
+///
+/// `git worktree remove` is seconds on a large checkout, and with nothing
+/// holding a busy state the window just sat there and then jumped. FlowButton
+/// already draws a spinner for `busy`; what was missing was anyone setting it.
+class AsyncButton extends StatefulWidget {
+  const AsyncButton({
+    super.key,
+    required this.label,
+    required this.run,
+    this.icon,
+    this.tone = Tone.quiet,
+    this.tooltip,
+    this.dense = false,
+  });
+
+  final String label;
+  final Future<void> Function() run;
+  final IconData? icon;
+  final Tone tone;
+  final String? tooltip;
+  final bool dense;
+
+  @override
+  State<AsyncButton> createState() => _AsyncButtonState();
+}
+
+class _AsyncButtonState extends State<AsyncButton> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) => FlowButton(
+    label: widget.label,
+    icon: widget.icon,
+    tone: widget.tone,
+    tooltip: widget.tooltip,
+    dense: widget.dense,
+    busy: _busy,
+    onPressed: _busy
+        ? null
+        : () async {
+            setState(() => _busy = true);
+            try {
+              await widget.run();
+            } finally {
+              // The press can outlive the row it was on: dropping a
+              // worktree reloads the board under it.
+              if (mounted) setState(() => _busy = false);
+            }
+          },
+  );
 }
 
 /// A small selectable pill, used for repos, models, run shapes.
@@ -164,20 +224,24 @@ class _Chip2State extends State<Chip2> {
         boxShadow: _down
             ? null
             : widget.selected
-                ? [
-                    BoxShadow(
-                      color: accent.withValues(alpha: 0.30),
-                      blurRadius: 16,
-                      spreadRadius: -6,
-                    ),
-                  ]
-                : e1,
+            ? [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.30),
+                  blurRadius: 16,
+                  spreadRadius: -6,
+                ),
+              ]
+            : e1,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (widget.icon != null) ...[
-            Icon(widget.icon, size: 13, color: widget.selected ? accent : Tern.muted),
+            Icon(
+              widget.icon,
+              size: 13,
+              color: widget.selected ? accent : Tern.muted,
+            ),
             const SizedBox(width: 5),
           ],
           Text(
@@ -217,7 +281,8 @@ class StatusDot extends StatefulWidget {
   State<StatusDot> createState() => _StatusDotState();
 }
 
-class _StatusDotState extends State<StatusDot> with SingleTickerProviderStateMixin {
+class _StatusDotState extends State<StatusDot>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _pulse = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1100),
@@ -230,12 +295,12 @@ class _StatusDotState extends State<StatusDot> with SingleTickerProviderStateMix
   }
 
   static Color colourFor(String status, Color accent) => switch (status) {
-        'running' || 'queued' => accent,
-        'awaiting_approval' || 'awaiting_answer' || 'interrupted' => Tern.warn,
-        'done' => Tern.ok,
-        'failed' => Tern.bad,
-        _ => Tern.faint,
-      };
+    'running' || 'queued' => accent,
+    'awaiting_approval' || 'awaiting_answer' || 'interrupted' => Tern.warn,
+    'done' => Tern.ok,
+    'failed' => Tern.bad,
+    _ => Tern.faint,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -246,7 +311,26 @@ class _StatusDotState extends State<StatusDot> with SingleTickerProviderStateMix
       height: widget.size,
       decoration: BoxDecoration(color: colour, shape: BoxShape.circle),
     );
-    if (widget.status != 'running' && widget.status != 'queued') return dot;
+
+    // Actually working: a spinner, not a tint. The accent is the colour of
+    // every live control in the app, so a dot wearing it said little, and
+    // saying it in colour alone says nothing to an eye that cannot separate
+    // these two darks. Queued keeps the dot: it is waiting, not working.
+    if (widget.status == 'running') {
+      return SizedBox(
+        width: widget.size + 5,
+        height: widget.size + 5,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: colour,
+          // The dim full ring is the point. A bare arc is thinner than the
+          // dot it replaces, so at any one instant it reads as less, not
+          // more: the ring keeps the mass and the arc supplies the motion.
+          backgroundColor: Tern.lineStrong,
+        ),
+      );
+    }
+    if (widget.status != 'queued') return dot;
     return AnimatedBuilder(
       animation: _pulse,
       builder: (_, child) => Container(
@@ -291,16 +375,20 @@ class Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: padding,
-        decoration: BoxDecoration(
-          color: elevation == 0 ? colour : null,
-          gradient: elevation == 0 ? null : litFill(colour),
-          border: elevation == 0 ? Border.all(color: border) : raised(border),
-          borderRadius: BorderRadius.circular(radius),
-          boxShadow: switch (elevation) { 0 => null, 1 => e1, _ => e2 },
-        ),
-        child: child,
-      );
+    padding: padding,
+    decoration: BoxDecoration(
+      color: elevation == 0 ? colour : null,
+      gradient: elevation == 0 ? null : litFill(colour),
+      border: elevation == 0 ? Border.all(color: border) : raised(border),
+      borderRadius: BorderRadius.circular(radius),
+      boxShadow: switch (elevation) {
+        0 => null,
+        1 => e1,
+        _ => e2,
+      },
+    ),
+    child: child,
+  );
 }
 
 /// The product's own logo. It has no transparency, so it is clipped to a
@@ -311,14 +399,14 @@ class Mark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ClipRRect(
-        borderRadius: BorderRadius.circular(size * 0.27),
-        child: Image.asset(
-          'assets/logo.png',
-          width: size,
-          height: size,
-          filterQuality: FilterQuality.medium,
-        ),
-      );
+    borderRadius: BorderRadius.circular(size * 0.27),
+    child: Image.asset(
+      'assets/logo.png',
+      width: size,
+      height: size,
+      filterQuality: FilterQuality.medium,
+    ),
+  );
 }
 
 /// The phase label the server uses, spelled for people.
@@ -331,16 +419,17 @@ const phaseLabels = {
 };
 
 String statusWords(Task2 task) => switch (task.status) {
-      'awaiting_approval' => 'Your call: ${phaseLabels[task.awaiting] ?? task.awaiting}',
-      'awaiting_answer' => 'Waiting on your answer',
-      'running' => phaseLabels[task.phase] ?? 'Running',
-      'queued' => 'Queued',
-      'done' => 'Done',
-      'failed' => 'Failed',
-      'interrupted' => 'Interrupted',
-      'cancelled' => 'Cancelled',
-      _ => task.status,
-    };
+  'awaiting_approval' =>
+    'Your call: ${phaseLabels[task.awaiting] ?? task.awaiting}',
+  'awaiting_answer' => 'Waiting on your answer',
+  'running' => phaseLabels[task.phase] ?? 'Running',
+  'queued' => 'Queued',
+  'done' => 'Done',
+  'failed' => 'Failed',
+  'interrupted' => 'Interrupted',
+  'cancelled' => 'Cancelled',
+  _ => task.status,
+};
 
 /// Minimal shape so bits.dart does not have to import the API layer.
 class Task2 {

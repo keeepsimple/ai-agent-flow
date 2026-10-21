@@ -31,7 +31,10 @@ class Conversation extends StatefulWidget {
 class _ConversationState extends State<Conversation> {
   final _scroll = ScrollController();
   final _open = <int>{};
-  bool _pinned = true;
+  // Opens at the top, not the end. A finished run is something you read from
+  // the beginning; following the live tail is what the Latest button is for,
+  // and pressing it pins again from then on.
+  bool _pinned = false;
   int _seen = 0;
 
   @override

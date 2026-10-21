@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -47,6 +48,17 @@ class _MentionsState extends State<Mentions> {
     widget.controller.addListener(_onType);
   }
 
+  // Handed a different controller, it would otherwise go on listening to the
+  // old one and the @ would quietly do nothing for ever.
+  @override
+  void didUpdateWidget(Mentions old) {
+    super.didUpdateWidget(old);
+    if (old.controller == widget.controller) return;
+    old.controller.removeListener(_onType);
+    widget.controller.addListener(_onType);
+    setState(_close);
+  }
+
   @override
   void dispose() {
     widget.controller.removeListener(_onType);
@@ -72,7 +84,10 @@ class _MentionsState extends State<Mentions> {
 
     _at = match.start;
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 140), () => _look(match.group(1) ?? ''));
+    _debounce = Timer(
+      const Duration(milliseconds: 140),
+      () => _look(match.group(1) ?? ''),
+    );
   }
 
   Future<void> _look(String query) async {
@@ -127,22 +142,40 @@ class _MentionsState extends State<Mentions> {
 
   Widget _build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
+
+    // It used to open upward always, which is right for the composer at the
+    // foot of a workspace and wrong for the New task box at the top of the
+    // board: there the list ran off the top of the window. Measure instead.
+    final box = this.context.findRenderObject() as RenderBox?;
+    final screen = MediaQuery.of(context).size.height;
+    var above = screen, below = screen;
+    if (box != null && box.hasSize) {
+      final top = box.localToGlobal(Offset.zero).dy;
+      above = top;
+      below = screen - (top + box.size.height);
+    }
+    final down = below >= above;
+    // Never taller than the room it has, so it cannot be clipped either way.
+    final room = math.max(96.0, (down ? below : above) - 16);
+
     return Positioned(
       width: 460,
       child: CompositedTransformFollower(
         link: _link,
-        targetAnchor: Alignment.topLeft,
-        followerAnchor: Alignment.bottomLeft,
-        offset: const Offset(0, -8),
+        targetAnchor: down ? Alignment.bottomLeft : Alignment.topLeft,
+        followerAnchor: down ? Alignment.topLeft : Alignment.bottomLeft,
+        offset: Offset(0, down ? 8 : -8),
         child: Material(
           color: Colors.transparent,
           child: Container(
-            constraints: const BoxConstraints(maxHeight: 232),
+            constraints: BoxConstraints(maxHeight: math.min(232, room)),
             decoration: BoxDecoration(
               color: Tern.raised,
               border: Border.all(color: Tern.lineStrong),
               borderRadius: BorderRadius.circular(10),
-              boxShadow: const [BoxShadow(color: Color(0x88000000), blurRadius: 18)],
+              boxShadow: const [
+                BoxShadow(color: Color(0x88000000), blurRadius: 18),
+              ],
             ),
             clipBehavior: Clip.antiAlias,
             child: ListView.builder(
@@ -159,26 +192,41 @@ class _MentionsState extends State<Mentions> {
                   child: MouseRegion(
                     cursor: SystemMouseCursors.click,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
-                        color: i == _chosen ? Tern.selected : Colors.transparent,
+                        color: i == _chosen
+                            ? Tern.selected
+                            : Colors.transparent,
                         borderRadius: BorderRadius.circular(7),
                       ),
-                      child: Row(children: [
-                        Text(path.substring(slash + 1),
-                            style: t(12, color: i == _chosen ? Tern.ink : Tern.ink3, code: true)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            slash < 0 ? '' : path.substring(0, slash),
-                            overflow: TextOverflow.ellipsis,
-                            style: t(11, color: Tern.faint, code: true),
+                      child: Row(
+                        children: [
+                          Text(
+                            path.substring(slash + 1),
+                            style: t(
+                              12,
+                              color: i == _chosen ? Tern.ink : Tern.ink3,
+                              code: true,
+                            ),
                           ),
-                        ),
-                        if (widget.repos.length > 1)
-                          Text(hit['repo'] as String,
-                              style: t(10.5, color: accent, code: true)),
-                      ]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              slash < 0 ? '' : path.substring(0, slash),
+                              overflow: TextOverflow.ellipsis,
+                              style: t(11, color: Tern.faint, code: true),
+                            ),
+                          ),
+                          if (widget.repos.length > 1)
+                            Text(
+                              hit['repo'] as String,
+                              style: t(10.5, color: accent, code: true),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -210,8 +258,12 @@ class _MentionsState extends State<Mentions> {
                 _Accept: CallbackAction<_Accept>(
                   onInvoke: (_) => _insert(_hits[_chosen]),
                 ),
-                _Dismiss: CallbackAction<_Dismiss>(onInvoke: (_) => setState(_close)),
-                _Move: CallbackAction<_Move>(onInvoke: (intent) => _move(intent.by)),
+                _Dismiss: CallbackAction<_Dismiss>(
+                  onInvoke: (_) => setState(_close),
+                ),
+                _Move: CallbackAction<_Move>(
+                  onInvoke: (intent) => _move(intent.by),
+                ),
               },
               child: widget.child,
             ),

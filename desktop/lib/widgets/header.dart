@@ -157,12 +157,12 @@ class Header extends StatelessWidget {
             if (!task!.active) ...[
               const SizedBox(width: 7),
               if (task!.root != null)
-                FlowButton(
+                AsyncButton(
                   dense: true,
                   label: 'Drop worktree',
                   icon: Icons.folder_off_outlined,
                   tooltip: 'Frees the checkout. The conversation and the branches stay.',
-                  onPressed: () async {
+                  run: () async {
                     if (await flow.run(() => flow.api.dropWorktree(task!.id))) {
                       onDropped();
                       flow.loadDisk();
