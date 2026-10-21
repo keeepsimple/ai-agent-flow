@@ -9,7 +9,13 @@ import 'server.dart';
 class Prefs {
   Prefs._(this._file, this._values);
 
-  final File _file;
+  /// For tests and for anything that must not touch what the person set:
+  /// reads defaults, writes nowhere.
+  Prefs.memory()
+      : _file = null,
+        _values = {};
+
+  final File? _file;
   final Map<String, dynamic> _values;
 
   static Prefs load() {
@@ -24,17 +30,29 @@ class Prefs {
 
   bool get sidebarOpen => _values['sidebarOpen'] as bool? ?? true;
   String? get workspace => _values['workspace'] as String?;
+  bool get changesOpen => _values['changesOpen'] as bool? ?? true;
+  double get changesWidth => (_values['changesWidth'] as num?)?.toDouble() ?? 520;
 
-  void set({bool? sidebarOpen, String? workspace, bool clearWorkspace = false}) {
+  void set({
+    bool? sidebarOpen,
+    String? workspace,
+    bool clearWorkspace = false,
+    bool? changesOpen,
+    double? changesWidth,
+  }) {
     if (sidebarOpen != null) _values['sidebarOpen'] = sidebarOpen;
+    if (changesOpen != null) _values['changesOpen'] = changesOpen;
+    if (changesWidth != null) _values['changesWidth'] = changesWidth;
     if (clearWorkspace) {
       _values.remove('workspace');
     } else if (workspace != null) {
       _values['workspace'] = workspace;
     }
+    final file = _file;
+    if (file == null) return;
     try {
-      _file.parent.createSync(recursive: true);
-      _file.writeAsStringSync(jsonEncode(_values));
+      file.parent.createSync(recursive: true);
+      file.writeAsStringSync(jsonEncode(_values));
     } catch (_) {
       // Remembering is a convenience; failing to is not worth a banner.
     }

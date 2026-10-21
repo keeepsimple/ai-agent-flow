@@ -13,6 +13,7 @@ import 'package:agent_flow/flow.dart';
 import 'package:agent_flow/screens/review.dart';
 import 'package:agent_flow/shortcuts.dart';
 import 'package:agent_flow/screens/sessions.dart';
+import 'package:agent_flow/prefs.dart';
 import 'package:agent_flow/screens/workspace.dart';
 import 'package:agent_flow/theme.dart';
 import 'package:agent_flow/widgets/bits.dart';
@@ -195,7 +196,7 @@ void main() {
     });
     flow.tasks = [task];
     await _shoot(tester, 'workspace',
-        WorkspaceScreen(flow: flow, task: task), const Size(1340, 900));
+        WorkspaceScreen(flow: flow, task: task, prefs: Prefs.memory()), const Size(1340, 900));
   });
 
   testWidgets('a task on a whole workspace still has a send button', (tester) async {
@@ -224,6 +225,36 @@ void main() {
         reason: 'the send button has to stay inside the window');
     expect(find.textContaining('more'), findsOneWidget,
         reason: 'and the repos that did not fit are counted, not dropped silently');
+  });
+
+  testWidgets('the diff pane can be put away', (tester) async {
+    final flow = _flow();
+    final task = _task({});
+    final prefs = Prefs.memory()..set(changesWidth: 400);
+
+    Future<double> paneWidth() async {
+      await tester.pumpWidget(MaterialApp(
+        theme: ternTheme(Accent.sky),
+        home: Scaffold(
+          backgroundColor: Tern.page,
+          body: WorkspaceScreen(flow: flow, task: task, prefs: prefs),
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 60));
+      return tester.getSize(find.byKey(const ValueKey('changes-pane'))).width;
+    }
+
+    tester.view.physicalSize = const Size(1340, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    expect(await paneWidth(), 400, reason: 'open, it is the width that was remembered');
+
+    prefs.set(changesOpen: false);
+    final shut = await paneWidth();
+    expect(shut, lessThan(60), reason: 'shut, it is a strip with the button on it');
+    expect(find.text('Nothing changed yet.'), findsNothing,
+        reason: 'and the diff is not being laid out behind it');
   });
 
   testWidgets('the review, with somewhere to push', (tester) async {

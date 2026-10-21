@@ -172,7 +172,7 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                         child: showing
                             ? (_tab == 'review'
                                   ? ReviewScreen(flow: _flow, task: task)
-                                  : WorkspaceScreen(flow: _flow, task: task))
+                                  : WorkspaceScreen(flow: _flow, task: task, prefs: _prefs))
                             : SessionsScreen(flow: _flow, onOpen: _open),
                       ),
                     ],

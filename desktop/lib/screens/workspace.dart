@@ -2,18 +2,27 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../flow.dart';
+import '../prefs.dart';
 import '../theme.dart';
 import '../widgets/bits.dart';
 import '../widgets/composer.dart';
 import '../widgets/conversation.dart';
 import '../widgets/decision.dart';
 import '../widgets/diff_view.dart';
+import '../widgets/splitter.dart';
 
 /// Explorer, conversation, and the diff as it is written.
 class WorkspaceScreen extends StatefulWidget {
-  const WorkspaceScreen({super.key, required this.flow, required this.task});
+  const WorkspaceScreen({
+    super.key,
+    required this.flow,
+    required this.task,
+    required this.prefs,
+  });
+
   final FlowState flow;
   final Task task;
+  final Prefs prefs;
 
   @override
   State<WorkspaceScreen> createState() => _WorkspaceScreenState();
@@ -79,7 +88,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         SizedBox(width: 232, child: _explorer(task, files)),
         const VerticalDivider(width: 1, color: Tern.line),
         Expanded(
-          flex: 3,
           child: Column(children: [
             Expanded(
               child: Conversation(
@@ -90,38 +98,90 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             Composer(task: task, flow: widget.flow),
           ]),
         ),
-        const VerticalDivider(width: 1, color: Tern.line),
-        Expanded(
-          flex: 2,
-          child: Container(
-            color: Tern.panel,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Container(
-                height: 38,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                alignment: Alignment.centerLeft,
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Tern.line)),
-                ),
-                child: Text(
-                  chosen == null ? 'Changes' : chosen['path'] as String,
-                  overflow: TextOverflow.ellipsis,
-                  style: t(11.5, color: Tern.ink3, code: true),
+        if (widget.prefs.changesOpen)
+          Splitter(
+            onDrag: (delta) => _resize(-delta),
+            onReset: () => setState(() => widget.prefs.set(changesWidth: 520)),
+          )
+        else
+          const VerticalDivider(width: 1, color: Tern.line),
+        _changes(chosen),
+      ],
+    );
+  }
+
+  /// The pane is sized from the right edge, so dragging the handle left makes
+  /// it wider. Bounded on both sides: the conversation needs room too, and a
+  /// pane too narrow to read a diff in is not worth having open.
+  void _resize(double by) {
+    final width = MediaQuery.of(context).size.width;
+    setState(() {
+      widget.prefs.set(
+        changesWidth: (widget.prefs.changesWidth + by).clamp(280.0, width - 520),
+      );
+    });
+  }
+
+  Widget _changes(Map<String, dynamic>? chosen) {
+    final open = widget.prefs.changesOpen;
+    final header = Container(
+      height: 38,
+      // Shut, the strip is only as wide as the button, with no room left for
+      // padding around it.
+      padding: open ? const EdgeInsets.only(left: 14, right: 6) : EdgeInsets.zero,
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Tern.line)),
+      ),
+      child: Row(
+        mainAxisAlignment: open ? MainAxisAlignment.start : MainAxisAlignment.center,
+        children: [
+        if (open)
+          Expanded(
+            child: Text(
+              chosen == null ? 'Changes' : chosen['path'] as String,
+              overflow: TextOverflow.ellipsis,
+              style: t(11.5, color: Tern.ink3, code: true),
+            ),
+          ),
+        Tooltip(
+          message: open ? 'Hide the diff' : 'Show the diff',
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () => setState(() => widget.prefs.set(changesOpen: !open)),
+              child: SizedBox(
+                width: 30,
+                height: 30,
+                child: Icon(
+                  open ? Icons.last_page : Icons.first_page,
+                  size: 16,
+                  color: Tern.muted,
                 ),
               ),
-              Expanded(
-                child: chosen == null
-                    ? Center(
-                        child: Text('Nothing changed yet.', style: t(12, color: Tern.muted)))
-                    : SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: DiffView(chosen['patch'] as String?),
-                      ),
-              ),
-            ]),
+            ),
           ),
         ),
-      ],
+      ]),
+    );
+
+    return SizedBox(
+      key: const ValueKey('changes-pane'),
+      width: open ? widget.prefs.changesWidth : 38,
+      child: Container(
+        color: Tern.panel,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          header,
+          if (open)
+            Expanded(
+              child: chosen == null
+                  ? Center(child: Text('Nothing changed yet.', style: t(12, color: Tern.muted)))
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: DiffView(chosen['patch'] as String?),
+                    ),
+            ),
+        ]),
+      ),
     );
   }
 
