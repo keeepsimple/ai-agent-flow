@@ -76,3 +76,11 @@ assert.deepEqual(scanDiff(diff, ['ck_test_value_1234567890']), [
 ])
 assert.deepEqual(scanDiff(diff.replace('ck_test_value_1234567890', 'nothing'), []), [{ file: '.env.dev', line: 4 }])
 console.log('ok: the guard reads added lines with their line numbers')
+
+// The hand wrapper is for what a person types; a shell line with a heredoc
+// and an append on it is not that, and logs never get the wrapper rule at all.
+assert.deepEqual(names('cat <<EOF >> out.txt'), [], 'a heredoc feeding an append is not a wrapped secret')
+assert.deepEqual(names('<< not this >>'), [], 'nor spaces at the edges')
+assert.deepEqual(names('key <<abc-def-ghi>> here'), ['SECRET_1'])
+assert.deepEqual(detect('key <<abc-def-ghi>> here', { wrapped: false }).map((f) => f.name), [], 'the wrapper rule can be turned off for logs')
+console.log('ok: the wrapper rule is for hands, not heredocs')

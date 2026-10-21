@@ -14,7 +14,7 @@ const rotate = []
 for (const task of Object.values(tasks)) {
   const logFile = path.join(DATA, 'logs', `${task.id}.jsonl`)
   const log = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8') : ''
-  const { secrets, texts } = hide([{ key: 'prompt', text: task.prompt || '' }, { key: 'log', text: log }])
+  const { secrets, texts } = hide([{ key: 'prompt', text: task.prompt || '' }, { key: 'log', text: log, wrapped: false }])
   if (!secrets.length) continue
 
   for (const { name, value } of secrets) keep(task.id, name, value)

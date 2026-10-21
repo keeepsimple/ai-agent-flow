@@ -2,6 +2,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { tasks, update } from './store.js'
 import * as secrets from './secrets.js'
+import * as repoConfig from './repo-config.js'
 import { pipelineFor } from './pipeline.js'
 
 const git = (cwd, ...args) =>
@@ -98,9 +99,16 @@ function statusOf(tree) {
     pipeline: upstream ? pipelineFor(remoteUrl, tree.branch) : null,
     baseUpstream,
     baseUnpushed,
+    prod: prodOf(tree),
     uncommitted: uncommitted.length,
     mergeBlockedBy: blocked,
   }
+}
+
+function prodOf(tree) {
+  const branch = repoConfig.get(tree.repoPath).prodBranch
+  const { exists, shas, picked } = toPick(tree, branch)
+  return { branch, exists, toPick: shas.length, picked }
 }
 
 export function status(id) {
@@ -125,6 +133,27 @@ function treesOf(id, repo) {
   const trees = repo ? task.trees.filter((t) => t.repo === repo) : task.trees
   if (!trees.length) throw new Error(`unknown repo: ${repo}`)
   return trees
+}
+
+/**
+ * The task's own commits that prod does not have yet, by patch id, so a
+ * cherry-pick (new sha, same change) counts as picked. Merge commits are left
+ * out: they only brought the base in, and have nothing to pick.
+ */
+export function toPick(tree, prodBranch) {
+  const has = quiet(() => git(tree.repoPath, 'rev-parse', '--verify', '--quiet', prodBranch))
+  if (!has) return { exists: false, shas: [], picked: 0 }
+  const own = new Set(lines(quiet(() => git(tree.repoPath, 'rev-list', '--no-merges', `${tree.baseRef}..${tree.branch}`))))
+  const cherry = lines(quiet(() => git(tree.repoPath, 'cherry', prodBranch, tree.branch, tree.baseRef)))
+  const shas = []
+  let picked = 0
+  for (const row of cherry) {
+    const [mark, sha] = row.split(' ')
+    if (!own.has(sha)) continue
+    if (mark === '+') shas.push(sha)
+    else picked++
+  }
+  return { exists: true, shas, picked }
 }
 
 /** Added lines on this branch that carry a kept value or look like a secret. */

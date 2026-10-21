@@ -6,7 +6,7 @@
 // redact(text, found) -> text with every span replaced by {{secret:NAME}}.
 
 const NAMED = /(?<![A-Za-z0-9_])(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*(?:_KEY|_TOKEN|_SECRET|_PASSWORD))[ \t]*[=:][ \t]*(["']?)([^\s"']{8,})\2/gi
-const WRAPPED = /<<([^<>\n]+)>>/g
+const WRAPPED = /<<(\S(?:[^<>\n]*\S)?)>>/g
 const PREFIXED = /\b((?:ck_|sk_|ghp_|glpat-|xoxb-|AKIA)[A-Za-z0-9._-]{16,})/g
 const SHAPED = /[A-Za-z0-9+/=]{40,}/g
 
@@ -14,7 +14,7 @@ const HEX40 = /^[0-9a-f]{40}$/i
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const mixed = (v) => /[a-z]/.test(v) && /[A-Z]/.test(v) && /[0-9]/.test(v)
 
-export function detect(text) {
+export function detect(text, { wrapped = true } = {}) {
   const found = new Map() // value -> { name, value, spans }
   const taken = [] // spans already claimed by an earlier rule
 
@@ -36,7 +36,7 @@ export function detect(text) {
     const start = m.index + m[0].lastIndexOf(value)
     claim(start, start + value.length, value, m[1].toUpperCase())
   }
-  for (const m of text.matchAll(WRAPPED)) claim(m.index, m.index + m[0].length, m[1].trim())
+  if (wrapped) for (const m of text.matchAll(WRAPPED)) claim(m.index, m.index + m[0].length, m[1])
   for (const m of text.matchAll(PREFIXED)) claim(m.index, m.index + m[1].length, m[1])
   for (const m of text.matchAll(SHAPED)) {
     const v = m[0]
@@ -172,14 +172,15 @@ export const TEXT_ATTACHMENT = /\.(txt|md|env|json|csv|log|diff|patch|yml|yaml|t
 /**
  * Detect across several texts (the prompt and its text attachments) with one
  * numbering and one name per value, and redact each of them.
- * texts: [{ key, text }] -> { secrets: [{ name, value }], texts: { key: redacted } }
+ * texts: [{ key, text, wrapped? }] -> { secrets: [{ name, value }], texts: { key: redacted } }
+ * `wrapped: false` turns the hand-wrapper rule off for text nobody typed (logs).
  */
 export function hide(texts) {
   const byValue = new Map()
   let unnamed = 0
   const out = {}
-  for (const { key, text } of texts) {
-    const found = detect(text)
+  for (const { key, text, wrapped = true } of texts) {
+    const found = detect(text, { wrapped })
     for (const f of found) {
       const known = byValue.get(f.value)
       if (known) {

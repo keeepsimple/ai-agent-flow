@@ -41,6 +41,9 @@ for (const repo of REPOS) {
 // Only 'web' gets a remote, so the no-remote path stays covered by 'api'.
 git('web', 'remote', 'add', 'origin', origin)
 git('web', 'push', '-q', '-u', 'origin', 'main')
+// And only 'web' has a prod branch, so a repo without one stays covered too.
+git('web', 'branch', 'prod')
+git('web', 'push', '-q', 'origin', 'prod')
 
 // The stub reads the prompt from stdin exactly as the real CLI does, writes the
 // artifact its phase is supposed to write, and blocks on `ask` once so the
@@ -517,6 +520,17 @@ try {
     assert.equal(repo.unpushed, null, 'never pushed, so there is no upstream to compare with')
     assert.equal(repo.mergeBlockedBy, null, `${repo.repo} base should be mergeable: ${repo.mergeBlockedBy}`)
   }
+
+  // What prod is still missing, counted by patch so a hand cherry-pick counts.
+  const webRow = gitState.find((r) => r.repo === 'web')
+  assert.deepEqual(webRow.prod, { branch: 'prod', exists: true, toPick: 1, picked: 0 })
+  assert.deepEqual(gitState.find((r) => r.repo === 'api').prod, { branch: 'prod', exists: false, toPick: 0, picked: 0 })
+  const prodTmp = path.join(root, 'prod-tmp')
+  git('web', 'worktree', 'add', '-q', prodTmp, 'prod')
+  execFileSync('git', ['-C', prodTmp, 'cherry-pick', webRow.branch], { stdio: 'ignore' })
+  git('web', 'worktree', 'remove', '--force', prodTmp)
+  const picked = (await (await fetch(`${base}/api/tasks/${created.id}/git`)).json()).find((r) => r.repo === 'web')
+  assert.deepEqual(picked.prod, { branch: 'prod', exists: true, toPick: 0, picked: 1 })
 
   // The diff is the thing you are being asked to approve, so it has to be
   // readable from here rather than from a terminal.
