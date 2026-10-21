@@ -175,10 +175,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             Expanded(
               child: chosen == null
                   ? Center(child: Text('Nothing changed yet.', style: t(12, color: Tern.muted)))
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: DiffView(chosen['patch'] as String?),
-                    ),
+                  : DiffView(chosen['patch'] as String?),
             ),
         ]),
       ),

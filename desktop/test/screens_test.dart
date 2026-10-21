@@ -18,6 +18,8 @@ import 'package:agent_flow/screens/workspace.dart';
 import 'package:agent_flow/theme.dart';
 import 'package:agent_flow/widgets/bits.dart';
 import 'package:agent_flow/widgets/composer.dart';
+import 'package:agent_flow/widgets/conversation.dart';
+import 'package:agent_flow/widgets/markdown_view.dart';
 import 'package:agent_flow/widgets/header.dart';
 import 'package:agent_flow/widgets/sidebar.dart';
 import 'package:flutter/material.dart';
@@ -285,6 +287,38 @@ void main() {
     expect(shut, lessThan(60), reason: 'shut, it is a strip with the button on it');
     expect(find.text('Nothing changed yet.'), findsNothing,
         reason: 'and the diff is not being laid out behind it');
+  });
+
+  testWidgets('a long conversation only builds what is on screen', (tester) async {
+    // Real runs reach four hundred log lines. Building them all meant
+    // re-parsing every message's markdown on every frame, and a running task
+    // emits several lines a second.
+    final flow = _flow();
+    final task = _task({
+      'log': [
+        for (var i = 0; i < 300; i++)
+          {'kind': 'text', 'text': 'Step $i\n\nSome **markdown** with `code` in it.'},
+      ],
+    });
+
+    tester.view.physicalSize = const Size(800, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        backgroundColor: Tern.page,
+        body: Conversation(task: task),
+      ),
+    ));
+    await tester.pump();
+
+    final built = tester.widgetList(find.byType(MarkdownView)).length;
+    expect(built, lessThan(40),
+        reason: 'only the visible messages should be built, not all 300');
+    expect(built, greaterThan(0), reason: 'and the visible ones should be');
+    expect(flow.error, isNull);
   });
 
   testWidgets('the review, with somewhere to push', (tester) async {

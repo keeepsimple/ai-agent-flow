@@ -38,6 +38,12 @@ class Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final roots = flow.roots;
 
+    // With a task open, the workspace you are in is that task's, whatever the
+    // board happens to be filtered to. Showing the filter instead left the
+    // conversation highlighted under a workspace it does not belong to.
+    final open = flow.detail;
+    final current = open != null ? flow.rootOf(open) : flow.workspace;
+
     return Container(
       width: 244,
       decoration: const BoxDecoration(
@@ -52,7 +58,7 @@ class Sidebar extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
               children: [
                 _AllRow(
-                  selected: flow.workspace == null,
+                  selected: current == null,
                   count: (flow.tasks ?? const []).length,
                   onTap: () => onPick(null),
                 ),
@@ -62,7 +68,7 @@ class Sidebar extends StatelessWidget {
                     name: nameOf(roots[i]),
                     path: roots[i],
                     index: i,
-                    selected: flow.workspace == roots[i],
+                    selected: current == roots[i],
                     onTap: () => onPick(roots[i]),
                   ),
                   ..._conversations(roots[i]),

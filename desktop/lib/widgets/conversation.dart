@@ -27,7 +27,8 @@ class _ConversationState extends State<Conversation> {
     super.initState();
     _scroll.addListener(() {
       if (!_scroll.hasClients) return;
-      _pinned = _scroll.position.pixels >= _scroll.position.maxScrollExtent - 60;
+      _pinned =
+          _scroll.position.pixels >= _scroll.position.maxScrollExtent - 60;
     });
   }
 
@@ -44,8 +45,22 @@ class _ConversationState extends State<Conversation> {
     });
   }
 
-  /// Consecutive tool calls are one block; everything else stands alone.
+  List<_Block>? _cached;
+  int _cachedFor = -1;
+
+  /// Grouping walks the whole log, so it is done when the log changes rather
+  /// than on every frame. A running task emits log lines several times a
+  /// second, and every one of them was regrouping four hundred entries.
   List<_Block> _blocks() {
+    if (_cached != null && _cachedFor == widget.task.log.length) {
+      return _cached!;
+    }
+    _cachedFor = widget.task.log.length;
+    return _cached = _group();
+  }
+
+  /// Consecutive tool calls are one block; everything else stands alone.
+  List<_Block> _group() {
     final out = <_Block>[];
     for (final entry in widget.task.log) {
       final kind = entry['kind'] as String?;
@@ -69,40 +84,66 @@ class _ConversationState extends State<Conversation> {
       _stickToBottom();
     }
 
+    // Lazy on purpose: with `children:` every block was built on every frame,
+    // which meant re-parsing the markdown of the whole conversation each time
+    // a log line arrived. Only what is on screen is built now.
     return Scrollbar(
       controller: _scroll,
-      child: ListView(
+      child: ListView.builder(
         controller: _scroll,
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-        children: [
-          Align(
-            alignment: Alignment.centerRight,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Panel(
-                colour: Tern.selected,
-                border: Tern.lineStrong,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                child: SelectableText(task.prompt, style: t(13, color: Tern.ink2)),
+        itemCount: blocks.length + 2,
+        itemBuilder: (context, i) {
+          if (i == 0) return _opening(task);
+          if (i <= blocks.length) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: _render(context, blocks[i - 1], i - 1, i == blocks.length),
+            );
+          }
+          return _closing(task, blocks);
+        },
+      ),
+    );
+  }
+
+  /// What the human asked, and who answered.
+  Widget _opening(Task task) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Panel(
+              colour: Tern.selected,
+              border: Tern.lineStrong,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              child: SelectableText(
+                task.prompt,
+                style: t(13, color: Tern.ink2),
               ),
             ),
           ),
-          if (task.attachments.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Wrap(
-                  spacing: 6,
-                  children: [
-                    for (final path in task.attachments)
-                      _Attachment(path.split(RegExp(r'[\\/]')).last),
-                  ],
-                ),
+        ),
+        if (task.attachments.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                spacing: 6,
+                children: [
+                  for (final path in task.attachments)
+                    _Attachment(path.split(RegExp(r'[\\/]')).last),
+                ],
               ),
             ),
-          const SizedBox(height: 16),
-          Row(children: [
+          ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
             Container(
               width: 20,
               height: 20,
@@ -111,27 +152,42 @@ class _ConversationState extends State<Conversation> {
                 borderRadius: BorderRadius.circular(6),
               ),
               alignment: Alignment.center,
-              child: Text('T', style: t(11, color: Tern.ink3, weight: FontWeight.w600)),
+              child: Text(
+                'T',
+                style: t(11, color: Tern.ink3, weight: FontWeight.w600),
+              ),
             ),
             const SizedBox(width: 9),
-            Text('Tern · ${task.model ?? 'default'}', style: t(11.5, color: Tern.muted)),
-          ]),
-          const SizedBox(height: 14),
-          for (var i = 0; i < blocks.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: _render(context, blocks[i], i, i == blocks.length - 1),
+            Text(
+              'Tern · ${task.model ?? 'default'}',
+              style: t(11.5, color: Tern.muted),
             ),
-          if (task.running && (blocks.isEmpty || blocks.last.kind != 'tools'))
-            Row(children: [
+          ],
+        ),
+        const SizedBox(height: 14),
+      ],
+    );
+  }
+
+  /// Whatever is still to come, and anything the screen wants under it.
+  Widget _closing(Task task, List<_Block> blocks) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (task.running && (blocks.isEmpty || blocks.last.kind != 'tools'))
+          Row(
+            children: [
               StatusDot(task.status, size: 7),
               const SizedBox(width: 9),
               Text('working', style: t(12, color: Tern.muted)),
-            ]),
-          if (widget.footer != null)
-            Padding(padding: const EdgeInsets.only(top: 6), child: widget.footer!),
-        ],
-      ),
+            ],
+          ),
+        if (widget.footer != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: widget.footer!,
+          ),
+      ],
     );
   }
 
@@ -142,15 +198,19 @@ class _ConversationState extends State<Conversation> {
       case 'result':
         final entry = block.items.first;
         final cost = (entry['cost'] as num?)?.toStringAsFixed(3) ?? '0';
-        return Row(children: [
-          const Expanded(child: Divider(color: Tern.line, height: 1)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text('\$$cost · ${entry['turns'] ?? 0} turns',
-                style: t(11, color: Tern.muted, code: true)),
-          ),
-          const Expanded(child: Divider(color: Tern.line, height: 1)),
-        ]);
+        return Row(
+          children: [
+            const Expanded(child: Divider(color: Tern.line, height: 1)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                '\$$cost · ${entry['turns'] ?? 0} turns',
+                style: t(11, color: Tern.muted, code: true),
+              ),
+            ),
+            const Expanded(child: Divider(color: Tern.line, height: 1)),
+          ],
+        );
       case 'error':
       case 'stderr':
         return Panel(
@@ -177,11 +237,15 @@ class _ConversationState extends State<Conversation> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(block.kind == 'question' ? 'Tern asked you' : 'You',
-                      style: t(11, color: mine ? Tern.muted : Tern.warn)),
+                  Text(
+                    block.kind == 'question' ? 'Tern asked you' : 'You',
+                    style: t(11, color: mine ? Tern.muted : Tern.warn),
+                  ),
                   const SizedBox(height: 4),
-                  SelectableText((entry['text'] ?? '') as String,
-                      style: t(13, color: Tern.ink2, height: 1.5)),
+                  SelectableText(
+                    (entry['text'] ?? '') as String,
+                    style: t(13, color: Tern.ink2, height: 1.5),
+                  ),
                 ],
               ),
             ),
@@ -207,30 +271,38 @@ class _ConversationState extends State<Conversation> {
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(12),
-            onTap: () => setState(() => open ? _open.remove(index) : _open.add(index)),
+            onTap: () =>
+                setState(() => open ? _open.remove(index) : _open.add(index)),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              child: Row(children: [
-                Icon(open ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
-                    size: 16, color: Tern.muted),
-                const SizedBox(width: 6),
-                if (live) ...[
-                  StatusDot('running', size: 7),
-                  const SizedBox(width: 8),
-                ],
-                Text(
-                  items.length == 1 ? '1 step' : '${items.length} steps',
-                  style: t(12.5, color: Tern.ink2),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    open ? '' : _line(latest),
-                    overflow: TextOverflow.ellipsis,
-                    style: t(11.5, color: Tern.muted, code: true),
+              child: Row(
+                children: [
+                  Icon(
+                    open
+                        ? Icons.keyboard_arrow_down
+                        : Icons.keyboard_arrow_right,
+                    size: 16,
+                    color: Tern.muted,
                   ),
-                ),
-              ]),
+                  const SizedBox(width: 6),
+                  if (live) ...[
+                    StatusDot('running', size: 7),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                    items.length == 1 ? '1 step' : '${items.length} steps',
+                    style: t(12.5, color: Tern.ink2),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      open ? '' : _line(latest),
+                      overflow: TextOverflow.ellipsis,
+                      style: t(11.5, color: Tern.muted, code: true),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           if (open)
@@ -247,8 +319,10 @@ class _ConversationState extends State<Conversation> {
                         children: [
                           SizedBox(
                             width: 74,
-                            child: Text((item['tool'] ?? '') as String,
-                                style: t(11.5, color: Tern.ink3)),
+                            child: Text(
+                              (item['tool'] ?? '') as String,
+                              style: t(11.5, color: Tern.ink3),
+                            ),
                           ),
                           Expanded(
                             child: SelectableText(
@@ -286,7 +360,10 @@ class _Attachment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final image = RegExp(r'\.(png|jpe?g|gif|webp)$', caseSensitive: false).hasMatch(name);
+    final image = RegExp(
+      r'\.(png|jpe?g|gif|webp)$',
+      caseSensitive: false,
+    ).hasMatch(name);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
@@ -294,13 +371,21 @@ class _Attachment extends StatelessWidget {
         border: Border.all(color: Tern.line),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(image ? Icons.image_outlined : Icons.description_outlined,
-            size: 13, color: Tern.muted),
-        const SizedBox(width: 6),
-        Text(name.replaceFirst(RegExp(r'^[0-9a-f]{8}-'), ''),
-            style: t(11, color: Tern.ink3)),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            image ? Icons.image_outlined : Icons.description_outlined,
+            size: 13,
+            color: Tern.muted,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            name.replaceFirst(RegExp(r'^[0-9a-f]{8}-'), ''),
+            style: t(11, color: Tern.ink3),
+          ),
+        ],
+      ),
     );
   }
 }

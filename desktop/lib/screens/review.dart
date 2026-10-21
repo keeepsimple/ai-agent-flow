@@ -137,10 +137,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                           style: t(12, color: Tern.muted),
                         ),
                       )
-                    : SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: DiffView(chosen['patch'] as String?),
-                      )),
+                    : DiffView(chosen['patch'] as String?)),
           ),
         ]),
       ),
