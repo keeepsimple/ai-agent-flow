@@ -350,6 +350,7 @@ export function approve(id, { approved, feedback = '' }) {
   return task
 }
 
+const CONTINUE = /^(tiếp tục|continue|carry on)[.!]?$/iu
 const ALIVE = new Set(['running', 'awaiting_approval', 'awaiting_answer'])
 
 const NOBODY_HOME =
@@ -555,6 +556,14 @@ export function followUp(id, request) {
 
   const task = readyForSideRun(id)
 
+  // "Continue" means continue: the same session, not a new run told the story again.
+  if (CONTINUE.test(request.trim()) && task.lastSession?.id) {
+    log(id, { kind: 'decision', text: `Follow-up: ${request.trim()}` })
+    return sideRun(task, 'follow-up', RESUME_PROMPT, task.lastSession.cwd || task.root, `Follow-up done: ${task.title}`, {
+      resume: task.lastSession.id,
+    })
+  }
+
   log(id, { kind: 'decision', text: `Follow-up: ${request.trim()}` })
   return sideRun(
     task,
@@ -704,6 +713,16 @@ export function resume(id) {
   queue.push(id)
   pump()
   return task
+}
+
+/** On launch: pick every interrupted task back up, unless told to leave them for the button. */
+export function resumeInterrupted() {
+  if (process.env.FLOW_AUTO_RESUME === '0') return []
+  const picked = Object.values(tasks).filter((t) => t.status === 'interrupted' && t.lastSession?.id)
+  for (const task of picked) {
+    try { resume(task.id) } catch (err) { log(task.id, { kind: 'error', text: `could not continue: ${err.message}` }) }
+  }
+  return picked.map((t) => t.id)
 }
 
 export function removeWorktrees(id) {

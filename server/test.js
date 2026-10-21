@@ -61,9 +61,13 @@ const session = 'stub-' + process.pid
 const say = (text) =>
   console.log(JSON.stringify({ type: 'assistant', session_id: session, message: { content: [{ type: 'text', text }] } }))
 
-if (args.includes('--resume')) {
+if (args.includes('--resume') && process.env.STUB_REFUSE_RESUME) {
+  process.exit(1) // an expired session: the CLI says nothing and quits
+} else if (args.includes('--resume')) {
   fs.writeFileSync(path.join(art, 'resumed.txt'), args[args.indexOf('--resume') + 1])
   say('picked up where I was')
+} else if (prompt.includes('SLEEPY') && fs.existsSync(path.join(art, 'pid'))) {
+  say('napped already, carrying on') // a fresh re-run of a task that already slept
 } else if (prompt.includes('SLEEPY')) {
   process.on('SIGTERM', () => {}) // ignore it, the way a real agent tree can
   fs.writeFileSync(path.join(art, 'pid'), String(process.pid))
@@ -904,8 +908,33 @@ try {
   assert.equal(fs.readFileSync(resumedWith, 'utf8'), hadSession, 'and hand it the session it had')
   assert.notEqual(woke.lastSession.id, hadSession, 'the continued run reports a session of its own, kept too')
 
+  // By default the app picks interrupted work up on launch without being asked.
+  // And a session the CLI refuses is run again fresh, saying so.
+  const nap2 = await post('/api/tasks', { title: 'nap2', repos: ['api'], prompt: 'SLEEPY', run: 'ask' })
+  const nap2Pid = path.join(root, 'data', 'tasks', nap2.id, 'pid')
+  for (let i = 0; i < 100 && !fs.existsSync(nap2Pid); i++) await sleep(100)
+  await waitFor(nap2.id, (t) => t.lastSession?.id, 'the second session to be reported')
+  await restart({ STUB_REFUSE_RESUME: '1' })
+  try { process.kill(Number(fs.readFileSync(nap2Pid, 'utf8')), 'SIGKILL') } catch {}
+  const rerun = await waitFor(nap2.id, (t) => t.status === 'done', 'auto-resume to finish')
+  assert.ok(
+    rerun.log.some((l) => l.text === 'resume refused; running the phase again'),
+    'a refused session falls back to a fresh run and says so',
+  )
+  assert.ok(!fs.existsSync(path.join(root, 'data', 'tasks', nap2.id, 'resumed.txt')))
+  assert.ok(rerun.log.some((l) => l.text === 'napped already, carrying on'), 'the fresh run completed the phase')
+
+  // "tiếp tục" on a task that has a session continues it rather than opening a new run.
+  await restart()
+  await post(`/api/tasks/${napping.id}/follow-up`, { request: 'tiếp tục' })
+  const carried = await waitFor(napping.id, (t) => t.status === 'done' && t.phase === null, 'continue to finish')
+  assert.equal(fs.readFileSync(resumedWith, 'utf8'), woke.lastSession.id, '"tiếp tục" resumes the last session')
+  assert.ok(carried.log.some((l) => l.text === 'picked up where I was'))
+
   console.log(
-    'ok: a restart mid-run leaves the task interrupted and resume continues its session',
+    'ok: a restart mid-run leaves the task interrupted and resume continues its session,\n' +
+    '    interrupted work resumes on launch, a refused session re-runs fresh out loud,\n' +
+    '    and "tiếp tục" continues the last session',
   )
 } catch (err) {
   failure = err

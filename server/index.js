@@ -272,6 +272,8 @@ const server = http.createServer(async (req, res) => {
 server.listen(runner.PORT, '127.0.0.1', () => {
   console.log(`agent-flow  http://127.0.0.1:${runner.PORT}`)
   console.log(`repos       ${runner.listRepos().length} in ${runner.roots().length} folder(s)`)
+  const continued = runner.resumeInterrupted()
+  if (continued.length) console.log(`continuing  ${continued.length} interrupted task(s)`)
   // The app has no window of its own; the window is the browser. Started from
   // a terminal, nobody asked for a tab to appear.
   if (process.env.FLOW_OPEN) {
