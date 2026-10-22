@@ -296,6 +296,8 @@ class _TaskRowState extends State<_TaskRow>
                     ],
                   ),
                 ),
+                Stat(task.stat),
+                if (task.stat != null) const SizedBox(width: 10),
                 if (fateOf(task) != null) ...[
                   Text(fateOf(task)!, style: t(11, color: Tern.ok)),
                   const SizedBox(width: 10),

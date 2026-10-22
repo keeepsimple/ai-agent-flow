@@ -36,6 +36,12 @@ class Prefs {
   /// Interrupted tasks are picked up when the app launches, unless this is off.
   bool get autoResume => _values['autoResume'] as bool? ?? true;
 
+  /// The conversations left open, oldest first. Remembered so quitting is not
+  /// the same as closing every one of them: twelve tasks took twelve trips to
+  /// the board to get back.
+  List<String> get tabs =>
+      ((_values['tabs'] as List?) ?? const []).cast<String>();
+
   void set({
     bool? sidebarOpen,
     String? workspace,
@@ -43,7 +49,9 @@ class Prefs {
     bool? changesOpen,
     double? changesWidth,
     bool? autoResume,
+    List<String>? tabs,
   }) {
+    if (tabs != null) _values['tabs'] = tabs;
     if (autoResume != null) _values['autoResume'] = autoResume;
     if (sidebarOpen != null) _values['sidebarOpen'] = sidebarOpen;
     if (changesOpen != null) _values['changesOpen'] = changesOpen;

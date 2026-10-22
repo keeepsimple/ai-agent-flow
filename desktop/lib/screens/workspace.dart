@@ -14,6 +14,7 @@ import '../widgets/diff_view.dart';
 import '../widgets/markdown_view.dart';
 import '../widgets/output_pane.dart';
 import '../widgets/preview_pane.dart';
+import 'review.dart';
 import '../widgets/splitter.dart';
 import '../widgets/status_line.dart';
 
@@ -24,7 +25,6 @@ class WorkspaceScreen extends StatefulWidget {
     required this.flow,
     required this.task,
     required this.prefs,
-    this.onTab,
     this.outputInitial,
     this.outputTextInitial,
     this.previewInitial,
@@ -33,8 +33,6 @@ class WorkspaceScreen extends StatefulWidget {
   /// For tests of the preview pane: skips the fetch and the polling.
   final List<Map<String, dynamic>>? previewInitial;
 
-  /// Optional so the screen can still be mounted on its own in a test.
-  final void Function(String tab)? onTab;
   final FlowState flow;
   final Task task;
   final Prefs prefs;
@@ -55,8 +53,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   String? _doc;
   String? _loadedFor;
 
-  /// What the right pane shows for a code task: the diff, or the latest screenshot.
-  bool _previewMode = false;
+  /// What the right pane shows for a code task: the diff being written, the
+  /// landing and the self review, or the latest screenshot. One pane with
+  /// tabs rather than a screen you leave and come back to.
+  String _pane = 'changes';
   final _jump = ValueNotifier<int>(0);
 
   @override
@@ -140,7 +140,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SwipeBetween(
-                onNext: () => widget.onTab?.call('review'),
+                onNext: () => setState(() => _pane = 'review'),
                 child: SizedBox(width: 232, child: _explorer(task, files)),
               ),
               const VerticalDivider(width: 1, color: Tern.line),
@@ -255,12 +255,16 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   Widget _changes(Map<String, dynamic>? chosen) {
     final open = widget.prefs.changesOpen;
+    // A document opened from the explorer is not one of the tabs: it is
+    // something you asked to read, and it goes back to whichever tab you were
+    // on when you close it.
+    final showing = _doc != null ? 'doc' : _pane;
     final header = Container(
       height: 38,
       // Shut, the strip is only as wide as the button, with no room left for
       // padding around it.
       padding: open
-          ? const EdgeInsets.only(left: 14, right: 6)
+          ? const EdgeInsets.only(left: 8, right: 6)
           : EdgeInsets.zero,
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: Tern.line)),
@@ -272,30 +276,41 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         children: [
           if (open)
             Expanded(
-              child: Text(
-                _doc ?? (chosen == null ? 'Changes' : chosen['path'] as String),
-                overflow: TextOverflow.ellipsis,
-                style: t(11.5, color: Tern.ink3, code: true),
-              ),
-            ),
-          if (open)
-            Tooltip(
-              message: _previewMode ? 'Show the diff' : 'Show the latest screenshot',
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: () => setState(() => _previewMode = !_previewMode),
-                  child: SizedBox(
-                    width: 30,
-                    height: 30,
-                    child: Icon(
-                      _previewMode ? Icons.difference_outlined : Icons.photo_outlined,
-                      size: 15,
-                      color: _previewMode ? Tern.ink : Tern.muted,
-                    ),
-                  ),
-                ),
-              ),
+              child: _doc != null
+                  ? Row(children: [
+                      Segment(
+                        label: 'Back',
+                        icon: Icons.arrow_back,
+                        selected: false,
+                        onTap: () => setState(() => _doc = null),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _doc!,
+                          overflow: TextOverflow.ellipsis,
+                          style: t(11.5, color: Tern.ink3, code: true),
+                        ),
+                      ),
+                    ])
+                  : Row(children: [
+                      Segment(
+                        label: 'Changes',
+                        count: _files().length,
+                        selected: showing == 'changes',
+                        onTap: () => setState(() => _pane = 'changes'),
+                      ),
+                      Segment(
+                        label: 'Review',
+                        selected: showing == 'review',
+                        onTap: () => setState(() => _pane = 'review'),
+                      ),
+                      Segment(
+                        label: 'Preview',
+                        selected: showing == 'preview',
+                        onTap: () => setState(() => _pane = 'preview'),
+                      ),
+                    ]),
             ),
           Tooltip(
             message: open ? 'Hide the pane' : 'Show the pane',
@@ -331,8 +346,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             header,
             if (open)
               Expanded(
-                child: _previewMode
+                child: showing == 'preview'
                     ? PreviewPane(task: widget.task, flow: widget.flow, initial: widget.previewInitial)
+                    : showing == 'review'
+                    ? ReviewPane(flow: widget.flow, task: widget.task)
                     : _doc != null
                     ? SingleChildScrollView(
                         padding: const EdgeInsets.all(16),

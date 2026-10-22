@@ -224,6 +224,8 @@ class _Conversation extends StatelessWidget {
                 style: t(11.5, color: selected ? Tern.ink : Tern.muted),
               ),
             ),
+            const SizedBox(width: 6),
+            Stat(task.stat, size: 10),
           ]),
         ),
       );

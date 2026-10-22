@@ -343,6 +343,14 @@ function Card({ task, index = 0 }) {
         </div>
       )}
 
+      {task.stat && (task.stat.added > 0 || task.stat.removed > 0) && (
+        <div className="font-mono text-xs">
+          {task.stat.added > 0 && <span className="text-ok">+{task.stat.added}</span>}
+          {task.stat.added > 0 && task.stat.removed > 0 && ' '}
+          {task.stat.removed > 0 && <span className="text-bad">-{task.stat.removed}</span>}
+        </div>
+      )}
+
       {(task.lead || task.pieces?.length > 0) && (
         <div className="text-xs text-muted">
           {task.lead ? 'a piece of a split run' : `${task.pieces.length} pieces`}

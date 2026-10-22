@@ -28,6 +28,14 @@ class Task {
   int get contextWindow => (raw['contextWindow'] ?? 0) as int;
   Map<String, dynamic> get io =>
       (raw['io'] as Map?)?.cast<String, dynamic>() ?? const {};
+  /// How many lines the task has added and removed, over all its repos,
+  /// measured by the server when a run ended. Null until one has.
+  (int, int)? get stat {
+    final found = raw['stat'] as Map?;
+    if (found == null) return null;
+    return ((found['added'] ?? 0) as int, (found['removed'] ?? 0) as int);
+  }
+
   /// A piece of a split run carries the lead that asked for it; a lead carries
   /// the pieces it asked for.
   String? get lead => raw['lead'] as String?;

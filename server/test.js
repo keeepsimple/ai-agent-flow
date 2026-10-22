@@ -610,6 +610,12 @@ try {
   assert.equal(impl.removed, 0)
   assert.match(impl.patch, /\+stubbed/, 'with the actual lines, not just a count')
 
+  // And the size of it is on the task itself, measured when the phase ended,
+  // so the board can say so without a git call per row.
+  const measured = await (await fetch(`${base}/api/tasks/${created.id}`)).json()
+  assert.equal(measured.stat.added, 2, 'one line added in each of the two repos')
+  assert.equal(measured.stat.removed, 0)
+
   // A generated file can be longer than anything worth reading.
   const big = path.join(root, 'data', 'worktrees', created.id, 'api')
   fs.writeFileSync(path.join(big, 'generated.txt'), 'x'.repeat(80_000))

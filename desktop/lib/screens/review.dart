@@ -4,27 +4,27 @@ import '../api.dart';
 import '../flow.dart';
 import '../theme.dart';
 import '../widgets/bits.dart';
-import '../widgets/diff_view.dart';
 import '../widgets/markdown_view.dart';
-import '../widgets/swipe.dart';
 
-/// What changed, what the review made of it, and the only buttons that touch
-/// a remote. Nothing here happens on its own.
-class ReviewScreen extends StatefulWidget {
-  const ReviewScreen({super.key, required this.flow, required this.task, this.onTab});
-  /// Optional so the screen can still be mounted on its own in a test.
-  final void Function(String tab)? onTab;
+/// What the review made of the work, and the only buttons that touch a remote.
+/// Nothing here happens on its own.
+///
+/// This was a screen of its own, with a file list and a diff beside it. Both
+/// of those already existed in the workspace — the explorer lists the changed
+/// files and the pane shows the diff — so what was left is this: the repo
+/// cards and the self review, in the pane next to the conversation you were
+/// reading anyway.
+class ReviewPane extends StatefulWidget {
+  const ReviewPane({super.key, required this.flow, required this.task});
   final FlowState flow;
   final Task task;
 
   @override
-  State<ReviewScreen> createState() => _ReviewScreenState();
+  State<ReviewPane> createState() => _ReviewPaneState();
 }
 
-class _ReviewScreenState extends State<ReviewScreen> {
-  List<Map<String, dynamic>> _diff = const [];
+class _ReviewPaneState extends State<ReviewPane> {
   List<Map<String, dynamic>> _git = const [];
-  String? _file;
   String _busy = '';
 
   @override
@@ -33,26 +33,17 @@ class _ReviewScreenState extends State<ReviewScreen> {
     _load();
   }
 
+  /// Only the git state: the diff this used to read is the pane's other tab,
+  /// and reading it here was a second git call per repo for nothing.
   Future<void> _load() async {
     try {
-      final diff = await widget.flow.api.diff(widget.task.id);
       final git = await widget.flow.api.gitState(widget.task.id);
       if (!mounted) return;
-      setState(() {
-        _diff = diff;
-        _git = git;
-        _file ??= _files().isEmpty ? null : _files().first['path'] as String;
-      });
+      setState(() => _git = git);
     } catch (err) {
       widget.flow.fail(err);
     }
   }
-
-  List<Map<String, dynamic>> _files() => [
-        for (final repo in _diff)
-          for (final file in (repo['files'] as List?) ?? const [])
-            {...(file as Map).cast<String, dynamic>(), 'repo': repo['repo']},
-      ];
 
   Future<void> _configureProd(String repo) async {
     Map<String, dynamic> config;
@@ -83,128 +74,40 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final files = _files();
-    final chosen = files.where((f) => f['path'] == _file).firstOrNull;
     final review = widget.task.docs['review.md'] as String?;
-
-    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SwipeBetween(
-        onBack: () => widget.onTab?.call('workspace'),
-        child: SizedBox(
-        width: 268,
-        child: Container(
-          color: Tern.panel,
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-            children: [
-              Text('Changed files', style: t(11, color: Tern.muted)),
-              const SizedBox(height: 8),
-              if (files.isEmpty)
-                Text('Nothing changed.', style: t(11.5, color: Tern.faint))
-              else
-                for (final file in files)
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: () => setState(() => _file = file['path'] as String),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                        margin: const EdgeInsets.only(bottom: 2),
-                        decoration: BoxDecoration(
-                          color: file['path'] == _file ? Tern.selected : Colors.transparent,
-                          borderRadius: BorderRadius.circular(7),
-                        ),
-                        child: Row(children: [
-                          Expanded(
-                            child: Text(
-                              file['path'] as String,
-                              overflow: TextOverflow.ellipsis,
-                              style: t(11.5,
-                                  color: file['path'] == _file ? Tern.ink : Tern.ink3,
-                                  code: true),
-                            ),
-                          ),
-                          Text('+${file['added'] ?? 0}',
-                              style: t(10.5, color: Tern.ok, code: true)),
-                          const SizedBox(width: 5),
-                          Text('-${file['removed'] ?? 0}',
-                              style: t(10.5, color: Tern.bad, code: true)),
-                        ]),
-                      ),
-                    ),
-                  ),
-            ],
+    final id = widget.task.id;
+    return ListView(
+      padding: const EdgeInsets.all(14),
+      children: [
+        if (_git.isEmpty && review == null)
+          Text('Nothing to land yet.', style: t(12, color: Tern.muted)),
+        for (final repo in _git) ...[
+          RepoCard(
+            repo: repo,
+            busy: _busy,
+            onPush: () => _act('push:${repo['repo']}',
+                () => widget.flow.api.push(id, repo['repo'] as String)),
+            onPushBase: () => _act('base:${repo['repo']}',
+                () => widget.flow.api.push(id, repo['repo'] as String, base: true)),
+            onMerge: (target) => _act('merge:${repo['repo']}',
+                () => widget.flow.api.merge(id, repo['repo'] as String, target: target)),
+            onCatchUp: () => _act('catch:${repo['repo']}',
+                () => widget.flow.api.catchUp(id, repo['repo'] as String)),
+            onShip: () => _act('ship:${repo['repo']}',
+                () => widget.flow.api.ship(id, repo['repo'] as String)),
+            onLandAndShip: () => _act('merge:${repo['repo']}',
+                () => widget.flow.api.merge(id, repo['repo'] as String, thenShip: true)),
+            onConfigureProd: () => _configureProd(repo['repo'] as String),
           ),
-        ),
-      ),
-      ),
-      const VerticalDivider(width: 1, color: Tern.line),
-      Expanded(
-        flex: 3,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Container(
-            height: 38,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            alignment: Alignment.centerLeft,
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Tern.line)),
-            ),
-            child: Text(chosen?['path'] as String? ?? 'Diff',
-                overflow: TextOverflow.ellipsis, style: t(11.5, color: Tern.ink3, code: true)),
-          ),
-          Expanded(
-            child: chosen == null
-                ? Center(child: Text('Nothing to show.', style: t(12, color: Tern.muted)))
-                : (chosen['patch'] == null
-                    ? Center(
-                        child: Text(
-                          'Too large to show: ${((chosen['bytes'] ?? 0) as num) ~/ 1024} KB.',
-                          style: t(12, color: Tern.muted),
-                        ),
-                      )
-                    : DiffView(chosen['patch'] as String?)),
-          ),
-        ]),
-      ),
-      const VerticalDivider(width: 1, color: Tern.line),
-      SizedBox(
-        width: 400,
-        child: Container(
-          color: Tern.panel,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              for (final repo in _git) ...[
-                RepoCard(
-                  repo: repo,
-                  busy: _busy,
-                  onPush: () => _act('push:${repo['repo']}',
-                      () => widget.flow.api.push(widget.task.id, repo['repo'] as String)),
-                  onPushBase: () => _act('base:${repo['repo']}',
-                      () => widget.flow.api
-                          .push(widget.task.id, repo['repo'] as String, base: true)),
-                  onMerge: (target) => _act('merge:${repo['repo']}',
-                      () => widget.flow.api.merge(widget.task.id, repo['repo'] as String, target: target)),
-                  onCatchUp: () => _act('catch:${repo['repo']}',
-                      () => widget.flow.api.catchUp(widget.task.id, repo['repo'] as String)),
-                  onShip: () => _act('ship:${repo['repo']}',
-                      () => widget.flow.api.ship(widget.task.id, repo['repo'] as String)),
-                  onLandAndShip: () => _act('merge:${repo['repo']}',
-                      () => widget.flow.api.merge(widget.task.id, repo['repo'] as String, thenShip: true)),
-                  onConfigureProd: () => _configureProd(repo['repo'] as String),
-                ),
-                const SizedBox(height: 12),
-              ],
-              if (review != null) ...[
-                Text('Self review', style: t(11, color: Tern.muted)),
-                const SizedBox(height: 8),
-                MarkdownView(review),
-              ],
-            ],
-          ),
-        ),
-      ),
-    ]);
+          const SizedBox(height: 12),
+        ],
+        if (review != null) ...[
+          Text('Self review', style: t(11, color: Tern.muted)),
+          const SizedBox(height: 8),
+          MarkdownView(review),
+        ],
+      ],
+    );
   }
 }
 

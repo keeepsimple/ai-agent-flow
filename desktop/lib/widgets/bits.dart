@@ -180,6 +180,86 @@ class _AsyncButtonState extends State<AsyncButton> {
 }
 
 /// A small selectable pill, used for repos, models, run shapes.
+/// What a task did to the files, as the sidebar and the board say it: added
+/// in green, removed in red, nothing at all when no run has measured it yet.
+class Stat extends StatelessWidget {
+  const Stat(this.stat, {super.key, this.size = 10.5});
+  final (int, int)? stat;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final found = stat;
+    if (found == null || (found.$1 == 0 && found.$2 == 0)) {
+      return const SizedBox.shrink();
+    }
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      if (found.$1 > 0)
+        Text('+${found.$1}', style: t(size, color: Tern.ok, code: true)),
+      if (found.$1 > 0 && found.$2 > 0) const SizedBox(width: 4),
+      if (found.$2 > 0)
+        Text('-${found.$2}', style: t(size, color: Tern.bad, code: true)),
+    ]);
+  }
+}
+
+/// One tab of a pane: what it shows, and how many of them there are. Flat on
+/// purpose — a pane header this small cannot carry a second raised surface
+/// without looking like a toolbar.
+class Segment extends StatelessWidget {
+  const Segment({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.count,
+    this.icon,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  /// Shown beside the label when there is something to count. Zero is worth
+  /// saying: it is the difference between nothing changed and not looked yet.
+  final int? count;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: smooth,
+            curve: ease,
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            margin: const EdgeInsets.only(right: 2),
+            decoration: BoxDecoration(
+              color: selected ? Tern.selected : Colors.transparent,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (icon != null) ...[
+                Icon(icon, size: 12, color: selected ? Tern.ink : Tern.muted),
+                const SizedBox(width: 5),
+              ],
+              Text(
+                label,
+                style: t(11.5,
+                    color: selected ? Tern.ink : Tern.muted,
+                    weight: selected ? FontWeight.w500 : FontWeight.w400),
+              ),
+              if (count != null) ...[
+                const SizedBox(width: 5),
+                Text('$count', style: t(10.5, color: Tern.faint, code: true)),
+              ],
+            ]),
+          ),
+        ),
+      );
+}
+
 class Chip2 extends StatefulWidget {
   const Chip2({
     super.key,

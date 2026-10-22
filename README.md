@@ -126,13 +126,33 @@ build passes `Release.entitlements` back in. Without that the app would lose
 the ones that let it leave the sandbox, which it only survived before because
 *no* entitlements also means no sandbox.
 
-## Three screens
+## Two screens, and a row of tabs
 
 ```
-#/                Sessions   the board: start a task, see every one at a glance
-#/t/<id>          Workspace  explorer · conversation · the diff as it is written
-#/t/<id>/review   Review     changed files · diff · summary, checks and merge
+Board      start a task, and see every one at a glance
+Workspace  explorer · conversation · a pane that is one of:
+             Changes   the diff as it is written
+             Review    what to land, what to ship, and the self review
+             Preview   the latest screenshot the agent took
 ```
+
+Landing used to be a screen of its own, reached from a tab in the header. Its
+file list and its diff already existed in the workspace — the explorer lists
+the changed files and the pane shows them — so what was left was the repo
+cards and `review.md`, and those are now the Review tab of that same pane. One
+screen fewer to leave and come back to.
+
+Opening a task puts it in a **tab** above the workspace, and the tabs stay
+until you close one: twelve tasks no longer mean twelve trips to the board.
+They are shortcuts, not copies — switching rebuilds the workspace from the
+store rather than keeping twelve conversations in memory — so what you get
+back is the task, not the scroll position you left it at. The row is
+remembered across restarts, minus any task deleted since. Closing a tab lands
+you on its neighbour and leaves the task alone: it keeps running. The middle
+mouse button closes one too.
+
+**The web client still has the three-screen layout** (`#/`, `#/t/<id>`,
+`#/t/<id>/review`). Only the app was rearranged.
 
 ## How a task runs
 
@@ -375,6 +395,12 @@ crossed, writes a line in the conversation and notifies, once; and a
 Telegram bot. With a chat id and a bot token (keychain), questions, gates,
 finishes and cost lines go to the chat, and replying to a question message
 answers it. *Test* sends one message. Every message carries what the agent said last, so it reads on the phone; a long one is split into several messages, and past three the rest waits behind a *Show more* button. Send `/status` to the bot for what is running and what is waiting on you, `/task <id>` for one task's latest lines, `/help` for the list.
+
+Each row on the board and in the sidebar carries how big the change is —
+`+312 -47`, added and removed over every repo the task touched. It is measured
+when a run ends rather than when the row is drawn, because a number on a row
+is not worth a git call per repo per task. A task that has not run yet says
+nothing rather than zero.
 
 Each board row carries `$cost · elapsed`, what became of the branch
 (*landed on main*, *shipped to prod*), and the board filters by repo. The

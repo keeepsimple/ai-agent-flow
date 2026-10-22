@@ -18,8 +18,6 @@ class Header extends StatelessWidget {
     required this.fullScreen,
     required this.onToggleSidebar,
     required this.task,
-    required this.tab,
-    required this.onTab,
     required this.onBack,
     required this.accent,
     required this.onAccent,
@@ -44,8 +42,6 @@ class Header extends StatelessWidget {
   final bool fullScreen;
   final VoidCallback onToggleSidebar;
   final Task? task;
-  final String tab;
-  final void Function(String) onTab;
   final VoidCallback onBack;
   final Accent accent;
   final void Function(Accent) onAccent;
@@ -128,8 +124,6 @@ class Header extends StatelessWidget {
               ),
               style: t(11.5, color: Tern.muted),
             ),
-            const SizedBox(width: 14),
-            _Tabs(tab: tab, onTab: onTab),
           ],
           const Spacer(),
           if (task != null) ...[
@@ -338,54 +332,6 @@ class Header extends StatelessWidget {
       onDeleted();
     }
   }
-}
-
-class _Tabs extends StatelessWidget {
-  const _Tabs({required this.tab, required this.onTab});
-  final String tab;
-  final void Function(String) onTab;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(3),
-    decoration: BoxDecoration(
-      color: Tern.page,
-      border: Border.all(color: Tern.line),
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final name in ['workspace', 'review'])
-          GestureDetector(
-            onTap: () => onTab(name),
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: AnimatedContainer(
-                duration: smooth,
-                curve: ease,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: tab == name ? Tern.selected : Colors.transparent,
-                  border: tab == name
-                      ? raised(Tern.lineStrong)
-                      : Border.all(color: Colors.transparent),
-                  borderRadius: BorderRadius.circular(13),
-                  boxShadow: tab == name ? e1 : null,
-                ),
-                child: Text(
-                  name == 'workspace' ? 'Workspace' : 'Review',
-                  style: t(12, color: tab == name ? Tern.ink : Tern.muted),
-                ),
-              ),
-            ),
-          ),
-      ],
-    ),
-  );
 }
 
 class _AccentPicker extends StatelessWidget {

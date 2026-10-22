@@ -131,13 +131,13 @@ class _ConversationState extends State<Conversation> {
           controller: _scroll,
           child: ListView.builder(
             controller: _scroll,
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
             itemCount: blocks.length + 2,
             itemBuilder: (context, i) {
               if (i == 0) return _opening(task);
               if (i <= blocks.length) {
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.only(bottom: 11),
                   child: _render(
                     context,
                     blocks[i - 1],
@@ -192,7 +192,7 @@ class _ConversationState extends State<Conversation> {
             child: Panel(
               colour: Tern.selected,
               border: Tern.lineStrong,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               child: SelectableText(
                 task.prompt,
                 style: t(13, color: Tern.ink2),
@@ -214,30 +214,19 @@ class _ConversationState extends State<Conversation> {
               ),
             ),
           ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         Row(
           children: [
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color: Tern.avatar,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                'T',
-                style: t(11, color: Tern.ink3, weight: FontWeight.w600),
-              ),
-            ),
-            const SizedBox(width: 9),
+            const Icon(Icons.auto_awesome, size: 11, color: Tern.faint),
+            const SizedBox(width: 6),
             Text(
-              'Tern · ${task.model ?? 'default'}',
-              style: t(11.5, color: Tern.muted),
+              'Tern · ${task.model ?? 'default'}'
+              '${task.effort != null ? ' · ${task.effort}' : ''}',
+              style: t(11, color: Tern.faint),
             ),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
       ],
     );
   }
@@ -318,7 +307,7 @@ class _ConversationState extends State<Conversation> {
             child: Panel(
               colour: mine ? Tern.selected : Tern.warnBg,
               border: mine ? Tern.lineStrong : Tern.warnLine,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

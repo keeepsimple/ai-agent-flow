@@ -11,6 +11,7 @@ import 'dart:io';
 import 'package:agent_flow/api.dart';
 import 'package:agent_flow/flow.dart';
 import 'package:agent_flow/screens/review.dart';
+import 'package:agent_flow/widgets/tabs.dart';
 import 'package:agent_flow/shortcuts.dart';
 import 'package:agent_flow/screens/prompts.dart';
 import 'package:agent_flow/screens/sessions.dart';
@@ -419,8 +420,6 @@ void main() {
             fullScreen: false,
             onToggleSidebar: () {},
             task: task,
-            tab: 'workspace',
-            onTab: (_) {},
             onBack: () {},
             accent: Accent.sky,
             onAccent: (_) {},
@@ -868,7 +867,7 @@ void main() {
     await _shoot(
       tester,
       'review',
-      ReviewScreen(flow: flow, task: task),
+      ReviewPane(flow: flow, task: task),
       const Size(1340, 900),
     );
   });
@@ -1600,7 +1599,7 @@ void main() {
     ));
     await tester.pump();
     expect(find.text('No screenshot yet'), findsNothing, reason: 'the diff is the default pane');
-    await tester.tap(find.byTooltip('Show the latest screenshot'));
+    await tester.tap(find.text('Preview'));
     await tester.pump();
     expect(find.text('No screenshot yet'), findsOneWidget);
     expect(find.text('Open in browser'), findsOneWidget);
@@ -1647,6 +1646,60 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
+  testWidgets('the board and the sidebar say how big the change is', (tester) async {
+    final flow = _flow();
+    flow.tasks = [
+      _task({'id': 'a1', 'title': 'Measured', 'status': 'done', 'phase': null,
+             'stat': {'added': 312, 'removed': 47}}),
+      // Never run: no measurement, and nothing said rather than a zero.
+      _task({'id': 'a2', 'title': 'Not yet', 'status': 'queued', 'phase': null}),
+    ];
+    tester.view.physicalSize = const Size(1340, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(body: SessionsScreen(flow: flow, onOpen: (_) {})),
+    ));
+    await tester.pump();
+    expect(find.text('+312'), findsOneWidget);
+    expect(find.text('-47'), findsOneWidget);
+    expect(find.textContaining('+0'), findsNothing);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('tabs keep conversations open, and closing one lands next door', (tester) async {
+    // The rule, on its own: this is what decides where you end up.
+    expect(afterClosing(['a', 'b', 'c'], 'b'), 'c', reason: 'what slid into its place');
+    expect(afterClosing(['a', 'b', 'c'], 'c'), 'b', reason: 'the end of the row');
+    expect(afterClosing(['a'], 'a'), isNull, reason: 'nothing left but the board');
+
+    final closed = <String>[];
+    String? picked;
+    await _shoot(
+      tester,
+      'tabs',
+      TabStrip(
+        tabs: const ['t1', 't2', 't3'],
+        tasks: [
+          _task({'id': 't1', 'title': 'Discounts on the product page', 'status': 'running'}),
+          _task({'id': 't2', 'title': 'Notify service retries', 'status': 'awaiting_approval'}),
+          _task({'id': 't3', 'title': 'A title long enough that the tab has to cut it off somewhere', 'status': 'done'}),
+        ],
+        selected: 't2',
+        onPick: (id) => picked = id,
+        onClose: closed.add,
+        onBoard: () => picked = null,
+      ),
+      const Size(900, 44),
+    );
+    await tester.tap(find.text('Discounts on the product page'));
+    expect(picked, 't1');
+    // The cross is only on the tab under the pointer, or the open one.
+    await tester.tap(find.byIcon(Icons.close));
+    expect(closed, ['t2']);
+  });
+
   testWidgets('the header with nothing open', (tester) async {
     final flow = _flow();
     await _shoot(
@@ -1658,8 +1711,6 @@ void main() {
         fullScreen: false,
         onToggleSidebar: () {},
         task: null,
-        tab: 'workspace',
-        onTab: (_) {},
         onBack: () {},
         accent: Accent.sky,
         onAccent: (_) {},
@@ -1776,8 +1827,6 @@ void main() {
             fullScreen: false,
             onToggleSidebar: () {},
             task: null,
-            tab: 'workspace',
-            onTab: (_) {},
             onBack: () {},
             accent: Accent.sky,
             onAccent: (_) {},
@@ -1827,8 +1876,6 @@ void main() {
             onToggleSidebar: () {},
             fullScreen: true,
             task: null,
-            tab: 'workspace',
-            onTab: (_) {},
             onBack: () {},
             accent: Accent.sky,
             onAccent: (_) {},
@@ -1858,8 +1905,6 @@ void main() {
         fullScreen: false,
         onToggleSidebar: () {},
         task: task,
-        tab: 'workspace',
-        onTab: (_) {},
         onBack: () {},
         accent: Accent.sky,
         onAccent: (_) {},

@@ -8,7 +8,6 @@ import 'flow.dart';
 import 'notifier.dart';
 import 'screens/prompts.dart';
 import 'widgets/settings_dialog.dart';
-import 'screens/review.dart';
 import 'screens/sessions.dart';
 import 'screens/workspace.dart';
 import 'server.dart';
@@ -19,6 +18,7 @@ import 'window.dart';
 import 'widgets/bits.dart';
 import 'widgets/header.dart';
 import 'widgets/sidebar.dart';
+import 'widgets/tabs.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,8 +45,11 @@ class _AgentFlowAppState extends State<AgentFlowApp>
   Accent _accent = Accent.sky;
   bool _ready = false;
   String? _trouble;
-  String _tab = 'workspace';
   bool _prompts = false;
+
+  /// The conversations left open, oldest first. Restored at launch, minus any
+  /// task that has been deleted since.
+  late List<String> _tabs = _prefs.tabs;
 
   @override
   void initState() {
@@ -78,6 +81,11 @@ class _AgentFlowAppState extends State<AgentFlowApp>
       _flow.pickWorkspace(remembered);
     }
     _flow.listen();
+    // A tab for a task that no longer exists is a dead end, and the store is
+    // the only thing that knows which those are.
+    final alive = (_flow.tasks ?? const <Task>[]).map((t) => t.id).toSet();
+    _tabs = _tabs.where(alive.contains).toList();
+    _prefs.set(tabs: _tabs);
     if (mounted) setState(() => _ready = true);
   }
 
@@ -167,15 +175,16 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                   fullScreen: _window.fullScreen,
                   onToggleSidebar: _toggleSidebar,
                   task: showing ? task : null,
-                  tab: _tab,
-                  onTab: (name) => setState(() => _tab = name),
                   onBack: () => _flow.select(null),
                   accent: _accent,
                   onAccent: (a) => setState(() => _accent = a),
                   onDropped: () {},
                   onDeleted: () => _flow.select(null),
                   onPrompts: () => setState(() => _prompts = !_prompts),
-                  onSettings: () => showDialog<void>(context: context, builder: (_) => SettingsDialog(flow: _flow)),
+                  onSettings: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => SettingsDialog(flow: _flow),
+                  ),
                   promptsOpen: _prompts,
                 ),
                 Expanded(
@@ -205,35 +214,46 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                         ),
                       ),
                       Expanded(
-                        child: AnimatedSwitcher(
-                          duration: smooth,
-                          switchInCurve: ease,
-                          switchOutCurve: ease,
-                          // Keyed on what screen this is, not on the data in
-                          // it: without that the switcher would cross-fade the
-                          // whole screen every time a log line arrived.
-                          child: KeyedSubtree(
-                            key: ValueKey(
-                              showing
-                                  ? '\$_tab/\${task?.id}'
-                                  : (_prompts ? 'prompts' : 'sessions'),
+                        child: Column(
+                          children: [
+                            TabStrip(
+                              tabs: _tabs,
+                              tasks: _flow.tasks ?? const [],
+                              selected: _flow.selected,
+                              onPick: _flow.select,
+                              onClose: _close,
+                              onBoard: () => _flow.select(null),
                             ),
-                            child: showing
-                                ? (_tab == 'review'
-                                      ? ReviewScreen(flow: _flow, task: task, onTab: (name) => setState(() => _tab = name))
-                                      : WorkspaceScreen(
+                            Expanded(
+                              child: AnimatedSwitcher(
+                                duration: smooth,
+                                switchInCurve: ease,
+                                switchOutCurve: ease,
+                                // Keyed on what screen this is, not on the data in
+                                // it: without that the switcher would cross-fade the
+                                // whole screen every time a log line arrived.
+                                child: KeyedSubtree(
+                                  key: ValueKey(
+                                    showing
+                                        ? 'task/\${task?.id}'
+                                        : (_prompts ? 'prompts' : 'sessions'),
+                                  ),
+                                  child: showing
+                                      ? WorkspaceScreen(
                                           flow: _flow,
                                           task: task,
                                           prefs: _prefs,
-                                          onTab: (name) => setState(() => _tab = name),
-                                        ))
-                                : (_prompts
-                                      ? PromptsScreen(flow: _flow)
-                                      : SessionsScreen(
-                                          flow: _flow,
-                                          onOpen: _open,
-                                        )),
-                          ),
+                                        )
+                                      : (_prompts
+                                            ? PromptsScreen(flow: _flow)
+                                            : SessionsScreen(
+                                                flow: _flow,
+                                                onOpen: _open,
+                                              )),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -285,9 +305,27 @@ class _AgentFlowAppState extends State<AgentFlowApp>
   }
 
   void _open(String id) {
-    _prompts = false;
-    setState(() => _tab = 'workspace');
+    setState(() {
+      _prompts = false;
+      if (!_tabs.contains(id)) {
+        _tabs = [..._tabs, id];
+        _prefs.set(tabs: _tabs);
+      }
+    });
     _flow.select(id);
+  }
+
+  /// Closing a tab leaves the task alone: it keeps running, and the board
+  /// still has it. What goes is the shortcut.
+  void _close(String id) {
+    final next = afterClosing(_tabs, id);
+    final left = [..._tabs]..remove(id);
+    setState(() {
+      _tabs = left;
+      _prefs.set(tabs: left);
+    });
+    if (_flow.selected != id) return;
+    _flow.select(next);
   }
 
   /// Switching shows the board, because that is what the choice changes.

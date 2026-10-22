@@ -666,6 +666,7 @@ async function runTask(task) {
       endedAt: Date.now(),
       summary: result.summary,
     }
+    noteStat(task)
     if (phase === phasesFor(task.run)[0] && !task.namedByHuman) {
       const written = fs.existsSync(path.join(task.artifactDir, 'title.txt'))
         ? fs.readFileSync(path.join(task.artifactDir, 'title.txt'), 'utf8').trim()
@@ -709,6 +710,30 @@ const pieceLines = (task) =>
       return `    ${c.title} — ended ${c.status}\n${how}`
     })
     .join('\n') || '    (none)'
+
+/**
+ * How big the change is, totalled over the task's repos.
+ *
+ * Measured when a run ends rather than when a row is drawn: the board would
+ * otherwise need a git call per repo per task, which is the same reason the
+ * task view carries no git status.
+ */
+function noteStat(task) {
+  let added = 0
+  let removed = 0
+  for (const tree of task.trees || []) {
+    const out = quiet(() => git(tree.worktree, 'diff', '--numstat', tree.baseRef + '...HEAD'))
+    for (const line of String(out).split('\n')) {
+      if (!line.trim()) continue
+      const [a, r] = line.split('\t')
+      // A binary file reports '-' for both, and has no lines to count.
+      if (a === '-') continue
+      added += Number(a) || 0
+      removed += Number(r) || 0
+    }
+  }
+  task.stat = { added, removed }
+}
 
 function fail(task, message) {
   update(task.id, { status: 'failed', error: message })
@@ -853,6 +878,7 @@ function sideRun(task, label, prompt, cwd, finished, opts = {}) {
     .then(() => (stopped(task) ? null : runClaude(task, prompt, cwd, { ...runOpts, meta: { kind: 'side', label } })))
     .then(() => {
       if (stopped(task)) return
+      noteStat(task)
       update(task.id, { status: previous, phase: null })
       // The outcome is checked, not assumed: the agent may have stopped at a
       // guard, a failing check or a refused push and still exited cleanly.
