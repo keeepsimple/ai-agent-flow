@@ -31,10 +31,13 @@ class Conversation extends StatefulWidget {
 class _ConversationState extends State<Conversation> {
   final _scroll = ScrollController();
   final _open = <int>{};
-  // Opens at the top, not the end. A finished run is something you read from
-  // the beginning; following the live tail is what the Latest button is for,
-  // and pressing it pins again from then on.
-  bool _pinned = false;
+  // Opens at the newest, the way every other transcript does. It used to open
+  // at the top, on the grounds that a finished run reads from the beginning —
+  // which was fair when getting to a task meant a trip through the board, and
+  // wrong now that tabs make switching cheap: every switch landed four hundred
+  // lines above the thing you came back for, and wanted a click on Latest.
+  bool _pinned = true;
+  bool _jumping = false;
   int _seen = 0;
 
   @override
@@ -43,6 +46,11 @@ class _ConversationState extends State<Conversation> {
     widget.jumpToEnd?.addListener(_jump);
     _scroll.addListener(() {
       if (!_scroll.hasClients) return;
+      // A jump of our own is not the reader going somewhere. Without this the
+      // first hop of a long transcript lands short of an end that has grown
+      // since, which reads as "scrolled away" and flashes the Latest button
+      // on screen for a moment every time a tab is opened.
+      if (_jumping) return;
       final pinned =
           _scroll.position.pixels >= _scroll.position.maxScrollExtent - 60;
       if (pinned == _pinned) return;
@@ -54,7 +62,39 @@ class _ConversationState extends State<Conversation> {
     // Through setState: the listener below would otherwise see the value it
     // already holds, take its early return, and leave the button on screen.
     setState(() => _pinned = true);
-    if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    _toEnd();
+  }
+
+  /// All the way down, however far down turns out to be.
+  ///
+  /// The list builds lazily, so what it calls the end is an estimate from the
+  /// children laid out so far. Jumping there lays out more and moves the end
+  /// further off — only by a few pixels on an even transcript, but enough to
+  /// leave the newest message clipped. So: jump, look again next frame, and
+  /// stop when it stops moving. The test measures to the pixel.
+  void _toEnd([int tries = 6]) {
+    if (!_scroll.hasClients) return;
+    final end = _scroll.position.maxScrollExtent;
+    _jumping = true;
+    _scroll.jumpTo(end);
+    if (tries <= 0) return _landed();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return _landed();
+      if (_scroll.position.maxScrollExtent > end) {
+        _toEnd(tries - 1);
+      } else {
+        _landed();
+      }
+    });
+  }
+
+  /// At the end, so pinned — said here rather than left to the scroll
+  /// listener, which is deaf while a jump of ours is in flight and would
+  /// otherwise leave the Latest button up after it had taken you there.
+  void _landed() {
+    _jumping = false;
+    if (_pinned || !mounted) return;
+    setState(() => _pinned = true);
   }
 
   /// The button's own scroll. Animated, unlike the stick-to-bottom that runs
@@ -62,11 +102,18 @@ class _ConversationState extends State<Conversation> {
   /// log arrives, this one is a person asking to be taken somewhere.
   void _toBottom() {
     if (!_scroll.hasClients) return;
-    _scroll.animateTo(
-      _scroll.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 260),
-      curve: ease,
-    );
+    _scroll
+        .animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 260),
+          curve: ease,
+        )
+        // The end it was aiming at moves as the list lays out what the
+        // animation uncovered, so it lands short of the real one — and the
+        // button it was pressed to retire stays on screen. Close the gap.
+        .then((_) {
+          if (mounted) _toEnd();
+        });
   }
 
   @override
@@ -79,7 +126,7 @@ class _ConversationState extends State<Conversation> {
   void _stickToBottom() {
     if (!_pinned) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      if (mounted) _toEnd();
     });
   }
 

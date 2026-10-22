@@ -837,15 +837,26 @@ void main() {
     );
   });
 
-  testWidgets('a conversation opens at the top, with a way down', (
+  testWidgets('a conversation opens at its newest message, with a way back', (
     tester,
   ) async {
     // The goldens cannot cover either half: the button lives at an opacity the
     // golden reads as absent, and where a list is scrolled to is not something
     // a still frame of the top of it can show.
+    //
+    // It used to open at the top, on the grounds that a finished run reads
+    // from the beginning. Tabs made switching cheap and that became a click on
+    // Latest every single time, so it opens at the end now.
+    //
+    // Heights all over the place, the way a real transcript is: a paragraph
+    // the agent wrote, then a one-line tool call. The list builds lazily, so
+    // one jump to its estimate of the end has to still land on the real end.
     final task = _task({
       'log': [
-        for (var i = 0; i < 80; i++) {'kind': 'text', 'text': 'Step $i'},
+        for (var i = 0; i < 120; i++)
+          i.isEven
+              ? {'kind': 'text', 'text': 'Step $i. ${'padding words ' * 40}'}
+              : {'kind': 'tool', 'tool': 'Read', 'text': 'lib/file$i.dart'},
       ],
     });
 
@@ -863,6 +874,7 @@ void main() {
       ),
     );
     await tester.pump();
+    await tester.pump();
 
     double shown() => tester
         .widgetList<AnimatedOpacity>(
@@ -874,18 +886,26 @@ void main() {
         .first
         .opacity;
 
-    // Where it is scrolled to, asked of the list rather than of the text: the
-    // messages render through markdown, so there is no flat Text to look for.
-    double offset() => tester
-        .widget<ListView>(find.byType(ListView))
-        .controller!
-        .position
-        .pixels;
+    final list = find.byType(ListView);
+    ScrollPosition where() => tester.widget<ListView>(list).controller!.position;
 
-    // It opens where the run starts, so the whole of it is below and the way
-    // down is offered from the first frame.
-    expect(offset(), 0, reason: 'a conversation opens where the run starts');
-    expect(shown(), 1, reason: 'and the way down should be offered');
+    // The end, by content as well as by number: the newest is on screen and
+    // the oldest is not.
+    expect(where().pixels, where().maxScrollExtent);
+    expect(where().pixels, greaterThan(0), reason: 'there was somewhere to go');
+    expect(find.textContaining('lib/file119.dart'), findsOneWidget);
+    expect(find.textContaining('Step 0.'), findsNothing);
+    expect(shown(), 0, reason: 'nothing to offer: you are already there');
+
+    // Scrolling back up is what the button is for.
+    await tester.drag(list, const Offset(0, 600));
+    await tester.pump();
+    expect(shown(), 1, reason: 'the way down is offered once you leave the end');
+    // Let it slide and fade in before pressing it: mid-animation it is not
+    // where it looks like it is.
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
 
     await tester.tap(find.text('Latest'));
     // Frame by frame, not pumpAndSettle: the live status dot pulses for ever,
@@ -893,12 +913,8 @@ void main() {
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    expect(shown(), 0, reason: 'and it should retire once it has done its job');
-    expect(
-      offset(),
-      greaterThan(0),
-      reason: 'because it actually took the reader to the end',
-    );
+    expect(shown(), 0, reason: 'and it retires once it has done its job');
+    expect(where().pixels, where().maxScrollExtent, reason: 'back at the end');
   });
 
   testWidgets('a long conversation only builds what is on screen', (
