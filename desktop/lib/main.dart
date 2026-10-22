@@ -229,13 +229,17 @@ class _AgentFlowAppState extends State<AgentFlowApp>
                                 duration: smooth,
                                 switchInCurve: ease,
                                 switchOutCurve: ease,
-                                // Keyed on what screen this is, not on the data in
-                                // it: without that the switcher would cross-fade the
-                                // whole screen every time a log line arrived.
+                                // Keyed on which screen and which task, not on
+                                // the data in them: without that the switcher
+                                // would cross-fade the whole screen every time
+                                // a log line arrived. The task id has to be in
+                                // it, or switching tabs keeps the screen that
+                                // was there — with the previous task's open
+                                // tool blocks, chosen file and scroll.
                                 child: KeyedSubtree(
                                   key: ValueKey(
                                     showing
-                                        ? 'task/\${task?.id}'
+                                        ? 'task/${task.id}'
                                         : (_prompts ? 'prompts' : 'sessions'),
                                   ),
                                   child: showing

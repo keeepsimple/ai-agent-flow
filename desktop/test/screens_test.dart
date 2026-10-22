@@ -11,6 +11,7 @@ import 'dart:io';
 import 'package:agent_flow/api.dart';
 import 'package:agent_flow/flow.dart';
 import 'package:agent_flow/screens/review.dart';
+import 'package:agent_flow/widgets/conversation.dart';
 import 'package:agent_flow/widgets/tabs.dart';
 import 'package:agent_flow/shortcuts.dart';
 import 'package:agent_flow/screens/prompts.dart';
@@ -502,6 +503,96 @@ void main() {
     await tester.tap(find.byType(Switch));
     await tester.pump();
     expect(prefs.autoResume, isFalse);
+  });
+
+  testWidgets('switching tab shows the conversation of the task switched to', (tester) async {
+    // The screen is reused when one task replaces another in the same slot,
+    // and the transcript was cached against the length of the log alone — so
+    // a second task with as many lines in it read as the first one. The diff
+    // pane reloaded and the conversation did not, which is how it showed.
+    final flow = _flow();
+    Task withLog(String id, String said) => _task({
+          'id': id,
+          'title': 'Task $id',
+          'status': 'done',
+          'phase': null,
+          'log': [
+            {'kind': 'text', 'text': said},
+            {'kind': 'tool', 'tool': 'Read', 'text': 'lib/$id.dart'},
+          ],
+        });
+
+    tester.view.physicalSize = const Size(1340, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    Future<void> show(Task task) => tester.pumpWidget(MaterialApp(
+          theme: ternTheme(Accent.sky),
+          home: Scaffold(
+            body: Conversation(task: task),
+          ),
+        ));
+
+    await show(withLog('aaa', 'The first task said this.'));
+    await tester.pump();
+    expect(find.textContaining('The first task said this.'), findsOneWidget);
+
+    // Same number of entries, different task.
+    await show(withLog('bbb', 'The second task said something else.'));
+    await tester.pump();
+    expect(find.textContaining('The second task said something else.'), findsOneWidget);
+    expect(find.textContaining('The first task said this.'), findsNothing);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('what the account has left, once the stream has said so', (tester) async {
+    final flow = _flow();
+    flow.tasks = [_task({'status': 'done', 'phase': null})];
+    // Nothing until a run has streamed a rate_limit_event: an empty bar would
+    // read as "none left" rather than "not measured yet".
+    tester.view.physicalSize = const Size(244, 460);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    // Through a builder on the store, the way the app mounts it: the limits
+    // arrive on a notification, not on a rebuild of their own.
+    Future<void> show() => tester.pumpWidget(MaterialApp(
+          theme: ternTheme(Accent.sky),
+          home: Scaffold(
+            body: AnimatedBuilder(
+              animation: flow,
+              builder: (_, _) => Sidebar(
+                flow: flow,
+                onOpen: (_) {},
+                onPick: (_) {},
+                prefs: Prefs.memory(),
+              ),
+            ),
+          ),
+        ));
+    await show();
+    await tester.pump();
+    expect(find.textContaining('% left'), findsNothing);
+
+    // The shape the CLI actually streams: seconds, not milliseconds, and a
+    // per-model window the names do not know about.
+    final hour = DateTime.now().add(const Duration(hours: 3));
+    final week = DateTime.now().add(const Duration(days: 2, hours: 5));
+    flow.limits = {
+      'windows': {
+        'five_hour': {'utilization': 0.4, 'resetsAt': hour.millisecondsSinceEpoch ~/ 1000},
+        'seven_day': {'utilization': 0.6, 'resetsAt': week.millisecondsSinceEpoch ~/ 1000},
+        'seven_day_fable': {'utilization': 0.92, 'resetsAt': week.millisecondsSinceEpoch ~/ 1000},
+      },
+    };
+    await show();
+    await tester.pump();
+    expect(find.text('60% left'), findsOneWidget, reason: '0.4 used');
+    // Days, not the twenty of them that reading seconds as milliseconds gives.
+    // Two of them: the weekly window and the per-model one reset together.
+    expect(find.textContaining('Resets in 2d'), findsNWidgets(2));
+    expect(find.text('Weekly · Fable'), findsOneWidget, reason: 'a window nobody named');
+    expect(find.text('8% left'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
   });
 
   testWidgets('clicking a workspace says so, rather than filtering in place', (

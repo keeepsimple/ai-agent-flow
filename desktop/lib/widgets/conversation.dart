@@ -84,16 +84,19 @@ class _ConversationState extends State<Conversation> {
   }
 
   List<_Block>? _cached;
-  int _cachedFor = -1;
+  String? _cachedFor;
 
   /// Grouping walks the whole log, so it is done when the log changes rather
   /// than on every frame. A running task emits log lines several times a
   /// second, and every one of them was regrouping four hundred entries.
+  ///
+  /// Which task, as well as how long its log is: this widget is reused when
+  /// one conversation replaces another, and two tasks the same number of
+  /// lines in meant the second one read as the first.
   List<_Block> _blocks() {
-    if (_cached != null && _cachedFor == widget.task.log.length) {
-      return _cached!;
-    }
-    _cachedFor = widget.task.log.length;
+    final key = '${widget.task.id}:${widget.task.log.length}';
+    if (_cached != null && _cachedFor == key) return _cached!;
+    _cachedFor = key;
     return _cached = _group();
   }
 
