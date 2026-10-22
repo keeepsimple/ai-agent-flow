@@ -1619,6 +1619,10 @@ export function noteLimits(info) {
   if (!info?.unifiedWindows) return
   limits = { windows: info.unifiedWindows, status: info.status || null, at: Date.now() }
   try { fs.writeFileSync(LIMITS_FILE, JSON.stringify(limits)) } catch {}
+  // Said out loud, not just filed: the first run of a session is what tells
+  // the account what it has left, and a client that only reads this when it
+  // starts up would show nothing until the next restart.
+  bus.emit('limits', limits)
 }
 
 /**

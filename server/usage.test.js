@@ -6,6 +6,7 @@ import path from 'node:path'
 // Before the import: the module reads its data dir once, at load.
 process.env.FLOW_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-usage-'))
 const { noteUsage, noteLimits, rateLimits } = await import('./runner.js')
+const { bus } = await import('./store.js')
 
 // Captured from `claude -p --output-format stream-json --verbose`, verbatim.
 // Guessing these names is how the panel would silently read zero for ever.
@@ -35,6 +36,8 @@ assert.strictEqual(task.context, 5 + 19701 + 30000, 'a message without usage cha
 console.log('ok: usage is read off the CLI\'s own field names, totals add up, occupancy is the latest turn')
 
 // Captured from a real rate_limit_event, verbatim.
+const announced = []
+bus.on('limits', (l) => announced.push(l))
 noteLimits({
   status: 'allowed_warning',
   rateLimitType: 'seven_day',
@@ -50,9 +53,15 @@ assert.strictEqual(limits.windows.seven_day.utilization, 0.56)
 assert.strictEqual(limits.windows.five_hour.resetsAt, 1792652400)
 assert.strictEqual(limits.status, 'allowed_warning')
 
+// Filing it is not enough: the windows arrive on the first run of a session,
+// long after a client read its state, so they go out on the stream too.
+assert.strictEqual(announced.length, 1, 'the clients are told, not left to ask again')
+assert.strictEqual(announced[0].windows.five_hour.utilization, 0.16)
+
 // An event without windows must not wipe what is already known.
 noteLimits({ status: 'allowed' })
 assert.strictEqual(rateLimits().windows.seven_day.utilization, 0.56, 'a bare event leaves the windows alone')
+assert.strictEqual(announced.length, 1, 'and says nothing about it')
 
 // It survives a restart, which is the whole reason it is written down.
 const onDisk = JSON.parse(fs.readFileSync(path.join(process.env.FLOW_DATA, 'limits.json'), 'utf8'))

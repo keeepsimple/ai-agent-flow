@@ -112,9 +112,11 @@ async function api(req, res, url) {
     const onTask = send('task')
     const onLog = send('log')
     const onNotify = send('notify')
+    const onLimits = send('limits')
     bus.on('task', onTask)
     bus.on('log', onLog)
     bus.on('notify', onNotify)
+    bus.on('limits', onLimits)
     sse.clients++
     const notifier = url.searchParams.get('notify') !== '0'
     if (notifier) sse.notifiers++
@@ -126,6 +128,7 @@ async function api(req, res, url) {
       bus.off('task', onTask)
       bus.off('log', onLog)
       bus.off('notify', onNotify)
+      bus.off('limits', onLimits)
     })
     return
   }

@@ -153,6 +153,9 @@ export function useFlow(taskId) {
       if (id !== selectedRef.current) return
       setDetail((d) => (d ? { ...d, log: [...d.log, entry] } : d))
     })
+    // The account's windows arrive on the first run of a session, long after
+    // this read its state.
+    es.addEventListener('limits', (e) => setLimits(JSON.parse(e.data)))
     return () => es.close()
   }, [loadState, loadDetail, notifications])
 

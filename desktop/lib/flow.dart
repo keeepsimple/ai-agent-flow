@@ -175,6 +175,9 @@ class FlowState extends ChangeNotifier {
             _onLog(message.data);
           case 'notify':
             onNotify?.call(message.data);
+          case 'limits':
+            limits = message.data;
+            notifyListeners();
         }
       },
       onError: (_) => _dropped(),
