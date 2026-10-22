@@ -59,6 +59,7 @@ export function useFlow(taskId) {
   const [roots, setRoots] = useState([])
   const [options, setOptions] = useState(null)
   const [defaults, setDefaults] = useState(null)
+  const [limits, setLimits] = useState(null)
   const [error, setError] = useState(null)
 
   const [detail, setDetail] = useState(null)
@@ -87,6 +88,7 @@ export function useFlow(taskId) {
         setRoots(s.roots || (s.repoRoot ? [s.repoRoot] : []))
         setOptions(s.options)
         setDefaults(s.defaults)
+        setLimits(s.limits || null)
         setError(null)
       })
       .catch((e) => setError(e.message))
@@ -167,6 +169,7 @@ export function useFlow(taskId) {
   }, [])
 
   return {
+    limits,
     tasks, repos, roots, setRepos, setRoots, options, defaults, error, live, detail,
     notifications, askForNotifications,
     reload: loadState,

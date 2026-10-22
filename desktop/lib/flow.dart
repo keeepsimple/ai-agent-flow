@@ -15,6 +15,7 @@ class FlowState extends ChangeNotifier {
   List<String> roots = const [];
   Map<String, dynamic>? options;
   Map<String, dynamic>? defaults;
+  Map<String, dynamic>? limits;
   Task? detail;
   String? selected;
   bool live = false;
@@ -70,6 +71,7 @@ class FlowState extends ChangeNotifier {
       roots = ((s['roots'] as List?) ?? []).cast<String>();
       options = (s['options'] as Map?)?.cast<String, dynamic>();
       defaults = (s['defaults'] as Map?)?.cast<String, dynamic>();
+      limits = (s['limits'] as Map?)?.cast<String, dynamic>();
       notifyListeners();
     } catch (err) {
       fail(err);

@@ -83,6 +83,7 @@ class Sidebar extends StatelessWidget {
             ),
           ),
           const Divider(height: 1, color: Tern.line),
+          _Limits(flow: flow),
           if (prefs != null) _AutoResume(prefs: prefs!),
           _Disk(flow: flow),
           Padding(
@@ -389,4 +390,92 @@ class _AddFolderState extends State<_AddFolder> {
         busy: _busy,
         onPressed: _add,
       );
+}
+
+
+/// What the account has left, which the CLI reports on every run.
+class _Limits extends StatelessWidget {
+  const _Limits({required this.flow});
+  final FlowState flow;
+
+  static const _names = {'five_hour': 'Session', 'seven_day': 'Weekly'};
+  static const _order = ['five_hour', 'seven_day'];
+
+  // seven_day_fable reads as "Weekly · Fable" without knowing that key exists:
+  // only the prefix is known, and the rest is whatever the account has.
+  static String _name(String key) {
+    if (_names.containsKey(key)) return _names[key]!;
+    for (final e in _names.entries) {
+      if (!key.startsWith('${e.key}_')) continue;
+      final rest = key.substring(e.key.length + 1).replaceAll('_', ' ');
+      return '${e.value} · ${rest[0].toUpperCase()}${rest.substring(1)}';
+    }
+    return key.replaceAll('_', ' ');
+  }
+
+  static String _in(int resetsAt) {
+    final left = resetsAt * 1000 - DateTime.now().millisecondsSinceEpoch;
+    if (left <= 0) return 'any moment';
+    final d = Duration(milliseconds: left);
+    if (d.inDays > 0) return 'Resets in ${d.inDays}d ${d.inHours % 24}h';
+    if (d.inHours > 0) return 'Resets in ${d.inHours}h ${d.inMinutes % 60}m';
+    return 'Resets in ${d.inMinutes}m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final windows =
+        (flow.limits?['windows'] as Map?)?.cast<String, dynamic>() ?? const {};
+    if (windows.isEmpty) return const SizedBox.shrink();
+
+    // Known windows first, then whatever else turns up: a per-model limit
+    // appears only once the account has one.
+    final keys = [
+      ..._order.where(windows.containsKey),
+      ...windows.keys.where((k) => !_order.contains(k)),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (final key in keys) ...[
+          Builder(builder: (_) {
+            final w = (windows[key] as Map).cast<String, dynamic>();
+            final left = (1 - ((w['utilization'] ?? 0) as num)).toDouble().clamp(0.0, 1.0);
+            final colour = left > 0.5
+                ? Tern.ok
+                : left > 0.25
+                ? Tern.warn
+                : Tern.bad;
+            final resets = (w['resetsAt'] as num?)?.toInt();
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Expanded(
+                  child: Text(_name(key), style: t(11, color: Tern.muted)),
+                ),
+                Text('${(left * 100).round()}% left',
+                    style: t(11, color: colour, weight: FontWeight.w600)),
+                if (resets != null) ...[
+                  const SizedBox(width: 6),
+                  Text(_in(resets), style: t(10.5, color: Tern.faint)),
+                ],
+              ]),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: Stack(children: [
+                  Container(height: 4, color: Tern.lineDim),
+                  FractionallySizedBox(
+                    widthFactor: left,
+                    child: Container(height: 4, color: colour),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 8),
+            ]);
+          }),
+        ],
+      ]),
+    );
+  }
 }

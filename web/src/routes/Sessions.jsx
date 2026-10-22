@@ -375,6 +375,65 @@ function Card({ task, index = 0 }) {
   )
 }
 
+const WINDOWS = { five_hour: 'Session', seven_day: 'Weekly' }
+
+// seven_day_fable reads as "Weekly · Fable" without knowing that key exists:
+// only the prefix is known, and the rest is whatever the account has.
+function windowName(key) {
+  if (WINDOWS[key]) return WINDOWS[key]
+  for (const [prefix, name] of Object.entries(WINDOWS)) {
+    if (!key.startsWith(`${prefix}_`)) continue
+    const rest = key.slice(prefix.length + 1).replace(/_/g, ' ')
+    return `${name} · ${rest.charAt(0).toUpperCase()}${rest.slice(1)}`
+  }
+  return key.replace(/_/g, ' ')
+}
+
+function resetsIn(at) {
+  const left = at * 1000 - Date.now()
+  if (left <= 0) return 'any moment'
+  const m = Math.floor(left / 60000)
+  if (m >= 1440) return `Resets in ${Math.floor(m / 1440)}d ${Math.floor((m % 1440) / 60)}h`
+  if (m >= 60) return `Resets in ${Math.floor(m / 60)}h ${m % 60}m`
+  return `Resets in ${m}m`
+}
+
+/** What the account has left. The CLI reports it on every run. */
+function Limits({ limits }) {
+  const windows = limits?.windows
+  if (!windows) return null
+  // Known windows first, then whatever else turns up: a per-model limit
+  // appears only once the account has one.
+  const keys = [
+    ...Object.keys(WINDOWS).filter((k) => windows[k]),
+    ...Object.keys(windows).filter((k) => !(k in WINDOWS)),
+  ]
+
+  return (
+    <section className="animate-fade flex flex-col gap-2.5 rounded-2xl border border-line bg-panel p-4 shadow-e1">
+      {keys.map((key) => {
+        const left = Math.max(0, Math.min(1, 1 - (windows[key].utilization || 0)))
+        const tone = left > 0.5 ? 'text-ok' : left > 0.25 ? 'text-warn' : 'text-bad'
+        const fill = left > 0.5 ? 'bg-ok' : left > 0.25 ? 'bg-warn' : 'bg-bad'
+        return (
+          <div key={key}>
+            <div className="flex items-baseline gap-2 text-[13px]">
+              <span className="flex-1 text-muted">{windowName(key)}</span>
+              <span className={`font-medium ${tone}`}>{Math.round(left * 100)}% left</span>
+              {windows[key].resetsAt ? (
+                <span className="text-xs text-faint">{resetsIn(windows[key].resetsAt)}</span>
+              ) : null}
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line-dim shadow-[inset_0_1px_1px_rgb(0_0_0/0.4)]">
+              <div className={`h-1.5 rounded-full ${fill}`} style={{ width: `${left * 100}%` }} />
+            </div>
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
 // Past this a column stops being something you take in and becomes something
 // you scroll past, and the columns beside it are pushed out of sight with it.
 const PAGE = 6
@@ -472,6 +531,8 @@ export default function Sessions({ flow }) {
             Each agent works in its own worktree and branch. You review before anything merges.
           </p>
         </div>
+
+        <Limits limits={flow.limits} />
 
         {flow.options && flow.defaults ? (
           <NewTask flow={flow} onError={flow.setError} showRepos={showRepos} setShowRepos={setShowRepos} />

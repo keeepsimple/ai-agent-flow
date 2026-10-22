@@ -1426,6 +1426,24 @@ function describeTool(name, input = {}) {
 }
 
 /**
+ * The account's own limits, which the CLI streams and nothing was reading.
+ *
+ * Not per task: it is one account, so the last run to report wins. Kept on
+ * disk so the panel says something at launch rather than after the first run.
+ */
+const LIMITS_FILE = path.join(DATA, 'limits.json')
+let limits = null
+try { limits = JSON.parse(fs.readFileSync(LIMITS_FILE, 'utf8')) } catch {}
+
+export const rateLimits = () => limits
+
+export function noteLimits(info) {
+  if (!info?.unifiedWindows) return
+  limits = { windows: info.unifiedWindows, status: info.status || null, at: Date.now() }
+  try { fs.writeFileSync(LIMITS_FILE, JSON.stringify(limits)) } catch {}
+}
+
+/**
  * What the window holds now, and what the run has moved in total.
  *
  * The occupancy is the latest turn's whole input, cached or not: that is the
@@ -1556,6 +1574,10 @@ function runClaude(task, prompt, cwd = task.root, { resume = null, meta = {}, en
 }
 
 function toLogEntry(task, msg, seen) {
+  if (msg.type === 'rate_limit_event') {
+    noteLimits(msg.rate_limit_info)
+    return null
+  }
   if (msg.type === 'assistant') {
     const usage = msg.message?.usage
     noteUsage(task, usage)

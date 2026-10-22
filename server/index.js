@@ -93,6 +93,7 @@ async function api(req, res, url) {
         runs: runner.RUNS,
       },
       defaults: runner.DEFAULTS,
+      limits: runner.rateLimits(),
       watching: sse.clients,
       // Of those, how many can raise a notification. When it is zero the
       // server raises the desktop one itself.
