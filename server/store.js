@@ -77,9 +77,32 @@ export function artifactDir(id) {
 }
 
 export function emit(task) {
+  if (soonTask?.id === task.id) soonTask = null
   task.updatedAt = Date.now()
   save()
   bus.emit('task', task)
+}
+
+/**
+ * The same, for a number nobody reads to the millisecond. Token and cost
+ * updates arrive with every message the CLI emits, and each one was a task
+ * event that rebuilt every client's whole board. Held back to one a second;
+ * a real change — a status, a phase, a question — still goes out at once
+ * through `emit`, and takes the pending one with it.
+ */
+let soonTimer = null
+let soonTask = null
+
+export function emitSoon(task) {
+  soonTask = task
+  if (soonTimer) return
+  soonTimer = setTimeout(() => {
+    soonTimer = null
+    const pending = soonTask
+    soonTask = null
+    // A task deleted inside the window has no row left to update.
+    if (pending && tasks[pending.id]) emit(pending)
+  }, 1000)
 }
 
 export function update(id, patch) {

@@ -51,8 +51,22 @@ List<String> _cells(String row) => row
     .map((c) => c.trim())
     .toList();
 
+/// The same text is re-split on every rebuild, and a running task rebuilds
+/// the window several times a second. Keyed on the text itself, and dropped
+/// wholesale once it grows: a conversation nobody is scrolled to any more is
+/// not worth holding lines for.
+final _memo = <String, List<Block>>{};
+
 List<Block> blocks(String? source) {
-  final lines = (source ?? '').split('\n');
+  final key = source ?? '';
+  final found = _memo[key];
+  if (found != null) return found;
+  if (_memo.length >= 400) _memo.clear();
+  return _memo[key] = _split(key);
+}
+
+List<Block> _split(String source) {
+  final lines = source.split('\n');
   final out = <Block>[];
   var paragraph = <String>[];
   List<String>? list;

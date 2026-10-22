@@ -28,6 +28,12 @@ export const RUNS = [
     phases: ['implement', 'review'],
   },
   {
+    value: 'team',
+    label: 'Lead and specialists',
+    hint: 'A lead reads the code and splits the work into independent pieces. You approve the split; each piece then runs as its own task, in its own worktree, and the lead merges them back together and reviews the lot.',
+    phases: ['split', 'integrate'],
+  },
+  {
     value: 'doc',
     label: 'Document',
     hint: 'Writes a file, not code. No worktree; the repos are there to read.',
@@ -38,7 +44,7 @@ export const RUNS = [
 export const phasesFor = (run) => (RUNS.find((r) => r.value === run) || RUNS[0]).phases
 
 // Phases that stop for a human before the next one starts.
-export const GATES = { spec: true, plan: true, implement: false, review: false, answer: false, write: false }
+export const GATES = { spec: true, plan: true, implement: false, review: false, answer: false, write: false, split: true, integrate: false }
 
 export const PHASE_LABEL = {
   spec: 'Spec',
@@ -47,6 +53,11 @@ export const PHASE_LABEL = {
   review: 'Self review',
   answer: 'Working',
   write: 'Writing',
+  split: 'The split',
+  integrate: 'Bringing it together',
+  // Not a phase of its own: what the lead is doing between the two, so the
+  // board has something to say while somebody else's agents do the work.
+  pieces: 'The pieces',
 }
 
 import { render, load } from './templates.js'
@@ -146,6 +157,8 @@ function phaseContext(ctx) {
     node: ctx.node,
     askScript: ctx.askScript,
     diffCommands: ctx.trees.map((t) => `    git -C ${t.worktree} diff ${t.baseRef}...HEAD`).join('\n'),
+    maxChildren: ctx.maxChildren ?? '',
+    childList: ctx.childList || '    (none)',
     requestIndented: indent(ctx.request),
   }
 }

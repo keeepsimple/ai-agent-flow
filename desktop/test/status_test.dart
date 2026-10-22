@@ -67,4 +67,16 @@ void main() {
     expect(needsOf(task({'status': 'running'})), isNull);
     expect(needsOf(task({'status': 'interrupted'})), 'Continue, or retry');
   });
+
+  test('a lead counts its pieces, a piece names its lead', () {
+    final lead = task({'id': 'l1', 'title': 'The admin page', 'pieces': ['p1', 'p2']});
+    final one = task({'id': 'p1', 'lead': 'l1', 'status': 'done'});
+    final two = task({'id': 'p2', 'lead': 'l1', 'status': 'running'});
+    final all = [lead, one, two];
+    expect(teamWords(lead, all), '  ·  1 of 2 pieces done');
+    expect(teamWords(one, all), '  ·  a piece of The admin page');
+    // A piece whose lead has been deleted still says what it is.
+    expect(teamWords(two, [two]), '  ·  a piece');
+    expect(teamWords(task({'id': 'x'}), all), '');
+  });
 }

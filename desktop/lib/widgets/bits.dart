@@ -494,6 +494,11 @@ const phaseLabels = {
   'implement': 'Implement',
   'review': 'Self review',
   'write': 'Writing',
+  'split': 'The split',
+  'integrate': 'Bringing it together',
+  // Not a phase the lead runs: what it is doing between its two, while
+  // somebody else's agents do the work.
+  'pieces': 'The pieces are running',
 };
 
 String statusWords(Task2 task) => switch (task.status) {

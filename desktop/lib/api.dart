@@ -28,6 +28,11 @@ class Task {
   int get contextWindow => (raw['contextWindow'] ?? 0) as int;
   Map<String, dynamic> get io =>
       (raw['io'] as Map?)?.cast<String, dynamic>() ?? const {};
+  /// A piece of a split run carries the lead that asked for it; a lead carries
+  /// the pieces it asked for.
+  String? get lead => raw['lead'] as String?;
+  List<String> get pieces => (raw['pieces'] as List?)?.cast<String>() ?? const [];
+
   List<String> get queued =>
       (raw['queued'] as List?)?.cast<String>() ?? const [];
   String? get openQuestionId => raw['openQuestionId'] as String?;

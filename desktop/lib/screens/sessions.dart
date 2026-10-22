@@ -22,88 +22,100 @@ class SessionsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final inWorkspace = flow.workspace == null ? flow.tasks : flow.visible;
     final tasks = flow.repoFilter == null ? inWorkspace : inWorkspace?.where((t) => t.repos.contains(flow.repoFilter)).toList();
+
+    // Built one row at a time rather than all of them: every message a running
+    // agent emits rebuilds this screen, and with the whole board in a
+    // `children:` list that was forty rows laid out again for a line of text
+    // nobody can see.
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
+      itemCount: 1 + (tasks?.length ?? 0),
+      itemBuilder: (context, i) {
+        if (i == 0) return Center(child: _Head(flow: flow, onOpen: onOpen, tasks: tasks));
+        final task = tasks![i - 1];
+        // Keyed by id: this list reorders by recency, and without a key Flutter
+        // reuses row state by position, so a hover or an in-flight fade lands
+        // on whichever task slid into that slot.
+        return Center(
+          key: ValueKey(task.id),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 880),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _TaskRow(task: task, flow: flow, onTap: () => onOpen(task.id)),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The form, the heading and whatever the board has to say before the rows.
+class _Head extends StatelessWidget {
+  const _Head({required this.flow, required this.onOpen, required this.tasks});
+  final FlowState flow;
+  final void Function(String id) onOpen;
+  final List<Task>? tasks;
+
+  @override
+  Widget build(BuildContext context) {
     final repoNames = (flow.repos)
         .where((r) => flow.workspace == null || r['root'] == flow.workspace)
         .map((r) => r['name'] as String)
         .toSet()
         .toList();
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
-      children: [
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 880),
-            child: NewTask(flow: flow, onStarted: onOpen),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 880),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          NewTask(flow: flow, onStarted: onOpen),
+          const SizedBox(height: 26),
+          Text(
+            flow.workspace == null
+                ? 'Sessions'
+                : 'Sessions in ${Sidebar.nameOf(flow.workspace!)}',
+            style: t(
+              26,
+              color: Tern.ink,
+              weight: FontWeight.w600,
+              height: 1.1,
+            ).copyWith(letterSpacing: -0.6),
           ),
-        ),
-        const SizedBox(height: 26),
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 880),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  flow.workspace == null
-                      ? 'Sessions'
-                      : 'Sessions in ${Sidebar.nameOf(flow.workspace!)}',
-                  style: t(
-                    26,
-                    color: Tern.ink,
-                    weight: FontWeight.w600,
-                    height: 1.1,
-                  ).copyWith(letterSpacing: -0.6),
-                ),
-                const SizedBox(height: 14),
-                if (repoNames.length > 1)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Wrap(spacing: 6, runSpacing: 6, children: [
-                      for (final name in repoNames)
-                        Chip2(
-                          key: ValueKey('repo-chip:$name'),
-                          label: name,
-                          selected: flow.repoFilter == name,
-                          onTap: () => flow.pickRepo(name),
-                        ),
-                    ]),
+          const SizedBox(height: 14),
+          if (repoNames.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final name in repoNames)
+                  Chip2(
+                    key: ValueKey('repo-chip:$name'),
+                    label: name,
+                    selected: flow.repoFilter == name,
+                    onTap: () => flow.pickRepo(name),
                   ),
-                if (tasks != null && tasks.any((t) => t.interrupted))
-                  _Interrupted(
-                    flow: flow,
-                    tasks: tasks.where((t) => t.interrupted).toList(),
-                  ),
-                if (tasks == null)
-                  Text('Loading…', style: t(12.5, color: Tern.muted))
-                else if (tasks.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 26),
-                    child: Text(
-                      flow.workspace == null
-                          ? 'Nothing running. Start something above.'
-                          : 'Nothing here yet.',
-                      style: t(12.5, color: Tern.muted),
-                    ),
-                  )
-                else
-                  // Keyed by id: this list reorders by recency, and without a
-                  // key Flutter reuses row state by position, so a hover or an
-                  // in-flight fade lands on whichever task slid into that slot.
-                  for (final task in tasks)
-                    Padding(
-                      key: ValueKey(task.id),
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _TaskRow(
-                        task: task,
-                        flow: flow,
-                        onTap: () => onOpen(task.id),
-                      ),
-                    ),
-              ],
+              ]),
             ),
-          ),
-        ),
-      ],
+          if (tasks != null && tasks!.any((t) => t.interrupted))
+            _Interrupted(
+              flow: flow,
+              tasks: tasks!.where((t) => t.interrupted).toList(),
+            ),
+          if (tasks == null)
+            Text('Loading…', style: t(12.5, color: Tern.muted))
+          else if (tasks!.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 26),
+              child: Text(
+                flow.workspace == null
+                    ? 'Nothing running. Start something above.'
+                    : 'Nothing here yet.',
+                style: t(12.5, color: Tern.muted),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -239,7 +251,8 @@ class _TaskRowState extends State<_TaskRow>
                           children: [
                             TextSpan(
                               text: '${task.repos.join(' + ')}  ·  $words'
-                                  '${task.shellReads > 0 ? '  ·  ${task.shellReads} shell reads' : ''}',
+                                  '${task.shellReads > 0 ? '  ·  ${task.shellReads} shell reads' : ''}'
+                                  '${teamWords(task, widget.flow.tasks ?? const [])}',
                             ),
                             if (needs != null && needs != words)
                               TextSpan(

@@ -145,6 +145,9 @@ Just build it
 
 Spec, plan, then build
   worktree -> spec -> [your call] -> plan -> [your call] -> implement -> review
+
+Lead and specialists
+  worktree -> split -> [your call] -> N pieces, each its own task -> integrate
 ```
 
 Most of what gets typed into a box like this is a question, or a change small
@@ -181,6 +184,50 @@ from the request itself. Accents are split off their letters rather than taken
 with them, so a request in any language still slugs to something readable, and
 once the agent has named the task — in English, which the prompt asks for — the
 branch is renamed to match. A branch already on a remote is left alone.
+
+## Lead and specialists
+
+The fourth route is for work that is genuinely several pieces at once: three
+screens, four endpoints, a migration plus the code that reads it.
+
+A lead agent gets a worktree and one job — read the code and decide what the
+independent pieces are. It writes `split.json` in the task's artifacts folder:
+a title, a prompt and optionally a subset of the repos, per piece. Then it
+stops for you, like the spec and plan gates do, and nothing has been started
+yet.
+
+Approve it and each piece becomes **an ordinary task**: its own worktree, its
+own branch, its own self review, its own row on the board, its own Land button.
+They run through the same queue as everything else, so `FLOW_MAX_CONCURRENT`
+still decides how many agents are alive at once — the lead gives its own slot
+back while it waits, so a cap of one cannot deadlock on a piece queued behind
+the lead holding the only slot.
+
+What you type into the gate's feedback box goes to every piece, not to the
+lead: by the time you read the split, the lead's work is done and the pieces
+are the ones who have not started.
+
+When the last piece stops — done, failed or cancelled — the lead comes back and
+merges each branch into its own, in the order they were created, resolving what
+the seams turn up with the whole request in hand. Then the repo's checks, then
+a review of the lot as one change, into `review.md` with the usual `## Left`.
+
+- A piece says nothing on its own account: no desktop notification, no
+  Telegram, for a piece that merely finished. A **question** or a **failure**
+  still reaches you, because those are the ones only you can clear.
+- A piece inherits the lead's model, effort, permissions and attachments, and
+  **none of its secrets** — a piece that needs a key has to be given one by
+  hand, on its own task.
+- Cancelling the lead cancels every piece still running. The branches stay.
+- At most six pieces (`FLOW_MAX_PIECES`). A lead that asks for fifteen has not
+  understood the work, and fifteen agents is real money.
+- Interrupted mid-wait — the app quit, the laptop slept — the lead waits again
+  on resume rather than integrating branches that are still being written.
+  Retrying a failed integrate re-merges; it does not re-split.
+
+The cost of this route is N agents in parallel, so it is the most expensive
+thing here by a wide margin. A change that is really one change is cheaper and
+better on **Just build it**.
 
 ## Per task: model, effort, permissions
 
@@ -559,6 +606,7 @@ A machine with its own `~/.claude/settings.json` picks that up on its own.
 | `FLOW_REPO_ROOT` | parent folder | Where repos are discovered |
 | `FLOW_DATA` | `./data` | Tasks, logs, artifacts, worktrees |
 | `FLOW_MAX_CONCURRENT` | `3` | Tasks running at the same time |
+| `FLOW_MAX_PIECES` | `6` | How many pieces a lead may split one request into |
 | `FLOW_MODEL` | CLI default | Default model for new tasks |
 | `FLOW_EFFORT` | CLI default | Default effort for new tasks |
 | `FLOW_PERMISSION_MODE` | `bypassPermissions` | Default permissions for new tasks. Accepts the CLI's full set, including the ones the form does not offer |
@@ -627,6 +675,7 @@ blocking question, lands on the base and on a branch the remote does not have
 yet, pushes past untracked files in the checkout, ships to a prod branch,
 kills the server mid-run and continues the session, keeps a secret out of
 every file and refuses to push it (but not for a token that came in from
-main), runs a repo's setup and baseline into a fresh worktree, and overrides
-a prompt. No network, no spend. The stub is plain Node behind a
+main), runs a repo's setup and baseline into a fresh worktree, splits one
+request into two pieces and merges both branches back into the lead's, and
+overrides a prompt. No network, no spend. The stub is plain Node behind a
 one-line launcher, so the check runs on all three platforms.

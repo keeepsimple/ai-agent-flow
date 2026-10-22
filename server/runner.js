@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { DATA, bus, sse, tasks, artifactDir, emit, update, log, save, flush, readLog } from './store.js'
+import { DATA, bus, sse, tasks, artifactDir, emit, emitSoon, update, log, save, flush, readLog } from './store.js'
 import {
   resumePrompt,
   buildShipPrompt,
@@ -26,6 +26,10 @@ export const PORT = Number(process.env.FLOW_PORT || 7777)
 export { listRepos, roots, addRoot, removeRoot, browse, DEFAULT_ROOT } from './roots.js'
 export { options as shopifyOptions } from './preview.js'
 const MAX_CONCURRENT = Number(process.env.FLOW_MAX_CONCURRENT || 3)
+// How many pieces a lead may split one request into. Not a performance limit:
+// a lead that asks for fifteen has not understood the work, and fifteen agents
+// is real money.
+const MAX_PIECES = Number(process.env.FLOW_MAX_PIECES || 6)
 const CLAUDE_BIN = process.env.FLOW_CLAUDE_BIN || 'claude'
 const WIN = process.platform === 'win32'
 // The agent is handed the runtime running this server, not the word `node`.
@@ -106,6 +110,10 @@ export const DEFAULTS = {
  * the app's own window, which has no Notification API at all.
  */
 function tell(task, title, body, urgent = false, { phone = true } = {}) {
+  // A piece of a split run says nothing on its own account: the lead reports
+  // when they are all in. A question or a failure still gets through, because
+  // those are the ones only a human can clear.
+  if (task.lead && !urgent) return
   bus.emit('notify', { taskId: task.id, title, body, urgent })
   if (!sse.notifiers) notify(title, body, { urgent, url: `http://127.0.0.1:${PORT}/#${task.id}` })
   // On the phone the notification carries what the agent said last, so it can
@@ -340,6 +348,106 @@ function pump() {
   }
 }
 
+/**
+ * What the lead decided, turned into tasks.
+ *
+ * A piece is an ordinary quick run in a worktree of its own: same queue, same
+ * board, same self review, same Land button afterwards. Nothing in here had to
+ * learn what a task is, and a piece that goes wrong is a task you can open.
+ */
+async function fanOut(task, feedback) {
+  if (task.pieces?.length) {
+    // Resumed, or retried after the integrate failed: the pieces exist and
+    // have only to be waited for. Splitting again would double the work.
+    update(task.id, { phase: 'pieces' })
+    await yieldSlot(() => waitForPieces(task, task.pieces))
+    return
+  }
+
+  const file = path.join(task.artifactDir, 'split.json')
+  let pieces
+  try {
+    pieces = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (err) {
+    throw new Error(`the lead left no usable split.json: ${err.message}`)
+  }
+  if (!Array.isArray(pieces) || !pieces.length) throw new Error('split.json is not a list of pieces')
+  if (pieces.length > MAX_PIECES) {
+    throw new Error(`the lead asked for ${pieces.length} pieces; the cap is ${MAX_PIECES}`)
+  }
+
+  const ids = []
+  for (const piece of pieces) {
+    if (!String(piece?.prompt || '').trim()) throw new Error('a piece in split.json has no prompt')
+    const named = (Array.isArray(piece.repos) ? piece.repos : []).filter((r) => task.repos.includes(r))
+    const child = createTask({
+      title: piece.title,
+      // The gate is the human's last word on the split, so it reaches every
+      // piece rather than only the lead that reads it afterwards.
+      prompt: feedback
+        ? `${String(piece.prompt).trim()}\n\nThe human added this when approving the split:\n${feedback}`
+        : piece.prompt,
+      repos: named.length ? named : task.repos,
+      attachments: task.attachments,
+      run: 'quick',
+      autoApprove: true,
+      model: task.model,
+      effort: task.effort,
+      permissionMode: task.permissionMode,
+    })
+    // Said afterwards rather than through createTask, so nothing an HTTP
+    // client sends can claim a lead it does not belong to.
+    update(child.id, { lead: task.id })
+    ids.push(child.id)
+  }
+
+  update(task.id, { pieces: ids, phase: 'pieces' })
+  log(task.id, {
+    kind: 'decision',
+    text: `Split into ${ids.length} piece(s): ${ids.map((id) => tasks[id].title).join(' · ')}`,
+  })
+  await yieldSlot(() => waitForPieces(task, ids))
+  if (stopped(task)) return
+  const over = ids.map((id) => tasks[id]).filter(Boolean)
+  log(task.id, {
+    kind: 'decision',
+    text: `Pieces finished: ${over.map((c) => `${c.title} (${c.status})`).join(' · ')}`,
+  })
+}
+
+const PIECE_OVER = ['done', 'failed', 'cancelled', 'interrupted']
+
+/** Until every piece has stopped being something that could still change. */
+function waitForPieces(task, ids) {
+  const over = (id) => !tasks[id] || PIECE_OVER.includes(tasks[id].status)
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!stopped(task) && !ids.every(over)) return
+      bus.off('task', check)
+      resolve()
+    }
+    bus.on('task', check)
+    check()
+  })
+}
+
+/**
+ * A lead spends nothing while its pieces run, so it gives its slot back rather
+ * than holding one of FLOW_MAX_CONCURRENT against an await. Without this a cap
+ * of one would wait for a piece queued behind the lead holding the only slot.
+ */
+async function yieldSlot(fn) {
+  running--
+  pump()
+  try {
+    return await fn()
+  } finally {
+    // ponytail: this can leave the count one over the cap while a lead comes
+    // back to work. A real semaphore if that ever matters.
+    running++
+  }
+}
+
 /** Generated, gitignored files the checkout has and a fresh worktree does not. */
 function copyFromCheckout(task, tree, paths) {
   const copied = []
@@ -509,6 +617,22 @@ async function runTask(task) {
   let feedback = null
   for (const phase of phasesFor(task.run)) {
     if (stopped(task)) return
+
+    // The pieces run between the lead's two phases, as tasks of their own, and
+    // the lead waits here. Before the phase rather than after the split, so a
+    // lead interrupted mid-wait waits again on resume instead of integrating
+    // branches that are still being written. The split gate's feedback goes to
+    // the pieces, not to the phase that follows them.
+    if (phase === 'integrate') {
+      try {
+        await fanOut(task, feedback)
+      } catch (err) {
+        return fail(task, err.message)
+      }
+      feedback = null
+      if (stopped(task)) return
+    }
+
     if (task.phases[phase].status === 'done') continue
 
     update(task.id, { status: 'running', phase, error: null })
@@ -521,6 +645,8 @@ async function runTask(task) {
       askScript: ASK_SCRIPT,
       previewScript: task.trees?.some((t) => devServer.isShopifyApp(t.worktree)) ? PREVIEW_SCRIPT : null,
       needsTitle: phase === phasesFor(task.run)[0],
+      maxChildren: MAX_PIECES,
+      childList: pieceLines(task),
       feedback,
     })
     feedback = null
@@ -556,12 +682,33 @@ async function runTask(task) {
       if (decision === null) return // cancelled or rejected
       feedback = decision || null
     }
+
   }
 
   update(task.id, { status: 'done', phase: null })
   tell(task, `Done: ${task.title}`, `${task.repos.join(' + ')} · $${task.cost.toFixed(2)}`)
   drain(task.id)
 }
+
+/**
+ * The pieces as the lead's prompt sees them: how it ended, and the command
+ * that brings it in. The command rather than the branch name on its own,
+ * because the lead's own branch is already in the preamble's tree table and
+ * a prompt where two different things are called "branch" is a prompt where
+ * the wrong one gets merged.
+ */
+const pieceLines = (task) =>
+  (task.pieces || [])
+    .map((id) => tasks[id])
+    .filter(Boolean)
+    .map((c) => {
+      const branches = [...new Set((c.trees || []).map((t) => t.branch))]
+      const how = branches.length
+        ? branches.map((b) => `      git merge ${b}`).join('\n')
+        : '      (no branch: it never got a worktree)'
+      return `    ${c.title} — ended ${c.status}\n${how}`
+    })
+    .join('\n') || '    (none)'
 
 function fail(task, message) {
   update(task.id, { status: 'failed', error: message })
@@ -1039,6 +1186,11 @@ export function cancel(id) {
   })
   for (const tree of task.trees || []) devServer.stop(tree.worktree)
   killTree(children.get(id))
+  // The pieces are this task's work, not their own: stopping the lead stops
+  // them, or they go on spending against a plan nobody is waiting for.
+  for (const pieceId of task.pieces || []) {
+    if (tasks[pieceId] && !PIECE_OVER.includes(tasks[pieceId].status)) cancel(pieceId)
+  }
   // Anything blocked on this task has to be let go, or the HTTP request that is
   // holding a question open never gets a response.
   gateWaiters.get(id)?.(null)
@@ -1461,7 +1613,7 @@ export function noteUsage(task, usage) {
     (usage.input_tokens || 0) +
     (usage.cache_creation_input_tokens || 0) +
     (usage.cache_read_input_tokens || 0)
-  emit(task)
+  emitSoon(task)
 }
 
 /**

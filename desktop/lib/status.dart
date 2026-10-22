@@ -35,6 +35,18 @@ String? needsOf(Task task) {
   return null;
 }
 
+/// Where a task stands in a split run: a lead counts its pieces, a piece names
+/// its lead. Both read the board's own list, so neither costs a request.
+String teamWords(Task task, List<Task> all) {
+  if (task.lead != null) {
+    final lead = all.where((t) => t.id == task.lead).firstOrNull;
+    return lead == null ? '  ·  a piece' : '  ·  a piece of ${lead.title}';
+  }
+  if (task.pieces.isEmpty) return '';
+  final done = all.where((t) => task.pieces.contains(t.id) && t.status == 'done').length;
+  return '  ·  $done of ${task.pieces.length} pieces done';
+}
+
 String? _firstSentence(String text) {
   final flat = text
       .replaceAll(RegExp(r'^[#>*\-\s]+', multiLine: true), '')

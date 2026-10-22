@@ -343,6 +343,12 @@ function Card({ task, index = 0 }) {
         </div>
       )}
 
+      {(task.lead || task.pieces?.length > 0) && (
+        <div className="text-xs text-muted">
+          {task.lead ? 'a piece of a split run' : `${task.pieces.length} pieces`}
+        </div>
+      )}
+
       {asking ? (
         <div className="line-clamp-2 text-[13px] text-warn">Asks: “{asking.text}”</div>
       ) : task.status === 'failed' ? (

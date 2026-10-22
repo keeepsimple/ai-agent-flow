@@ -31,6 +31,13 @@ class FlowState extends ChangeNotifier {
   /// A repo chosen on the board; null for all of the workspace.
   String? repoFilter;
 
+  /// Bumped for every log line. Lines are the fastest thing the server sends
+  /// and the narrowest thing on screen — only the open task's transcript and
+  /// its status line read one — so they do not notify the store. Telling every
+  /// listener meant rebuilding the board, the sidebar and the form being typed
+  /// into, several times a second, for a sentence in another screen.
+  final logs = ValueNotifier<int>(0);
+
   StreamSubscription<dynamic>? _events;
   Timer? _errorTimer;
   Timer? _retry;
@@ -139,6 +146,7 @@ class FlowState extends ChangeNotifier {
       final task = await api.task(id);
       if (selected != id) return;
       detail = task;
+      logs.value++;
       notifyListeners();
     } catch (err) {
       fail(err);
@@ -215,7 +223,7 @@ class FlowState extends ChangeNotifier {
       ...detail!.raw,
       'log': [...detail!.log, entry],
     });
-    notifyListeners();
+    logs.value++;
   }
 
   /// Wraps a call so every button reports the same way and refreshes after.
@@ -233,6 +241,7 @@ class FlowState extends ChangeNotifier {
   @override
   void dispose() {
     _gone = true;
+    logs.dispose();
     _events?.cancel();
     _errorTimer?.cancel();
     _retry?.cancel();

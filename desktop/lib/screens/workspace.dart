@@ -114,7 +114,16 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final task = widget.task;
+    // Log lines do not notify the store any more, so this screen subscribes to
+    // them itself: the transcript and the status line are the only things that
+    // read one, and both are in here.
+    return ValueListenableBuilder<int>(
+      valueListenable: widget.flow.logs,
+      builder: (context, _, _) => _screen(widget.flow.detail ?? widget.task),
+    );
+  }
+
+  Widget _screen(Task task) {
     final files = _files();
     final chosen = files.where((f) => f['path'] == _file).firstOrNull;
 

@@ -105,6 +105,23 @@ if (args.includes('--resume') && process.env.STUB_REFUSE_RESUME) {
 } else if (prompt.includes('Phase: write the implementation plan')) {
   say('plan phase')
   fs.writeFileSync(path.join(art, 'plan.md'), '# plan')
+} else if (prompt.includes('Phase: the split')) {
+  say('two pieces, nothing shared')
+  fs.writeFileSync(path.join(art, 'split.json'), JSON.stringify([
+    { title: 'The API half', repos: ['api'], prompt: 'the api half. UNIQUEFILE' },
+    { title: 'The web half', repos: ['api'], prompt: 'the web half. UNIQUEFILE' },
+  ]))
+} else if (prompt.includes('Phase: bringing it together')) {
+  const NL = String.fromCharCode(10)
+  const branches = prompt.split(NL)
+    .map((l) => l.match(/^\\s+git merge (\\S+)$/))
+    .filter(Boolean)
+    .map((m) => m[1])
+  for (const b of branches) {
+    execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'merge', '-q', '--no-edit', b])
+  }
+  fs.writeFileSync(path.join(art, 'review.md'), '# review' + NL + 'merged ' + branches.length)
+  say('merged ' + branches.length + ' branch(es), checks pass')
 } else if (prompt.includes('## Follow-up')) {
   for (const line of prompt.split('\\n')) {
     const match = line.match(/^\\s+worktree\\s+(\\S+)$/)
@@ -1481,7 +1498,7 @@ try {
   // Prompts: every one the agents are told is listed, editable, and reset-able.
   // An override that names a placeholder the prompt is not given is refused.
   const promptList = await (await fetch(`${base}/api/prompts`)).json()
-  assert.equal(promptList.length, 15)
+  assert.equal(promptList.length, 17)
   const answerEntry = promptList.find((p) => p.name === 'answer')
   assert.ok(answerEntry.default.includes('What the human asked'))
   assert.equal(answerEntry.custom, null)
@@ -1508,6 +1525,39 @@ try {
   assert.doesNotMatch(fs.readFileSync(path.join(root, 'data', 'tasks', told2.id, 'prompt.txt'), 'utf8'), /OVERRIDE/)
   assert.equal((await fetch(`${base}/api/prompts/nothing`)).status, 404)
   console.log('ok: prompts are listed, overridden with a check, kept three deep, and reset')
+
+  // The team route: a lead splits the work, every piece runs as its own task on
+  // its own branch, and the lead merges them back. Nothing is created until the
+  // human has seen the split, and what they say at the gate reaches the pieces.
+  const teamRun = (await (await fetch(`${base}/api/state`)).json()).options.runs.find((r) => r.value === 'team')
+  assert.ok(teamRun, 'the route is offered')
+  const lead = await post('/api/tasks', { title: 'the admin page', repos: ['api'], run: 'team', prompt: 'build the admin page' })
+  const atSplit = await waitFor(lead.id, (t) => t.status === 'awaiting_approval' || t.status === 'failed', 'the split gate')
+  assert.equal(atSplit.status, 'awaiting_approval', `the split failed: ${atSplit.error}`)
+  assert.equal(atSplit.awaitingPhase, 'split')
+  assert.ok(!atSplit.pieces, 'nothing runs before the human has seen the split')
+  await post(`/api/tasks/${lead.id}/approve`, { approved: true, feedback: 'use the v2 endpoint' })
+  const ledHome = await waitFor(lead.id, (t) => ['done', 'failed'].includes(t.status), 'the lead to finish')
+  assert.equal(ledHome.status, 'done', `the lead failed: ${ledHome.error}`)
+  assert.equal(ledHome.pieces.length, 2, 'both pieces were created')
+  const pieces = await Promise.all(
+    ledHome.pieces.map(async (id) => (await fetch(`${base}/api/tasks/${id}`)).json()),
+  )
+  assert.deepEqual(pieces.map((p) => p.title), ['The API half', 'The web half'])
+  assert.deepEqual(pieces.map((p) => p.status), ['done', 'done'])
+  assert.deepEqual(pieces.map((p) => p.lead), [lead.id, lead.id], 'each piece knows its lead')
+  assert.deepEqual(pieces.map((p) => p.run), ['quick', 'quick'], 'a piece builds and reviews itself')
+  assert.ok(pieces.every((p) => p.autoApprove), 'a piece has nobody to stop for')
+  assert.match(pieces[0].prompt, /use the v2 endpoint/, 'the gate reaches the pieces')
+  assert.equal(new Set(pieces.map((p) => p.trees[0].branch)).size, 2, 'a branch each')
+  const ledLog = execFileSync('git', ['-C', ledHome.trees[0].worktree, 'log', '--oneline'], { encoding: 'utf8' })
+  assert.equal(
+    ledLog.split('\n').filter((l) => l.includes('impl unique')).length,
+    2,
+    'both pieces end up in the lead branch',
+  )
+  assert.match(ledHome.docs['review.md'], /merged 2/, 'the lead reviews the lot')
+  console.log('ok: a lead splits the work, each piece runs on its own branch, and the lead merges them back')
 
   // The document route: no worktree, the repos there to read, the output in
   // a folder of its own under the task.
