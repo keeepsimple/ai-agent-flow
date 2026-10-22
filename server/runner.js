@@ -1431,7 +1431,7 @@ function describeTool(name, input = {}) {
  * The occupancy is the latest turn's whole input, cached or not: that is the
  * number the model actually reads. The totals are per turn, so they add up.
  */
-function noteUsage(task, usage) {
+export function noteUsage(task, usage) {
   if (!usage) return
   const io = task.io || { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }
   io.input += usage.input_tokens || 0
