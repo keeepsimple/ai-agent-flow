@@ -39,6 +39,13 @@ class _MentionsState extends State<Mentions> {
   int _chosen = 0;
   int _at = -1; // where the @ sits, or -1 when nothing is being typed
 
+  /// Which lookup is the current one. The first `@` of a session pays for a
+  /// `git ls-files` per repo — 300ms over a workspace of 28 — and every one
+  /// after that is served from the cache in five. So the answer to `@` comes
+  /// back after the answer to `@compos`, and the list went back to showing
+  /// everything the moment you typed enough to narrow it.
+  int _asked = 0;
+
   /// `@` then anything that could still be part of a path, right at the cursor.
   static final _token = RegExp(r'@([\w./-]*)$');
 
@@ -91,9 +98,10 @@ class _MentionsState extends State<Mentions> {
   }
 
   Future<void> _look(String query) async {
+    final mine = ++_asked;
     try {
       final hits = await widget.api.files(widget.repos, query);
-      if (!mounted || _at < 0) return;
+      if (!mounted || _at < 0 || mine != _asked) return;
       setState(() {
         _hits = hits;
         _chosen = 0;

@@ -105,6 +105,28 @@ class _FilesApi extends Api {
   ];
 }
 
+/// The shape the real one has: the first lookup pays for a `git ls-files` per
+/// repo, everything after it is served from a cache. So the broad answer comes
+/// back after the narrow one.
+class _SlowFirstApi extends Api {
+  _SlowFirstApi() : super(0);
+  final asked = <String>[];
+
+  @override
+  Future<List<Map<String, dynamic>>> files(
+    List<String> repos,
+    String query,
+  ) async {
+    asked.add(query);
+    await Future<void>.delayed(
+      Duration(milliseconds: query.length <= 1 ? 300 : 10),
+    );
+    return [
+      {'repo': 'agent-flow', 'path': 'everything-${query.isEmpty ? 'none' : query}.dart'},
+    ];
+  }
+}
+
 Task _task(Map<String, dynamic> extra) => Task({
   'id': 'a1b2c3d4',
   'title': 'get-discounts should return targeted product names',
@@ -775,6 +797,57 @@ void main() {
       findsNothing,
       reason: 'and the diff is not being laid out behind it',
     );
+  });
+
+  testWidgets('the @ list answers the last thing typed, not the slowest', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    final api = _SlowFirstApi();
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ternTheme(Accent.sky),
+      home: Scaffold(
+        backgroundColor: Tern.page,
+        body: Mentions(
+          controller: controller,
+          repos: const ['agent-flow'],
+          api: api,
+          child: TextField(controller: controller),
+        ),
+      ),
+    ));
+
+    void type(String text) {
+      controller.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    }
+
+    // The slow one: a bare @, asked while the cache is cold.
+    type('@');
+    await tester.pump(const Duration(milliseconds: 150));
+    // Then enough to narrow it, answered from the cache long before the first.
+    type('@composer');
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('everything-composer.dart'), findsOneWidget);
+
+    // Now let the first one land. It must not put the whole list back.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(api.asked, ['', 'composer'], reason: 'both were asked for');
+    expect(find.text('everything-none.dart'), findsNothing,
+        reason: 'the overtaken answer is dropped');
+    expect(find.text('everything-composer.dart'), findsOneWidget,
+        reason: 'what you typed is still what is on screen');
   });
 
   testWidgets('the @ list opens away from the edge it would run off', (
